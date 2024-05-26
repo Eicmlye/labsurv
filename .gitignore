@@ -6,5 +6,11 @@ Scripts/
 share/
 pyvenv.cfg
 
+# python cache
+__pycache__
+
 # vscode settings
 .vscode/
+
+# setup
+*.egg-info
