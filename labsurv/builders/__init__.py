@@ -1,6 +1,6 @@
-from .builder import ENVIRONMENTS, ALGORITHMS
+from .builder import ENVIRONMENTS, AGENTS
 
 __all__  = [
   "ENVIRONMENTS",
-  "ALGORITHMS",
+  "AGENTS",
 ]
