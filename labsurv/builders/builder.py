@@ -1,4 +1,4 @@
 from mmengine import Registry
 
 ENVIRONMENTS = Registry("environments")
-ALGORITHMS = Registry("algorithms")
+AGENTS = Registry("agents")

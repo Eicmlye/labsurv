@@ -88,8 +88,8 @@ env = dict(
   },
 )
 
-algo = dict(
-  type="QLearningAlgo",
+agent = dict(
+  type="QLearningAgent",
   world=world,
   action_num=4,
   lr=0.1,

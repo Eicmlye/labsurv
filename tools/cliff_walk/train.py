@@ -1,6 +1,6 @@
 import argparse
 
-from labsurv.builders import ALGORITHMS
+from labsurv.builders import AGENTS
 from mmengine.config import Config
 
 
@@ -19,7 +19,7 @@ def main():
 
   cfg = Config.fromfile(args.config)
 
-  agent = ALGORITHMS.build(cfg.algo)
+  agent = AGENTS.build(cfg.agent)
   agent.forward()
 
 

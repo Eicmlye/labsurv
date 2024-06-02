@@ -1,6 +1,6 @@
 import argparse
 
-from labsurv.builders import ALGORITHMS, ENVIRONMENTS
+from labsurv.builders import AGENTS, ENVIRONMENTS
 import matplotlib.pyplot as plt
 from mmengine.config import Config
 
@@ -22,7 +22,7 @@ def main():
   cfg = Config.fromfile(args.config)
 
   env = ENVIRONMENTS.build(cfg.env)
-  agent = ALGORITHMS.build(cfg.algo)
+  agent = AGENTS.build(cfg.agent)
   
   episodes = cfg.episodes
   return_list = []

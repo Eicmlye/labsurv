@@ -1,6 +1,6 @@
 import numpy as np
 
-from labsurv.builders import ALGORITHMS
+from labsurv.builders import AGENTS
 
 DANGER = 0
 FREE = 1
@@ -9,8 +9,8 @@ DEST = 3
 
 INDENT = " " * 4
 
-@ALGORITHMS.register_module()
-class QLearningAlgo:
+@AGENTS.register_module()
+class QLearningAgent:
   def __init__(self, world, action_num, lr=0.1, gamma=0.9, greedy_epsilon=0.05, step=1):
     self._world = world
     self._shape = (len(world), len(world[0]))

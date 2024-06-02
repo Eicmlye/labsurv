@@ -1,7 +1,7 @@
 import copy
 import numpy as np
 
-from labsurv.builders import ALGORITHMS, ENVIRONMENTS
+from labsurv.builders import AGENTS, ENVIRONMENTS
 
 
 DANGER = 0
@@ -13,8 +13,8 @@ DEST = 3
 INDENT = " " * 4
 
 
-@ALGORITHMS.register_module()
-class PolicyIterationAlgo:
+@AGENTS.register_module()
+class PolicyIterationAgent:
   def __init__(self, env_cfg, gamma=0.9, threshold=0.001, converge_threshold=0.0001):
     self.env = ENVIRONMENTS.build(env_cfg)
     self.state_value = np.zeros(self.env.shape)
