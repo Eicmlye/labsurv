@@ -1,13 +1,13 @@
 import numpy as np
 
 from labsurv.builders import AGENTS
+from labsurv.utils import INDENT
 
 DANGER = 0
 FREE = 1
 START = 2
 DEST = 3
 
-INDENT = " " * 4
 
 @AGENTS.register_module()
 class QLearningAgent:

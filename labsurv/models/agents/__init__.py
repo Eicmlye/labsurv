@@ -1,9 +1,11 @@
+from .dqn import DQN
 from .policy_iteration import PolicyIterationAgent
-from .sarsa import SARSAAgent
 from .qlearning import QLearningAgent
+from .sarsa import SARSAAgent
 
 __all__ = [
+  "DQN",
   "PolicyIterationAgent",
-  "SARSAAgent",
   "QLearningAgent",
+  "SARSAAgent",
 ]

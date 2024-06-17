@@ -14,3 +14,6 @@ __pycache__
 
 # setup
 *.egg-info
+
+# output
+output/
