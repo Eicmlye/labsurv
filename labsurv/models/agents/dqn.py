@@ -1,6 +1,6 @@
-from labsurv.builders import AGENTS, QNETS
 import numpy as np
 import torch
+from labsurv.builders import AGENTS, QNETS
 from torch import Tensor
 
 

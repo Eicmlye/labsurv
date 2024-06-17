@@ -7,7 +7,6 @@ from .logger_utils import (
     merge_log_str,
 )
 
-
 __all__ = [
     "get_cur_time_str",
     "get_delta_str",

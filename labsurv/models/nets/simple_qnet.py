@@ -1,6 +1,6 @@
-from torch.nn import Module, Linear
 import torch.nn.functional as F
-from labsurv.builders import QNETS, LOSS
+from labsurv.builders import LOSS, QNETS
+from torch.nn import Linear, Module
 
 
 @QNETS.register_module()

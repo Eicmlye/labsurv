@@ -1,6 +1,6 @@
-from datetime import datetime
 import os
 import os.path as osp
+from datetime import datetime
 
 from labsurv.builders import HOOKS
 from labsurv.runners.hooks.utils import (

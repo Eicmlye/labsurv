@@ -1,9 +1,8 @@
 import copy
-import numpy as np
 
+import numpy as np
 from labsurv.builders import AGENTS, ENVIRONMENTS
 from labsurv.utils import INDENT
-
 
 DANGER = 0
 FREE = 1
@@ -173,8 +172,8 @@ def check_same_strategy(old_strat, new_strat, threshold):
 
 
 if __name__ == "__main__":
-    from mmengine import Config
     from labsurv.builders import ENVIRONMENTS
+    from mmengine import Config
 
     cfg_path = input("Enter config path: ")
     if cfg_path == "":
