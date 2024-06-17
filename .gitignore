@@ -1,19 +1,21 @@
+# see gitignore rules at https://www.cnblogs.com/kevingrace/p/5690241.html
+
 # python virtual env
-Include/
-Lib/
-Library/
-Scripts/
-share/
-pyvenv.cfg
+/Include/
+/Lib/
+/Library/
+/Scripts/
+/share/
+/pyvenv.cfg
 
 # python cache
-__pycache__
+__pycache__/
 
 # vscode settings
-.vscode/
+# /.vscode/
 
 # setup
-*.egg-info
+/*.egg-info/
 
 # output
-output/
+/output/

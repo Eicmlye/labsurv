@@ -1,0 +1,7 @@
+# black usage: https://muzing.top/posts/a29e4743/
+# regular expression: https://www.runoob.com/regexp/regexp-syntax.html
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+skip-string-normalization = true
+extend-exclude = "setup.py|utils/rl_utils.py"

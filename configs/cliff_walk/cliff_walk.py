@@ -25,12 +25,12 @@ DEST = 3
 # ]
 
 world = [
-  [FREE,    FREE,     FREE,     FREE,     FREE,     FREE],
-  [FREE,    DANGER,   FREE,     DANGER,   DANGER,   DANGER],
-  [FREE,    DANGER,   FREE,     FREE,     FREE,     FREE],
-  [START,   DANGER,   FREE,     DANGER,   DANGER,   DEST],
-  [FREE,    DANGER,   FREE,     FREE,     FREE,     DANGER],
-  [FREE,    FREE,     FREE,     DANGER,   FREE,     FREE],
+    [FREE, FREE, FREE, FREE, FREE, FREE],
+    [FREE, DANGER, FREE, DANGER, DANGER, DANGER],
+    [FREE, DANGER, FREE, FREE, FREE, FREE],
+    [START, DANGER, FREE, DANGER, DANGER, DEST],
+    [FREE, DANGER, FREE, FREE, FREE, DANGER],
+    [FREE, FREE, FREE, DANGER, FREE, FREE],
 ]
 
 # world = [
@@ -78,24 +78,24 @@ world = [
 # ]
 
 env = dict(
-  type="CliffWalkModelFreeEnv",
-  world=world,
-  reward={
-    DANGER: -50,
-    FREE: -1,
-    START: -1,
-    DEST: 50,
-  },
+    type="CliffWalkModelFreeEnv",
+    world=world,
+    reward={
+        DANGER: -50,
+        FREE: -1,
+        START: -1,
+        DEST: 50,
+    },
 )
 
 agent = dict(
-  type="QLearningAgent",
-  world=world,
-  action_num=4,
-  lr=0.1,
-  gamma=0.9,
-  greedy_epsilon=0.2,
-  step=1,
+    type="QLearningAgent",
+    world=world,
+    action_num=4,
+    lr=0.1,
+    gamma=0.9,
+    greedy_epsilon=0.2,
+    step=1,
 )
 
 episodes = 10000

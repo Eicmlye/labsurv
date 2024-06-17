@@ -1,0 +1,9 @@
+{
+  "editor.tabSize": 4,
+  "editor.detectIndentation": false,
+  "editor.insertSpaces": true,
+  "editor.indentSize": "tabSize",
+  "editor.foldingStrategy": "indentation",
+  "editor.fontSize": 14,
+  "editor.fontFamily": "'Courier New', Consolas, monospace",
+}
