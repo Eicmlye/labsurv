@@ -1,7 +1,7 @@
 import argparse
 
-from labsurv.builders import AGENTS, ENVIRONMENTS
 import matplotlib.pyplot as plt
+from labsurv.builders import AGENTS, ENVIRONMENTS
 from mmengine.config import Config
 
 

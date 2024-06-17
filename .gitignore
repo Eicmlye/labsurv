@@ -19,3 +19,5 @@ __pycache__/
 
 # output
 /output/
+
+# newline at the end of file is necessary for format.sh to read the file completely

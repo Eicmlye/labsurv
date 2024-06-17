@@ -1,12 +1,12 @@
 import argparse
 import os
 import os.path as osp
-
-from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
-import matplotlib.pyplot as plt
-from mmengine import Config
-import numpy as np
 import random
+
+import matplotlib.pyplot as plt
+import numpy as np
+from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
+from mmengine import Config
 
 
 def parse_args():
