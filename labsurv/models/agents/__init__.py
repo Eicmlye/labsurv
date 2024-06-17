@@ -4,8 +4,8 @@ from .qlearning import QLearningAgent
 from .sarsa import SARSAAgent
 
 __all__ = [
-  "DQN",
-  "PolicyIterationAgent",
-  "QLearningAgent",
-  "SARSAAgent",
+    "DQN",
+    "PolicyIterationAgent",
+    "QLearningAgent",
+    "SARSAAgent",
 ]
