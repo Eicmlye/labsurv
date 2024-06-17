@@ -1,5 +1,4 @@
 import numpy as np
-
 from labsurv.builders import AGENTS
 from labsurv.utils import INDENT
 

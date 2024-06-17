@@ -5,3 +5,14 @@ line-length = 88
 target-version = ["py312"]
 skip-string-normalization = true
 extend-exclude = "setup.py|utils/rl_utils.py"
+
+# isort usage: https://muzing.top/posts/38b1b99e/
+[tool.isort]
+profile = "black"
+src_paths = ["labsurv/*", "configs/*", "tools/*"]
+skip = ["Include/*", "labsurv.egg-info/*", "Lib/*", "Library/*", "output/*", "Scripts/*", "share/*", "setup.py"]
+multi_line_output = 3
+verbose = true
+skip_gitignore = true
+line_length = 88
+include_trailing_comma = true

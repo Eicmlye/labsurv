@@ -1,6 +1,7 @@
 import collections
-from labsurv.builders import REPLAY_BUFFERS
 import random
+
+from labsurv.builders import REPLAY_BUFFERS
 
 
 @REPLAY_BUFFERS.register_module()

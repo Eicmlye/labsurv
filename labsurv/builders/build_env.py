@@ -1,7 +1,8 @@
 from copy import deepcopy
+
 import gym
 from labsurv.utils import WARN
-from mmengine import build_from_cfg, ConfigDict
+from mmengine import ConfigDict, build_from_cfg
 
 
 def build_env(env_cfg: ConfigDict, registry):

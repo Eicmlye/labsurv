@@ -1,5 +1,4 @@
 import numpy as np
-
 from labsurv.builders import ENVIRONMENTS
 
 DANGER = 0

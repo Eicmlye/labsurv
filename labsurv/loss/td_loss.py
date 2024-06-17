@@ -1,6 +1,6 @@
+import torch.nn.functional as F
 from labsurv.builders import LOSS
 from torch import Tensor, mean
-import torch.nn.functional as F
 
 
 @LOSS.register_module()

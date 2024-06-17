@@ -1,5 +1,6 @@
-from labsurv.utils import CLEAR_FORMAT
 from typing import List
+
+from labsurv.utils import CLEAR_FORMAT
 
 
 def color_str(color: str, content: List[str], seperator: str = " "):
