@@ -2,15 +2,13 @@ import copy
 import numpy as np
 
 from labsurv.builders import AGENTS, ENVIRONMENTS
+from labsurv.utils import INDENT
 
 
 DANGER = 0
 FREE = 1
 START = 2
 DEST = 3
-
-
-INDENT = " " * 4
 
 
 @AGENTS.register_module()
@@ -113,7 +111,10 @@ class PolicyIterationAgent:
           output[index][jndex] += "v" if action_probs[2] == max_value else "o"
           output[index][jndex] += ">" if action_probs[3] == max_value else "o"
         
-        print(f"{self.state_value[state]:>8.4f}", end="\n" if jndex == self.env.shape[1] - 1 else INDENT)
+        print(
+          f"{self.state_value[state]:>8.4f}",
+          end="\n" if jndex == self.env.shape[1] - 1 else INDENT,
+        )
 
     print("======== strategy ========")
     for row in output:

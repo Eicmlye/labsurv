@@ -1,0 +1,3 @@
+INDENT = " " * 2
+CLEAR_FORMAT = "\033[0m"
+MAKE_END_OF_LINE = "\033[K"
