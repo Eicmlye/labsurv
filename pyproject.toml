@@ -5,6 +5,7 @@ line-length = 88
 target-version = ["py312"]
 skip-string-normalization = true
 extend-exclude = "setup.py|utils/rl_utils.py"
+# include key is ignored by format.sh
 
 # isort usage: https://muzing.top/posts/38b1b99e/
 [tool.isort]
