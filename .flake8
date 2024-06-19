@@ -1,0 +1,4 @@
+# flake8 usage: https://flake8.pycqa.org/en/latest/
+[flake8]
+extend-exclude = setup.py
+max-line-length = 88

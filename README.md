@@ -7,5 +7,10 @@ This repository is a reinforcement learning solution to the Optimal Camera Place
 ## Installation
 
 ```bash
+# build virtual environment
+python -m venv .
+
+# install required packages
+pip install -r requirements.txt
 pip install -e .
 ```
