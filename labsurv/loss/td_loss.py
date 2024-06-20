@@ -1,9 +1,9 @@
 import torch.nn.functional as F
-from labsurv.builders import LOSS
+from labsurv.builders import LOSSES
 from torch import Tensor, mean
 
 
-@LOSS.register_module()
+@LOSSES.register_module()
 class TDLoss:
     def __init__(self):
         self.loss = F.mse_loss
