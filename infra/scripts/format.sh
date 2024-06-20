@@ -36,11 +36,7 @@ function format_file() {
         # use config pyproject.toml
         black $1
         # use config pyproject.toml
-        ISORT_OUTPUT=$(isort $1)
-        if [[ ! ${ISORT_OUTPUT} == "" ]]
-        then
-            echo -e "isort: ${ISORT_OUTPUT}"
-        fi
+        isort $1
 
         if [[ $1 =~ \.py$ ]]
         then
@@ -76,9 +72,7 @@ function get_git_status_change() {
         GIT_NEW+=(${line})
     done
 
-    local OUTPUT_LIST=()
-    OUTPUT_LIST+=${GIT_MODIFIED}
-    OUTPUT_LIST+=${GIT_NEW}
+    local OUTPUT_LIST=("$GIT_MODIFIED" "$GIT_NEW")
 
     echo ${OUTPUT_LIST[*]}
 }
