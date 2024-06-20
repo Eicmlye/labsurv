@@ -35,7 +35,7 @@ class LoggerHook:
     def update(self, return_val):
         self.return_list.append(return_val)
 
-    def __call__(self, episodes):
+    def __call__(self, episodes: int):
         episode = len(self.return_list)
         self.time = datetime.now()
 

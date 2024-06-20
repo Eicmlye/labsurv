@@ -31,12 +31,16 @@ function format_file() {
         done
     elif [[ $1 =~ (\.pyi?|\.ipynb)$ ]]
     then
-        echo -e "\n========$1========"
+        echo -e "\n======== $1 ========"
 
         # use config pyproject.toml
         black $1
         # use config pyproject.toml
-        isort $1
+        ISORT_OUTPUT=$(isort $1)
+        if [[ ! ${ISORT_OUTPUT} == "" ]]
+        then
+            echo -e "isort: ${ISORT_OUTPUT}"
+        fi
 
         if [[ $1 =~ \.py$ ]]
         then

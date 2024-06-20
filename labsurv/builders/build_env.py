@@ -2,10 +2,10 @@ from copy import deepcopy
 
 import gym
 from labsurv.utils import WARN
-from mmengine import ConfigDict, build_from_cfg
+from mmengine import ConfigDict, Registry, build_from_cfg
 
 
-def build_env(env_cfg: ConfigDict, registry):
+def build_env(env_cfg: ConfigDict, registry: Registry):
     cfg = deepcopy(env_cfg)
     if "id" in cfg.keys():
         id = cfg.pop("id")
