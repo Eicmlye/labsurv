@@ -39,11 +39,14 @@ class LoggerHook:
         episode = len(self.return_list)
         self.time = datetime.now()
 
-        if (episode + 1) % self.interval == 0:
+        if episode % self.interval == 0:
+            episode_index = episode - 1
             log_list = []
             log_list += get_cur_time_str()
-            log_list += get_episode_progress_str(episode, episodes)
-            log_list += get_time_eta_strs(self.build_time, self.time, episode, episodes)
+            log_list += get_episode_progress_str(episode_index, episodes)
+            log_list += get_time_eta_strs(
+                self.build_time, self.time, episode_index, episodes
+            )
             log_list += get_latest_avg_reward_str(
                 self.interval, self.return_list, show_returns=True
             )

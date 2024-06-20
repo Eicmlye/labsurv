@@ -1,5 +1,5 @@
 import torch.nn.functional as F
-from labsurv.builders import LOSS, QNETS
+from labsurv.builders import LOSSES, QNETS
 from torch.nn import Linear, Module
 
 
@@ -9,7 +9,7 @@ class SimpleQNet(Module):
         super().__init__()
         self.hidden_layer = Linear(state_dim, hidden_dim)
         self.output_layer = Linear(hidden_dim, action_dim)
-        self.loss = LOSS.build(loss_cfg)
+        self.loss = LOSSES.build(loss_cfg)
 
     def forward(self, state):
         x = F.relu(self.hidden_layer(state))
