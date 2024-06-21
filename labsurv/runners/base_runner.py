@@ -1,15 +1,9 @@
-import random
-
-import numpy as np
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
 from mmengine import Config
 
 
 class BaseRunner:
     def __init__(self, cfg: Config):
-        np.random.seed(0)
-        random.seed(0)
-
         self.env = ENVIRONMENTS.build(cfg.env)
         self.agent = AGENTS.build(cfg.agent)
         self.logger = HOOKS.build(cfg.logger_cfg)
@@ -17,33 +11,41 @@ class BaseRunner:
             REPLAY_BUFFERS.build(cfg.replay_buffer) if cfg.use_replay_buffer else None
         )
 
+        # max episode number
         self.episodes = cfg.episodes
+        # max step number for an episode, exceeding makes truncated True
+        self.steps = cfg.steps
 
     def run(self):
         cur_observation = None
         for episode in range(self.episodes):
-            cur_observation = self.env.reset()[0]
+            cur_observation = self.env.reset()
 
             episode_return = 0
             terminated = False
-            truncated = False
 
-            while not terminated and not truncated:
+            for step in range(self.steps):
+                if terminated:
+                    break
+
                 cur_action = self.agent.take_action(cur_observation)
 
-                transitions = self.env.step(cur_action)
-                transitions["cur_observation"] = cur_observation
-                transitions["cur_action"] = cur_action
+                transition = self.env.step(cur_observation, cur_action)
+                transition["cur_observation"] = cur_observation
+                transition["cur_action"] = cur_action
+
+                terminated = transition["terminated"]
+                transition["truncated"] = step == self.steps - 1
 
                 if self.replay_buffer is not None:
-                    self.replay_buffer.add(**transitions)
+                    self.replay_buffer.add(transition)
 
-                cur_observation = transitions["next_observation"]
-                episode_return += transitions["reward"]
+                cur_observation = transition["next_observation"]
+                episode_return += transition["reward"]
 
                 if self.replay_buffer is not None and self.replay_buffer.is_active():
-                    transitions = self.replay_buffer.sample()
-                    self.agent.update(**transitions)
+                    samples = self.replay_buffer.sample()
+                    self.agent.update(samples)
 
             self.logger.update(episode_return)
             self.logger(self.episodes)

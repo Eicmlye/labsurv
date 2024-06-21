@@ -18,15 +18,5 @@ class BaseAgent:
         # explore or exploit
         raise NotImplementedError()
 
-    def update(self, **transition):
-        missing_keys = set(
-            [
-                "cur_obseravtion",
-                "cur_action",
-                "rewards",
-                "next_obseravtion",
-                "terminated",
-                "truncated",
-            ]
-        ).difference(set(transition.keys()))
-        assert len(missing_keys) == 0, f"Missing keys {missing_keys}."
+    def update(self, transition: dict):
+        raise NotImplementedError()

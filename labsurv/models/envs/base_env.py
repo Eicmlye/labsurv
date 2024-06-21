@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import gym
 from labsurv.builders import ENVIRONMENTS
@@ -6,7 +6,7 @@ from labsurv.builders import ENVIRONMENTS
 
 @ENVIRONMENTS.register_module()
 class BaseEnv(gym.Env):
-    def __init__(self, actions: Any, observations: Any, reward_range: Any = None):
+    def __init__(self):
         """
         In order to be compatible with the runner class, the outputs of some methods
         must be dicts with a minimal set of keys.
@@ -15,12 +15,8 @@ class BaseEnv(gym.Env):
             actions: the representation of action space
             observations: the representation of observation space
         """
-
-        self.action_space = actions
         # should clarify the init observation distribution in convenience of `reset()`
-        self.observation_space = observations
-        if reward_range is not None:
-            self.reward_range = reward_range
+        raise NotImplementedError()
 
     def step(self, observation, action) -> Dict[str, Any]:
         """
@@ -38,32 +34,31 @@ class BaseEnv(gym.Env):
             reward,
             terminated,
             truncated,
-            info,
         """
         assert action in self.action_space, "Unknown action."
         assert observation in self.observation_space, "Unknown input observation."
 
-        transitions = dict(
+        transition = dict(
             next_observation=None,
             reward=None,
             terminated=None,
             truncated=None,
-            info=None,
         )
 
         assert (
-            transitions["next_observation"] is None
-            or transitions["next_observation"] in self.observation_space
+            transition["next_observation"] is None
+            or transition["next_observation"] in self.observation_space
         ), "Unknown output observation."
 
-        return transitions
+        return transition
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         """
         Resets the environment to an initial state and returns the initial observation.
         """
 
         # do env init works
+        super().reset(seed=seed)
 
         # return init observation according to observation distribution
         init_observation = None
