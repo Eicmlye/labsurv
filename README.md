@@ -40,7 +40,7 @@ And find more formatting options with `--help`.
 
 The project mainly uses `mmcv` registry module as the module administration system. An abstraction of the project structure is provided below.
 
-![](.readme\001_ProjectStructure.png)
+![](https://github.com/Eicmlye/labsurv/blob/master/.readme/001_ProjectStructure.png)
 
 ### Runner
 
