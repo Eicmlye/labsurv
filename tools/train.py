@@ -7,7 +7,7 @@ from mmengine import Config
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="DQN trainer.")
+    parser = argparse.ArgumentParser(description="RL trainer.")
 
     parser.add_argument("--config", type=str, help="Path of the config file.")
     parser.add_argument("--debug", action="store_true", help="debug mode")

@@ -1,6 +1,6 @@
 from typing import Any
 
-from labsurv.builders import AGENTS
+from labsurv.builders import AGENTS, EXPLORERS
 from torch import device
 
 
@@ -10,13 +10,15 @@ class BaseAgent:
         self,
         device: device = None,
         gamma: float = 0.9,
+        explorer_cfg=None,
     ):
         self.device = device
         self.gamma = gamma
+        self.explorer = EXPLORERS.build(explorer_cfg)
 
     def take_action(self, observation: Any):
         # explore or exploit
-        raise NotImplementedError()
+        return self.explorer.act()
 
-    def update(self, transition: dict):
+    def update(self, samples: dict):
         raise NotImplementedError()

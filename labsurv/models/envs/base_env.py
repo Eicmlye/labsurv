@@ -1,12 +1,12 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-import gym
 from labsurv.builders import ENVIRONMENTS
+from labsurv.utils.random import np_random
 
 
 @ENVIRONMENTS.register_module()
-class BaseEnv(gym.Env):
-    def __init__(self):
+class BaseEnv:
+    def __init__(self, seed: int | None = None):
         """
         In order to be compatible with the runner class, the outputs of some methods
         must be dicts with a minimal set of keys.
@@ -16,7 +16,9 @@ class BaseEnv(gym.Env):
             observations: the representation of observation space
         """
         # should clarify the init observation distribution in convenience of `reset()`
-        raise NotImplementedError()
+
+        self.seed = seed
+        self._np_random, _ = np_random(self.seed)
 
     def step(self, observation, action) -> Dict[str, Any]:
         """
@@ -52,13 +54,13 @@ class BaseEnv(gym.Env):
 
         return transition
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self, seed: int | None):
         """
         Resets the environment to an initial state and returns the initial observation.
         """
 
         # do env init works
-        super().reset(seed=seed)
+        self._np_random, _ = np_random(self.seed if seed is -1 else seed)
 
         # return init observation according to observation distribution
         init_observation = None
