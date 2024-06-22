@@ -60,19 +60,12 @@ function get_git_status_change() {
         echo -e "\033[33m[WARN]\033[0m Untracked files must be added first to enable formatting." >&2
     fi
     
-    local GIT_MODIFIED=$(git status | grep "modified:" | awk '{print $2}')
-    for line in ${GIT_MODIFIED[*]}
-    do
-        GIT_MODIFIED+=(${line})
-    done
-
-    local GIT_NEW=$(git status | grep "new file:" | awk '{print $3}')
-    for line in ${GIT_NEW[*]}
-    do
-        GIT_NEW+=(${line})
-    done
-
-    local OUTPUT_LIST=("$GIT_MODIFIED" "$GIT_NEW")
+    local OUTPUT_LIST=$(git status | awk '
+    BEGIN { flag = 0 }
+    /^((Changes to be committed)|(Changes not staged for commit)):/ { flag = 1 }
+    NF == 0 { flag = 0 }
+    flag == 1 && $1 !~ /^\(|(deleted:)|(renamed:)/ && $0 !~ /:$/ { print $(NF) }
+    ')
 
     echo ${OUTPUT_LIST[*]}
 }
