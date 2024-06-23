@@ -6,10 +6,17 @@ from typing import List
 import numpy as np
 import pandas as pd
 from labsurv.utils.surveillance import build_block, shift
+from labsurv.utils.surveillance.build import COLOR_MAP
 from pyntcloud import PyntCloud
 
 
-class BaseRoom:
+class SurveillanceRoom:
+    POINT_TYPE = dict(
+        occupancy="grey",
+        install_permitted="yellow",
+        must_monitor="red",
+    )
+
     def __init__(self, shape: List[int] | None = None, load_from: str | None = None):
         """
         Argument:
@@ -24,9 +31,14 @@ class BaseRoom:
 
             shape (np.ndarray): the shape of the room.
 
-            occupancy (List[np.ndarray]): [array([x, y, z]), ...], the coordinates of the points occupied by objects.
+            occupancy (List[np.ndarray]): [array([x, y, z]), ...], the coordinates of
+            the points occupied by objects.
 
-            occ_color (List[np.ndarray]): [array([r, g, b]), ...], the color of every point in `self.occupancy`.
+            install_permitted (List[np.ndarray]): [array([x, y, z]), ...], the
+            coordinates of the points that allow cameras to be installed at.
+
+            must_monitor (List[np.ndarray]): [array([x, y, z]), ...], the coordinates
+            of the points that must be monitored by at least 1 camera.
         """
 
         assert (
@@ -46,7 +58,8 @@ class BaseRoom:
 
             self.shape = np.array(shape)
             self.occupancy = []
-            self.occ_color = []
+            self.install_permitted = []
+            self.must_monitor = []
         else:
             if not osp.exists(load_from):
                 raise ValueError(f"The path {load_from} does not exist.")
@@ -57,7 +70,20 @@ class BaseRoom:
                 room_data = pickle.load(fpkl)
                 self.shape = room_data["shape"]
                 self.occupancy = room_data["occupancy"]
-                self.occ_color = room_data["occ_color"]
+                self.install_permitted = room_data["install_permitted"]
+                self.must_monitor = room_data["must_monitor"]
+
+    @property
+    def occupancy_color(self):
+        return COLOR_MAP[self.POINT_TYPE["occupancy"]]
+
+    @property
+    def install_permitted_color(self):
+        return COLOR_MAP[self.POINT_TYPE["install_permitted"]]
+
+    @property
+    def must_monitor_color(self):
+        return COLOR_MAP[self.POINT_TYPE["must_monitor"]]
 
     def _check_inside_room(self, points: np.ndarray | List[np.ndarray]):
         for point in points:
@@ -78,26 +104,36 @@ class BaseRoom:
     def add_block(
         self,
         shape: List[int],
-        color: np.ndarray | str | List[int] = np.array([128, 128, 128]),
+        point_type: str = "occupancy",
         near_origin_vertex: np.ndarray | List[int] = np.array([0, 0, 0]),
     ):
-        points, point_colors = build_block(shape, color)
+        if point_type not in self.POINT_TYPE.keys():
+            raise ValueError("SurveillanceRoom does not allow customized color points.")
+
+        points, _ = build_block(shape, self.POINT_TYPE[point_type])
         self._check_inside_room(points)
 
         # consider `near_origin_vertex` as the displacement vector
         points = shift(points, near_origin_vertex)
 
-        for point, point_color in zip(points, point_colors):
+        # list object is mutable, so `target_point_list` is a pointer
+        target_point_list = None
+        if point_type == "occupancy":
+            target_point_list = self.occupancy
+        elif point_type == "install_permitted":
+            target_point_list = self.install_permitted
+        elif point_type == "must_monitor":
+            target_point_list = self.must_monitor
+
+        for point in points:
             new_point = True
-            for index, occ in enumerate(self.occupancy):
-                if np.array_equal(point, occ):
-                    self.occ_color[index] = point_color
+            for target_point in target_point_list:
+                if np.array_equal(point, target_point):
                     new_point = False
                     break
 
             if new_point:
-                self.occupancy.append(point)
-                self.occ_color.append(point_color)
+                target_point_list.append(point)
 
     def save(self, save_path: str):
         """
@@ -105,7 +141,7 @@ class BaseRoom:
         """
         if not save_path.endswith(".pkl"):
             os.makedirs(save_path, exist_ok=True)
-            save_pkl_path = osp.join(save_path, "BaseRoom.pkl")
+            save_pkl_path = osp.join(save_path, "SurveillanceRoom.pkl")
         else:
             os.makedirs(osp.dirname(save_path), exist_ok=True)
             save_pkl_path = save_path
@@ -115,7 +151,8 @@ class BaseRoom:
                 dict(
                     shape=self.shape,
                     occupancy=self.occupancy,
-                    occ_color=self.occ_color,
+                    install_permitted=self.install_permitted,
+                    must_monitor=self.must_monitor,
                 ),
                 fpkl,
             )
@@ -124,9 +161,33 @@ class BaseRoom:
         """
         Saves the pointcloud in a `ply` file.
         """
-        show_points_with_color = np.stack(
-            (self.occupancy, self.occ_color), axis=1
+        EPSILON = np.array([0.1, 0, 0])
+        occupancy_with_color = np.stack(
+            (self.occupancy, np.array([self.occupancy_color] * len(self.occupancy))),
+            axis=1,
         ).reshape(-1, 6)
+        install_permitted_with_color = np.stack(
+            (
+                shift(self.install_permitted, EPSILON),
+                np.array([self.install_permitted_color] * len(self.install_permitted)),
+            ),
+            axis=1,
+        ).reshape(-1, 6)
+        must_monitor_with_color = np.stack(
+            (
+                shift(self.must_monitor, -EPSILON),
+                np.array([self.must_monitor_color] * len(self.must_monitor)),
+            ),
+            axis=1,
+        ).reshape(-1, 6)
+        # import pdb; pdb.set_trace()
+        show_points_with_color = np.row_stack(
+            (
+                occupancy_with_color,
+                install_permitted_with_color,
+                must_monitor_with_color,
+            ),
+        )
         show_points_with_color = pd.DataFrame(show_points_with_color)
         show_points_with_color.columns = ["x", "y", "z", "red", "green", "blue"]
         pointcloud = PyntCloud(show_points_with_color)
@@ -135,7 +196,7 @@ class BaseRoom:
 
         if not save_path.endswith(".ply"):
             os.makedirs(save_path, exist_ok=True)
-            save_ply_path = osp.join(save_path, "BaseRoom.ply")
+            save_ply_path = osp.join(save_path, "SurveillanceRoom.ply")
         else:
             os.makedirs(osp.dirname(save_path), exist_ok=True)
             save_ply_path = save_path

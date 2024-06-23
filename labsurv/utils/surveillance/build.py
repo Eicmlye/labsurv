@@ -6,7 +6,7 @@ COLOR_MAP = dict(
     red=np.array([255, 0, 0]),
     green=np.array([0, 255, 0]),
     blue=np.array([0, 0, 255]),
-    yellow=np.array([128, 128, 0]),
+    yellow=np.array([255, 255, 0]),
     grey=np.array([128, 128, 128]),
     white=np.array([255, 255, 255]),
 )
