@@ -43,7 +43,7 @@ class BaseRoom:
     def add_block(
         self,
         shape: List[int],
-        color: np.ndarray | str | List[int] = np.array([255, 255, 255]),
+        color: np.ndarray | str | List[int] = np.array([128, 128, 128]),
         near_origin_vertex: np.ndarray | List[int] = np.array([0, 0, 0]),
     ):
         points, point_colors = build_block(shape, color)
@@ -68,7 +68,6 @@ class BaseRoom:
         show_points_with_color = np.stack(
             (self.occupancy, self.occ_color), axis=1
         ).reshape(-1, 6)
-        # import pdb; pdb.set_trace()
         show_points_with_color = pd.DataFrame(show_points_with_color)
         show_points_with_color.columns = ["x", "y", "z", "red", "green", "blue"]
         pointcloud = PyntCloud(show_points_with_color)

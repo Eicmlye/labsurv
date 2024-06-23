@@ -7,14 +7,14 @@ COLOR_MAP = dict(
     green=np.array([0, 255, 0]),
     blue=np.array([0, 0, 255]),
     yellow=np.array([128, 128, 0]),
-    black=np.array([0, 0, 0]),
+    grey=np.array([128, 128, 128]),
     white=np.array([255, 255, 255]),
 )
 
 
 def build_block(
     shape: List[int],
-    color: np.ndarray | str | List[int] = np.array([0, 0, 0]),
+    color: np.ndarray | str | List[int] = np.array([128, 128, 128]),
 ) -> np.ndarray:
     """
     Returns:
