@@ -1,5 +1,6 @@
 from labsurv.builders import EXPLORERS
-from labsurv.models.explorers import BaseExplorer
+from labsurv.utils.random import np_random
+from .base_explorer import BaseExplorer
 
 
 @EXPLORERS.register_module()

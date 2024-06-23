@@ -60,7 +60,7 @@ class BaseEnv:
         """
 
         # do env init works
-        self._np_random, _ = np_random(self.seed if seed is -1 else seed)
+        self._np_random, _ = np_random(self.seed if seed == -1 else seed)
 
         # return init observation according to observation distribution
         init_observation = None
