@@ -1,5 +1,5 @@
 from labsurv.builders import EXPLORERS
-from labsurv.utils.random import np_random
+
 from .base_explorer import BaseExplorer
 
 

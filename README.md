@@ -26,6 +26,36 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+### Package Modification
+
+- `pyntcloud`
+  - For fewer warnings, change code in `Lib\site-packages\pyntcloud\io\ply.py` from
+  ```python
+    def describe_element(name, df):
+        # ......
+        else:
+            for i in range(len(df.columns)):
+                # get first letter of dtype to infer format
+                f = property_formats[str(df.dtypes[i])[0]]  ### change this line !!!
+                element.append('property ' + f + ' ' + df.columns.values[i])
+
+        return element
+  ```
+  to
+  ```python
+
+
+    def describe_element(name, df):
+        # ......
+        else:
+            for i in range(len(df.columns)):
+                # get first letter of dtype to infer format
+                f = property_formats[str(df.dtypes.iloc[i])[0]]  ### add `.iloc` !!!
+                element.append('property ' + f + ' ' + df.columns.values[i])
+
+        return element
+  ```
+
 ## Code Style
 
 This repository uses `black`, `isort` and `flake8` for code formatting. To format changed files, run
