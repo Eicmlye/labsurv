@@ -97,3 +97,19 @@ An `Environment` must implement the `step()` and `reset()` methods.
 ### Replay Buffer
 
 The `ReplayBuffer` is the class to store experience and to sample batches for `Agent` to update its strategy. A `BaseReplayBuffer` class is created for further uses. 
+
+## Tools Usage
+
+### `Room`
+
+#### Quick start
+
+```bash
+python tools/demo/room/build_room.py
+```
+
+And find output in `output/room/BaseRoom.ply`.
+
+#### Methods
+
+Currently `BaseRoom` implements a `add_block()` method, which enables the user to add solid blocks to the `Room`. This class does not recognize different objects, i.e., once added, the points are independent from where they came from, and are merged into the cluster of points it's in.
