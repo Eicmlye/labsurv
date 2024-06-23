@@ -51,6 +51,8 @@ class BaseSurveillanceEnv(BaseEnv):
         return init_observation
 
     def init_visibility(self, cfg_path: str):
+        assert cfg_path.endswith(".pkl"), "Only `pkl` files are allowed."
+
         with open(cfg_path, "rb") as f:
             surv_cfg = pickle.load(f)
 
