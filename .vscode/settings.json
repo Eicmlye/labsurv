@@ -7,4 +7,5 @@
   "editor.fontSize": 14,
   "editor.fontFamily": "'Courier New', Consolas, monospace",
   "3dpreview.backgroundColor": "#FFFFFF",
+//   "vscode-pydata-viewer.pythonPath": "Scripts/python.exe"  // must use absolute path
 }
