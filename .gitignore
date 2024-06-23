@@ -20,4 +20,8 @@ __pycache__/
 # output
 /output/
 
+# tmp files
+*tmp*
+*temp*
+
 # newline at the end of file is necessary for format.sh to read the file completely

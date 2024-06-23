@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 import gym
-from labsurv.utils import WARN
+from labsurv.utils.string import WARN
 from mmengine import ConfigDict, Registry, build_from_cfg
 
 
