@@ -1,21 +1,21 @@
-import pickle
+# import pickle
 from typing import Any, Dict, Optional
 
 # import numpy as np
-# import pyntcloud as pcl
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseEnv
+from labsurv.utils.surveillance import SurveillanceRoom
 
 
 @ENVIRONMENTS.register_module()
 class BaseSurveillanceEnv(BaseEnv):
     def __init__(
         self,
-        surveil_cfg_path: str,
+        room_data_path: str,
     ):
         """ """
 
-        self.init_visibility(surveil_cfg_path)
+        self.init_visibility(room_data_path)
 
         # should clarify the init observation distribution in convenience of `reset()`
         raise NotImplementedError()
@@ -50,32 +50,8 @@ class BaseSurveillanceEnv(BaseEnv):
 
         return init_observation
 
-    def init_visibility(self, cfg_path: str):
-        assert cfg_path.endswith(".pkl"), "Only `pkl` files are allowed."
-
-        with open(cfg_path, "rb") as f:
-            surv_cfg = pickle.load(f)
-
-        occupancy = surv_cfg["occupancy"]
-        install_permitted = surv_cfg["install_permitted"]
-        must_monitor = surv_cfg["must_monitor"]
-
-        if occupancy.ndim != 3:
-            raise ValueError("`occupancy` must be a 3D space.")
-        if occupancy.shape != install_permitted.shape:
-            raise ValueError(
-                f"`install_permitted` shape {install_permitted.shape} must match "
-                f"`occupancy` shape {occupancy.shape}."
-            )
-        elif occupancy.shape != must_monitor.shape:
-            raise ValueError(
-                f"`must_monitor` shape {must_monitor.shape} must match  `occupancy`"
-                f"shape {occupancy.shape}."
-            )
-
-        self.occupancy = occupancy
-        self.install_permit_mask = install_permitted
-        self.must_monitor_mask = must_monitor
+    def init_visibility(self, room_data_path: str):
+        self.surv_room = SurveillanceRoom(load_from=room_data_path)
 
     def save_pointcloud(points, filename):
         pass
