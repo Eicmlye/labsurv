@@ -54,20 +54,26 @@ function format_file() {
 }
 
 ## get git user info to prevent unsafe changes
-function get_git_user_info() {
+function get_git_user_name() {
     local USER_NAME=$(git config user.name)
     if [[ ! ${USER_NAME} == "" ]]
     then
         echo ${USER_NAME}
     else
-        local USER_EMAIL=$(git config user.email)
-        if [[ ! ${USER_EMAIL} == "" ]]
-        then
-            echo ${USER_EMAIL}
-        else
-            echo -e "\033[33m[ERROR]\033[0m No valid user found. Set user info first"\
-            "by\ngit config user.name <user_name>\nngit config user.email <user_email>"
-        fi
+        echo -e "\033[33m[ERROR]\033[0m No valid user found. Set user name first"\
+        "by\ngit config user.name <user_name>" >&2
+        exit 1
+    fi
+}
+function get_git_user_email() {
+    local USER_EMAIL=$(git config user.email)
+    if [[ ! ${USER_EMAIL} == "" ]]
+    then
+        echo ${USER_EMAIL}
+    else
+        echo -e "\033[33m[ERROR]\033[0m No valid user found. Set user info first"\
+        "by\nngit config user.email <user_email>" >&2
+        exit 1
     fi
 }
 
@@ -103,8 +109,8 @@ function show_usage() {
     "This may result in unexpected behaviours in non-Windows OS."
 }
 
+## main function
 function main() {
-    ## main function
     # HOME_DIR=$(cd $(dirname $0); pwd)
     CUR_WORKING_DIR=$(cd $(dirname ./); pwd)
     if [[ ! ${CUR_WORKING_DIR} =~ /labsurv$ ]]
@@ -167,7 +173,8 @@ function main() {
     if [[ ${USE_GIT_STATUS} -eq 1 ]]
     then
         USER_INFO=$(get_git_user_info)
-        echo -e "\033[33mFound user [${USER_INFO}]\033[0m"
+        echo -e "\033[33mFound user [$(get_git_user_name)]\033[0m"
+        echo -e "\033[33mFound email [$(get_git_user_email)]\033[0m"
         TARGET_DIR=$(get_git_status_change)
     else
         WAIT_TIME=10

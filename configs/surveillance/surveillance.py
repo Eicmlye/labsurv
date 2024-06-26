@@ -8,7 +8,7 @@ episodes = 500
 steps = 200
 
 env = dict(
-    type="SurveillanceEnv",
+    type="BaseSurveillanceEnv",
 )
 
 agent = dict(
