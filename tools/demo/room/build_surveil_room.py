@@ -5,16 +5,17 @@ from labsurv.utils.surveillance import SurveillanceRoom
 
 def main():
     load_from = "output/surv_room/SurveillanceRoom.pkl"
+    cfg_path = "configs/surveillance/_base_/envs/std_surveil.py"
     if osp.exists(load_from):
         room = SurveillanceRoom(
-            cam_intrinsics_path="configs/surveillance/cam_intrinsics.json",
+            cfg_path=cfg_path,
             load_from=load_from,
         )
         room.save("output/surv_room/SurveillanceRoom_copy.pkl")
         room.visualize("output/surv_room/SurveillanceRoom_copy.ply")
     else:
         room = SurveillanceRoom(
-            cam_intrinsics_path="configs/surveillance/cam_intrinsics.json",
+            cfg_path=cfg_path,
             shape=[20, 30, 20],
         )
         room.add_block([3, 2, 4])

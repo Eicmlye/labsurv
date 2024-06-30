@@ -1,4 +1,4 @@
-import json
+import math
 import os
 import os.path as osp
 import pickle
@@ -12,6 +12,7 @@ from labsurv.utils.surveillance import (
     save_visualized_points,
     shift,
 )
+from mmengine import Config
 
 
 class SurveillanceRoom:
@@ -25,7 +26,7 @@ class SurveillanceRoom:
 
     def __init__(
         self,
-        cam_intrinsics_path: str,
+        cfg_path: str | None = None,
         shape: List[int] | None = None,
         load_from: str | None = None,
     ):
@@ -39,9 +40,8 @@ class SurveillanceRoom:
 
         Argument:
 
-            cam_intrinsics_path (str): the configuration file path of the clip size,
-            focal length and other parameters of all the types of cameras used in this
-            room.
+            cfg_path (str): the configuration file path of the clip size, focal length
+            and other parameters of the cameras and the room.
 
             shape (List[int] | None): If is not `None`, a `Room` of `shape` size will
             be generated.
@@ -70,12 +70,19 @@ class SurveillanceRoom:
             cam_types (List[str]): the types of cameras installed.
         """
 
-        if shape is None and load_from is None:
+        if (cfg_path is None or shape is None) and load_from is None:
             raise ValueError(
-                "At least one of `shape` and `load_from` should be specified."
+                "Either (`cfg_path`, `shape`) or `load_from` should be specified."
+            )
+        if cfg_path is not None and shape is not None and load_from is not None:
+            print(
+                WARN(
+                    "Both (`cfg_path`, `shape`) and `load_from` are specified. "
+                    "Only use `load_from`."
+                )
             )
 
-        if shape is not None:
+        if load_from is None:
             if not (
                 len(shape) == 3
                 and isinstance(shape[0], int)
@@ -85,6 +92,8 @@ class SurveillanceRoom:
                 raise ValueError(
                     "A room should be in 3d shape with all side lengths integers."
                 )
+
+            self.cfg_path = cfg_path
 
             self.shape = np.array(shape)
             self.occupancy = []
@@ -102,6 +111,8 @@ class SurveillanceRoom:
 
             with open(load_from, "rb") as fpkl:
                 room_data = pickle.load(fpkl)
+            self.cfg_path = room_data["cfg_path"]
+
             self.shape = room_data["shape"]
             self.occupancy = room_data["occupancy"]
             self.install_permitted = room_data["install_permitted"]
@@ -111,8 +122,11 @@ class SurveillanceRoom:
             self.cam_types = room_data["cam_types"]
             self.visible_points = room_data["visible_points"]
 
-        with open(cam_intrinsics_path, "r") as f:
-            self._CAM_INTRINSICS = json.load(f)
+        with open(self.cfg_path, "r") as f:
+            cfg = Config.fromfile(f)
+        self._CAM_INTRINSICS = cfg.cam_intrinsics
+        self._POINT_CONFIGS = cfg.point_configs
+        self.voxel_length = cfg.voxel_length
         if not isinstance(self._CAM_INTRINSICS, dict):
             raise ValueError(
                 "Loaded cam intrinsics should be a dict, "
