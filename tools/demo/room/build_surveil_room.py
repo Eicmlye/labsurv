@@ -1,6 +1,6 @@
 import os.path as osp
 
-from labsurv.utils.surveillance import SurveillanceRoom
+from labsurv.physics import SurveillanceRoom
 
 
 def main():
@@ -12,7 +12,8 @@ def main():
             load_from=load_from,
         )
         room.save("output/surv_room/SurveillanceRoom_copy.pkl")
-        room.visualize("output/surv_room/SurveillanceRoom_copy.ply")
+        room.visualize("output/surv_room/SurveillanceRoom_occ_copy.ply")
+        room.visualize("output/surv_room/SurveillanceRoom_cam_copy.ply", "camera")
     else:
         room = SurveillanceRoom(
             cfg_path=cfg_path,
@@ -25,8 +26,10 @@ def main():
         )
 
         resol_requirement = dict(
-            horizontal=5,
-            vertical=5,
+            h_res_req_min=5,
+            h_res_req_max=10,
+            v_res_req_min=5,
+            v_res_req_max=10,
         )
         room.add_block(
             [5, 2, 4],
@@ -35,10 +38,11 @@ def main():
             **resol_requirement,
         )
 
-        room.add_cam([1, 1, 3], [0.6, 0.6], "demo_cam")
+        room.add_cam([1, 1, 3], [0.6, 0.6], "std_cam")
 
         room.save("output/surv_room")
         room.visualize("output/surv_room")
+        room.visualize("output/surv_room", "camera")
 
 
 if __name__ == "__main__":

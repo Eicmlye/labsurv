@@ -1,16 +1,14 @@
-from .base_room import BaseRoom
 from .build import COLOR_MAP, build_block
-from .surveillance_room import SurveillanceRoom
 from .transform import rotate, shift
+from .visibility import compute_single_cam_visibility
 from .visualize import concat_points_with_color, save_visualized_points
 
 __all__ = [
+    "COLOR_MAP",
     "build_block",
     "rotate",
     "shift",
-    "COLOR_MAP",
-    "BaseRoom",
-    "SurveillanceRoom",
+    "compute_single_cam_visibility",
     "concat_points_with_color",
     "save_visualized_points",
 ]

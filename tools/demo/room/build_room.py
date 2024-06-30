@@ -1,6 +1,6 @@
 import os.path as osp
 
-from labsurv.models.envs import BaseRoom
+from labsurv.physics import BaseRoom
 
 
 def main():

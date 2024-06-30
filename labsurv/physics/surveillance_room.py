@@ -5,9 +5,11 @@ import pickle
 from typing import List
 
 import numpy as np
+from labsurv.utils.string import WARN
 from labsurv.utils.surveillance import (
     COLOR_MAP,
     build_block,
+    compute_single_cam_visibility,
     concat_points_with_color,
     save_visualized_points,
     shift,
@@ -16,14 +18,6 @@ from mmengine import Config
 
 
 class SurveillanceRoom:
-    _POINT_TYPE = dict(
-        occupancy="grey",
-        install_permitted="yellow",
-        must_monitor="red",
-        camera="orange",
-        visible="green",
-    )
-
     def __init__(
         self,
         cfg_path: str | None = None,
@@ -31,14 +25,14 @@ class SurveillanceRoom:
         load_from: str | None = None,
     ):
         """
-        Description:
+        ## Description:
 
             The `SurveillanceRoom` class is responsible for the geometric data and
             camera settings of the room interior. It is not necessary to be a SINGLE
             room. One may make it a large region of interest and add blocks to separate
             different rooms.
 
-        Argument:
+        ## Argument:
 
             cfg_path (str): the configuration file path of the clip size, focal length
             and other parameters of the cameras and the room.
@@ -49,7 +43,7 @@ class SurveillanceRoom:
             load_from (str | None): only valid if `shape` is `None`, and the `Room`
             will be loaded from `load_from`.
 
-        Attributes:
+        ## Attributes:
 
             shape (np.ndarray): the shape of the room.
 
@@ -60,14 +54,18 @@ class SurveillanceRoom:
             coordinates of the points that allow cameras to be installed at.
 
             must_monitor (List[np.ndarray]):
-            [array([x, y, z, h_res_req, v_res_req]), ...], the coordinates of the
-            points that must be monitored by at least 1 camera, along with the
-            horizontal and vertical resolution requirements at this position.
+            [array([x, y, z, h_res_req_min/max, v_res_req_min/max]), ...], the
+            coordinates of the points that must be monitored by at least 1 camera,
+            along with the horizontal and vertical pixel resolution requirements at
+            this position.
 
             cam_extrinsics (List[np.ndarray]): [array([x, y, z, pan, tilt]), ...], the
             position and orientation of the cameras installed.
 
             cam_types (List[str]): the types of cameras installed.
+
+            visible_points (set): if must_monitor point is visible to camera, its index
+            is added to this set.
         """
 
         if (cfg_path is None or shape is None) and load_from is None:
@@ -122,8 +120,7 @@ class SurveillanceRoom:
             self.cam_types = room_data["cam_types"]
             self.visible_points = room_data["visible_points"]
 
-        with open(self.cfg_path, "r") as f:
-            cfg = Config.fromfile(f)
+        cfg = Config.fromfile(self.cfg_path)
         self._CAM_INTRINSICS = cfg.cam_intrinsics
         self._POINT_CONFIGS = cfg.point_configs
         self.voxel_length = cfg.voxel_length
@@ -133,25 +130,19 @@ class SurveillanceRoom:
                 f"not {type(self._CAM_INTRINSICS)}."
             )
 
-    @property
-    def occupancy_color(self):
-        return COLOR_MAP[self._POINT_TYPE["occupancy"]]
+    def get_color(self, point_type: str):
+        return COLOR_MAP[self._POINT_CONFIGS[point_type]["color"]]
+
+    def get_extra_params_namelist(self, point_type: str):
+        # import pdb; pdb.set_trace()
+        return self._POINT_CONFIGS[point_type]["extra_params"]
 
     @property
-    def install_permitted_color(self):
-        return COLOR_MAP[self._POINT_TYPE["install_permitted"]]
+    def point_types(self):
+        return self._POINT_CONFIGS.keys()
 
-    @property
-    def must_monitor_color(self):
-        return COLOR_MAP[self._POINT_TYPE["must_monitor"]]
-
-    @property
-    def camera_color(self):
-        return COLOR_MAP[self._POINT_TYPE["camera"]]
-
-    @property
-    def visible_color(self):
-        return COLOR_MAP[self._POINT_TYPE["visible"]]
+    def _check_point_type(self, point_type: str):
+        return point_type in self.point_types
 
     def _check_inside_room(self, points: np.ndarray | List[np.ndarray]):
         for point in points:
@@ -176,8 +167,35 @@ class SurveillanceRoom:
 
         return False
 
+    def _check_match_extra_params(
+        self, point_type: str, **extra_params
+    ) -> int | List[int]:
+        provided = set(extra_params.keys())
+        if "extra_params" not in self._POINT_CONFIGS[point_type].keys():
+            if len(extra_params.keys()) == 0:
+                return provided
+
+            return [set(), provided]
+
+        required = set(self._POINT_CONFIGS[point_type]["extra_params"])
+
+        if required == provided:
+            return provided
+
+        return [required, provided]
+
     def _compute_visibility(self):
-        pass
+        vis_dict = dict()
+        for index, cam_extrinsic in enumerate(self.cam_extrinsics):
+            vis_dict[index] = compute_single_cam_visibility(
+                cam_extrinsic,
+                self._CAM_INTRINSICS[self.cam_types[index]],
+                self.occupancy,
+                self.must_monitor,
+                self.voxel_length,
+            )
+
+        return vis_dict
 
     def add_block(
         self,
@@ -186,10 +204,12 @@ class SurveillanceRoom:
         near_origin_vertex: np.ndarray | List[int] = np.array([0, 0, 0]),
         **kwargs,
     ):
-        if point_type not in self._POINT_TYPE.keys():
-            raise ValueError("SurveillanceRoom does not allow customized color points.")
+        if not self._check_point_type(point_type):
+            raise ValueError(
+                f"SurveillanceRoom does not support {point_type} type points."
+            )
 
-        points, _ = build_block(shape, self._POINT_TYPE[point_type])
+        points, _ = build_block(shape, self.get_color(point_type))
         if not self._check_inside_room(points):
             raise ValueError("Point outside of the room.")
 
@@ -205,8 +225,26 @@ class SurveillanceRoom:
         elif point_type == "must_monitor":
             target_point_list = self.must_monitor
 
-        if len(kwargs.keys()) > 0:
-            appendix = np.array([kwargs[key] for key in kwargs.keys()])
+        extra_params = self._check_match_extra_params(point_type, **kwargs)
+        if isinstance(extra_params, set):
+            if len(extra_params) > 0:
+                try:
+                    appendix = np.array(
+                        [
+                            kwargs[key]
+                            for key in self.get_extra_params_namelist(point_type)
+                        ]
+                    )
+                except KeyError:
+                    raise ValueError(
+                        f"Extra params key mismatch for {point_type}. "
+                        f"Expected {extra_params[0]}, got {extra_params[1]}."
+                    )
+        else:
+            raise ValueError(
+                f"Extra params number mismatch for {point_type}. "
+                f"Expected {extra_params[0]}, got {extra_params[1]}."
+            )
 
         for point in points:
             new_point = True
@@ -221,6 +259,14 @@ class SurveillanceRoom:
                 else:
                     target_point_list.append(point)
 
+        if len(self.cam_extrinsics) > 0:
+            vis_dict = self._compute_visibility()
+            self.visible_points = set()
+            for cam_index, target_dict in vis_dict.items():
+                for target_index in target_dict.keys():
+                    if target_dict[target_index]:
+                        self.visible_points.add(target_index)
+
     def add_cam(
         self,
         pos: List[int] | np.ndarray,
@@ -234,9 +280,13 @@ class SurveillanceRoom:
             room points.
 
             direction (List[float] | np.ndarray): the pan and tilt angle of the camera.
+            pan in (-pi, pi], tilt in [-pi/2, pi/2].
 
             cam_type (str): the type of camera.
         """
+        assert direction[0] > -math.pi and direction[0] <= math.pi
+        assert direction[1] >= -math.pi / 2 and direction[1] <= math.pi / 2
+
         if cam_type not in self._CAM_INTRINSICS.keys():
             raise ValueError(f"SurveillanceRoom does not support {cam_type} cameras.")
 
@@ -258,6 +308,13 @@ class SurveillanceRoom:
         self.cam_extrinsics.append(extrinsics)
         self.cam_types.append(cam_type)
 
+        vis_dict = self._compute_visibility()
+        self.visible_points = set()
+        for cam_index, target_dict in vis_dict.items():
+            for target_index in target_dict.keys():
+                if target_dict[target_index]:
+                    self.visible_points.add(target_index)
+
     def save(self, save_path: str):
         """
         Saves the `Room` class data in a `pkl` file.
@@ -272,6 +329,7 @@ class SurveillanceRoom:
         with open(save_pkl_path, "wb") as fpkl:
             pickle.dump(
                 dict(
+                    cfg_path=self.cfg_path,
                     shape=self.shape,
                     occupancy=self.occupancy,
                     install_permitted=self.install_permitted,
@@ -286,6 +344,15 @@ class SurveillanceRoom:
     def visualize(self, save_path: str, mode: str = "occupancy"):
         """
         Saves the pointcloud in a `ply` file.
+
+        ## Arguments:
+
+            save_path (str): if ends with `.ply`, the exact file name will be used,
+            otherwise the path is treated as a directory and `SurveillanceRoom.ply` is
+            created inside this directory.
+
+            mode (str): specifying what to visualize. Supported mode: `occupancy`,
+            `camera`.
         """
 
         if mode == "occupancy":
@@ -295,7 +362,9 @@ class SurveillanceRoom:
         else:
             raise ValueError(f"Unsupported mode {mode}.")
 
-        save_visualized_points(points_with_color, save_path)
+        save_visualized_points(
+            points_with_color, save_path, "SurveillanceRoom_" + mode[:3]
+        )
 
     def visualize_occupancy(self):
         """
@@ -304,13 +373,13 @@ class SurveillanceRoom:
 
         EPSILON = np.array([0.1, 0, 0])
         occupancy_with_color = concat_points_with_color(
-            self.occupancy, self.occupancy_color
+            self.occupancy, self.get_color("occupancy")
         )
         install_permitted_with_color = concat_points_with_color(
-            self.install_permitted, self.install_permitted_color, EPSILON
+            self.install_permitted, self.get_color("install_permitted"), EPSILON
         )
         must_monitor_with_color = concat_points_with_color(
-            [pos[:3] for pos in self.must_monitor], self.must_monitor_color, -EPSILON
+            self.must_monitor, self.get_color("must_monitor"), -EPSILON
         )
 
         points_with_color = np.row_stack(
@@ -325,28 +394,43 @@ class SurveillanceRoom:
 
     def visualize_camera(self):
         """
-        Visualize occupancy, camera pos and visible points.
+        Visualize occupancy, camera pos, visible points and must_monitor.
         """
 
-        EPSILON = np.array([0.1, 0, 0])
+        XEPSILON = np.array([0.1, 0, 0])
+        YEPSILON = np.array([0, 0.1, 0])
         occupancy_with_color = concat_points_with_color(
-            self.occupancy, self.occupancy_color
+            self.occupancy, self.get_color("occupancy")
         )
         cameras_with_color = concat_points_with_color(
-            [extrinsics[:3] for extrinsics in self.cam_extrinsics],
-            self.camera_color,
-            EPSILON,
+            self.cam_extrinsics, self.get_color("camera"), XEPSILON
         )
         visible_with_color = concat_points_with_color(
-            self.visible_points, self.visible_color, -EPSILON
+            [self.must_monitor[index] for index in self.visible_points],
+            self.get_color("visible"),
+            -XEPSILON,
+        )
+        must_monitor_with_color = concat_points_with_color(
+            self.must_monitor, self.get_color("must_monitor"), YEPSILON
         )
 
-        points_with_color = np.row_stack(
-            (
-                occupancy_with_color,
-                cameras_with_color,
-                visible_with_color,
-            ),
-        )
+        if visible_with_color is not None:
+            print(WARN("No visible point found."))
+            points_with_color = np.row_stack(
+                (
+                    occupancy_with_color,
+                    cameras_with_color,
+                    visible_with_color,
+                    must_monitor_with_color,
+                ),
+            )
+        else:
+            points_with_color = np.row_stack(
+                (
+                    occupancy_with_color,
+                    cameras_with_color,
+                    must_monitor_with_color,
+                ),
+            )
 
         return points_with_color

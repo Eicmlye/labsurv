@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 # import numpy as np
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseEnv
-from labsurv.utils.surveillance import SurveillanceRoom
+from labsurv.physics import SurveillanceRoom
 
 
 @ENVIRONMENTS.register_module()
