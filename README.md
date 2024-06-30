@@ -14,6 +14,9 @@ This repository is a reinforcement learning solution to the Optimal Camera Place
   - [Agent](#agent)
   - [Environment](#environment)
   - [Replay Buffer](#replay-buffer)
+- [Tools Usage](#tools-usage)
+  - [`Room`](#room)
+  - [`SurveillanceRoom`](#surveillanceroom)
 
 ## Installation
 
@@ -43,8 +46,6 @@ pip install -e .
   ```
   to
   ```python
-
-
     def describe_element(name, df):
         # ......
         else:
@@ -113,3 +114,21 @@ And find output in `output/room/BaseRoom.ply`.
 #### Methods
 
 Currently `BaseRoom` implements a `add_block()` method, which enables the user to add solid blocks to the `Room`. This class does not recognize different objects, i.e., once added, the points are independent from where they came from, and are merged into the cluster of points it's in.
+
+### `SurveillanceRoom`
+
+This class generates the `SurveillanceRoom` structure for the environment `BaseSurveillanceEnv`.
+
+#### Quick start
+
+```bash
+python tools/demo/room/build_surveil_room.py
+```
+
+And find output in `output/surv_room/`.
+
+#### Methods
+
+The `SurveillanceRoom` class implements `add_block()` and `add_cam()` method as its main function. You may add `occupancy`, `install_permitted` and `must_monitor` blocks by `add_block()`, and add multiple sorts of cameras by `add_cam()`. The intrinsics of the cameras should be saved in `cfg_path` beforehand. 
+
+An example of the camera configuration is given in `configs\surveillance\_base_\envs\std_surveil.py`. You may simply add new types of cameras as value dict of `cam_intrinsics`, and it is recommended to choose from existed intrinsic params dict `clips`, `focals` and `resols`.
