@@ -1,7 +1,0 @@
-{
-    "demo_cam":{
-        "clip_shape":[1e-6, 2e-6],
-        "focal_length":1e-3,
-        "resolution":[720, 1080]
-    }
-}
