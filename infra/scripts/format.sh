@@ -172,7 +172,6 @@ function main() {
     TARGET_DIR=$(ls ./)
     if [[ ${USE_GIT_STATUS} -eq 1 ]]
     then
-        USER_INFO=$(get_git_user_info)
         echo -e "\033[33mFound user [$(get_git_user_name)]\033[0m"
         echo -e "\033[33mFound email [$(get_git_user_email)]\033[0m"
         TARGET_DIR=$(get_git_status_change)
