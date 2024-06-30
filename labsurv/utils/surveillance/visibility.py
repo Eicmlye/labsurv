@@ -80,7 +80,7 @@ def compute_single_cam_visibility(
 
         # depth of view
         d_far = min(f * h_far / clip_shape[0], f * v_far / clip_shape[1])
-        d_near = min(f * h_near / clip_shape[0], f * v_near / clip_shape[1])
+        d_near = max(f * h_near / clip_shape[0], f * v_near / clip_shape[1])
 
         # light_of_view
         lov = target_pos - cam_pos
@@ -103,7 +103,8 @@ def check_inside_aov(lov_cam_coord: np.ndarray, h_aov_half: float, v_aov_half: f
 
     ## Arguments:
 
-        lov (np.ndarray): the vector from camera pos to target pos.
+        lov_cam_coord (np.ndarray): the vector from camera pos to target pos, coord
+        under cam sys.
 
         h_aov_half (float): half horizontal aov of the camera.
 
@@ -114,7 +115,9 @@ def check_inside_aov(lov_cam_coord: np.ndarray, h_aov_half: float, v_aov_half: f
     if np.array_equal(lov_cam_coord, np.array([0, 0, 0])):
         return False
 
-    lov_xy_length = np.linalg.norm(lov_cam_coord[0:1])
+    lov_xy_length = np.linalg.norm(lov_cam_coord[:-1])
+    if lov_xy_length == 0:
+        return False
 
     lov_h_angle = math.acos(lov_cam_coord[0] / lov_xy_length)
     if h_aov_half < lov_h_angle:
@@ -138,7 +141,8 @@ def check_inside_dof(
 
     ## Arguments:
 
-        lov (np.ndarray): the vector from camera pos to target pos.
+        lov_cam_coord (np.ndarray): the vector from camera pos to target pos, coord
+        under cam sys.
 
         d_near (float): nearer dof of the camera in meters.
 
@@ -176,13 +180,19 @@ def check_obstacle(cam_pos: np.ndarray, lov: np.ndarray, occupancy: List[np.ndar
 
         occupancy (List[np.ndarray]): the occupancy points of the room.
     """
-    CENTER_SHIFT = np.array([0.5, 0.5, 0.5])
+    CENTER_SHIFT = np.array([[0.5, 0.5, 0.5]]).T
 
     for occ in occupancy:
         # check if the distance from the voxel center to lov is greater than sqrt(3)
         occ_vec = occ - cam_pos
         len_occ_vec = np.linalg.norm(occ_vec)
-        cos_theta = np.dot(lov, occ_vec) / (np.linalg.norm(lov) * len_occ_vec)
+        if np.sum(lov**2) == 0 or len_occ_vec == 0:
+            continue
+
+        # NOTE(eric): precision error may occur if use dot divided by norms.
+        cos_theta = np.sqrt(
+            lov.dot(occ_vec) ** 2 / (np.sum(lov**2) * np.sum(occ_vec**2))
+        )
         sin_theta = math.sin(math.acos(cos_theta))
         dist = len_occ_vec * sin_theta
 
@@ -190,14 +200,20 @@ def check_obstacle(cam_pos: np.ndarray, lov: np.ndarray, occupancy: List[np.ndar
             continue
 
         # solve linear programming
-        linpro_mat = np.vstack((-lov, lov))
+        lov_T = np.expand_dims(lov, 1)
+        occ_T = np.expand_dims(occ, 1)
+        cam_pos_T = np.expand_dims(cam_pos, 1)
+        linpro_mat = np.vstack((-lov_T, lov_T))
         linpro_const = np.vstack(
-            (occ + CENTER_SHIFT - cam_pos - lov, -occ + CENTER_SHIFT + cam_pos + lov)
+            (
+                occ_T + CENTER_SHIFT - cam_pos_T - lov_T,
+                -occ_T + CENTER_SHIFT + cam_pos_T + lov_T,
+            )
         )
         res = linprog(
             np.array([1]), A_ub=linpro_mat, b_ub=linpro_const, bounds=((0, 1))
         )
-        if not (res.status == 0 and res.success):
+        if res.status == 0 and res.success:
             return False
 
     return True

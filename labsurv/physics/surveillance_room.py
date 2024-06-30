@@ -38,7 +38,8 @@ class SurveillanceRoom:
             and other parameters of the cameras and the room.
 
             shape (List[int] | None): If is not `None`, a `Room` of `shape` size will
-            be generated.
+            be generated. Physically, the `Room` is of shape `voxel_length * shape`,
+            where the voxel centers are treated as points in the `Room`.
 
             load_from (str | None): only valid if `shape` is `None`, and the `Room`
             will be loaded from `load_from`.
@@ -134,7 +135,6 @@ class SurveillanceRoom:
         return COLOR_MAP[self._POINT_CONFIGS[point_type]["color"]]
 
     def get_extra_params_namelist(self, point_type: str):
-        # import pdb; pdb.set_trace()
         return self._POINT_CONFIGS[point_type]["extra_params"]
 
     @property
@@ -415,7 +415,6 @@ class SurveillanceRoom:
         )
 
         if visible_with_color is not None:
-            print(WARN("No visible point found."))
             points_with_color = np.row_stack(
                 (
                     occupancy_with_color,
@@ -425,6 +424,7 @@ class SurveillanceRoom:
                 ),
             )
         else:
+            print(WARN("No visible point found."))
             points_with_color = np.row_stack(
                 (
                     occupancy_with_color,
