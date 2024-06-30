@@ -19,26 +19,32 @@ def main():
             cfg_path=cfg_path,
             shape=[20, 30, 20],
         )
-        room.add_block([3, 2, 4])
-        room.add_block([3, 2, 4], point_type="install_permitted")
+        print("Building occupancy blocks...")
+        room.add_block([1, 7, 7], near_origin_vertex=[10, 0, 0])
+        print("Building permission blocks...")
+        room.add_block(
+            [1, 7, 7], near_origin_vertex=[5, 2, 0], point_type="install_permitted"
+        )
         room.add_block(
             [2, 7, 3], point_type="install_permitted", near_origin_vertex=[15, 20, 5]
         )
 
+        print("Building monitored blocks...")
         resol_requirement = dict(
-            h_res_req_min=5,
-            h_res_req_max=10,
-            v_res_req_min=5,
-            v_res_req_max=10,
+            h_res_req_min=500,
+            h_res_req_max=1000,
+            v_res_req_min=500,
+            v_res_req_max=1000,
         )
         room.add_block(
-            [5, 2, 4],
+            [10, 20, 10],
             point_type="must_monitor",
-            near_origin_vertex=[7, 10, 15],
+            near_origin_vertex=[5, 5, 0],
             **resol_requirement,
         )
 
-        room.add_cam([1, 1, 3], [0.6, 0.6], "std_cam")
+        print("Adding cameras...")
+        room.add_cam([5, 7, 0], [0, 0], "std_cam")
 
         room.save("output/surv_room")
         room.visualize("output/surv_room")

@@ -47,7 +47,7 @@ def main():
                 agent.print_strategy()
                 agent.print_qtable()
                 print(f"cur_action = {cur_action}, next_action = {next_action}")
-                # import pdb; pdb.set_trace()  # EM
+
             agent.update(
                 cur_state,
                 cur_action,

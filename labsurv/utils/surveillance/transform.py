@@ -9,8 +9,8 @@ def shift(points: List[np.ndarray], displacement: np.ndarray):
     if np.array_equal(displacement, np.array([0, 0, 0])):
         return result_points
 
-    for point in result_points:
-        point += displacement
+    for index, point in enumerate(result_points):
+        result_points[index] = point + displacement
 
     return result_points
 
