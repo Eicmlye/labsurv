@@ -34,7 +34,7 @@ def build_block(
     if isinstance(color, str):
         if color.lower() not in COLOR_MAP.keys():
             raise ValueError(f"Unknown color string {color}, use rgb instead.")
-        color = COLOR_MAP[color]
+        color = COLOR_MAP[color.lower()]
     elif isinstance(color, List):
         color = np.array(color)
 
