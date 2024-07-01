@@ -8,11 +8,15 @@ from labsurv.utils.random import np_random
 class BaseEnv:
     def __init__(self, seed: int | None = None):
         """
-        In order to be compatible with the runner class, the outputs of some methods
-        must be dicts with a minimal set of keys.
+        ## Description:
 
-        Attributes:
+            In order to be compatible with the runner class, the outputs of some methods
+            must be dicts with a minimal set of keys.
+
+        ## Attributes:
+
             actions: the representation of action space
+
             observations: the representation of observation space
         """
         # should clarify the init observation distribution in convenience of `reset()`
@@ -22,20 +26,24 @@ class BaseEnv:
 
     def step(self, observation, action) -> Dict[str, Any]:
         """
-        Run one timestep of the environment's dynamics.
+        ## Description:
 
-        This requires current observation transfer from agent, so that environment do
-        not have to store `current observations`, which further decouples agents and
-        environments.
+            Run one timestep of the environment's dynamics.
 
-        By doing so, the environment class allows monitoring dynamic changes during
-        the learning process.
+            This requires current observation transfer from agent, so that environment do
+            not have to store `current observations`, which further decouples agents and
+            environments.
 
-        Returns a dict with minimal set of keys as follows:
-            next_observation,
-            reward,
-            terminated,
-            truncated,
+            By doing so, the environment class allows monitoring dynamic changes during
+            the learning process.
+
+        ## Returns:
+
+            a dict with minimal set of keys as follows:
+                next_observation,
+                reward,
+                terminated,
+                truncated,
         """
         assert action in self.action_space, "Unknown action."
         assert observation in self.observation_space, "Unknown input observation."

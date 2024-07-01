@@ -19,6 +19,7 @@ def build_block(
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Returns:
+
         points (np.ndarray): an N * 3 array with all the point coordinates in the block
         given.
     """

@@ -72,7 +72,7 @@ function get_git_user_email() {
         echo ${USER_EMAIL}
     else
         echo -e "\033[33m[ERROR]\033[0m No valid user found. Set user info first"\
-        "by\nngit config user.email <user_email>" >&2
+        "by\ngit config user.email <user_email>" >&2
         exit 1
     fi
 }

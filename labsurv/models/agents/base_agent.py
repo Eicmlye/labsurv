@@ -10,8 +10,21 @@ class BaseAgent:
         self,
         device: device = None,
         gamma: float = 0.9,
-        explorer_cfg=None,
+        explorer_cfg: dict = None,
     ):
+        """
+        ## Description:
+
+            Base agent class for all agents.
+
+        ## Arguments:
+
+            device (torch.device): the device the agent will work on.
+
+            gamma (float): the discount factor of the agent.
+
+            explorer_cfg (dict): the configuration for the explorer.
+        """
         self.device = device
         self.gamma = gamma
         self.explorer = EXPLORERS.build(explorer_cfg)

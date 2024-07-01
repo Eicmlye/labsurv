@@ -6,6 +6,9 @@ from torch import Tensor, mean
 @LOSSES.register_module()
 class TDLoss:
     def __init__(self):
+        """
+        The temperal difference loss class.
+        """
         self.loss = F.mse_loss
 
     def get_loss(self, total_reward: Tensor, q_target: Tensor):

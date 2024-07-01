@@ -8,5 +8,8 @@ class BaseExplorer:
         self._random, _ = np_random(seed)
 
     def decide(self):
-        # decide either to explore or to exploit
+        """
+        Decide either to explore or to exploit.
+        """
+
         raise NotImplementedError
