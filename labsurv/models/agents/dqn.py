@@ -1,27 +1,26 @@
 import numpy as np
 import torch
 from labsurv.builders import AGENTS, QNETS
+from labsurv.models.agents import BaseAgent
 from torch import Tensor
 
 
 @AGENTS.register_module()
-class DQN:
+class DQN(BaseAgent):
     def __init__(
         self,
         qnet_cfg,
-        lr=0.1,
-        gamma=0.9,
-        greedy_epsilon=0.2,
-        to_target_net_interval=5,
         device=None,
+        gamma=0.9,
+        explorer_cfg=None,
+        lr=0.1,
+        to_target_net_interval=5,
         dqn_type="DQN",
     ):
-        self.device = device
+        super().__init__(device, gamma, explorer_cfg)
         self.qnet = QNETS.build(qnet_cfg).to(self.device)
         self.target_net = QNETS.build(qnet_cfg).to(self.device)
         self.lr = lr
-        self.gamma = gamma
-        self.epsilon = greedy_epsilon
         self.to_target_net_interval = to_target_net_interval
 
         self.update_count = 0
@@ -30,49 +29,40 @@ class DQN:
         assert dqn_type in ["DQN", "DoubleDQN"], f"{dqn_type} not implemented."
         self.dqn_type = dqn_type
 
-    def take_action(self, state):
-        if np.random.random() < self.epsilon:  # explore
+    def take_action(self, observation):
+        if self.explorer.decide():
             return np.random.randint(self.qnet.output_layer.out_features)
-        else:  # exploit
-            state = torch.from_numpy(state).to(self.device)
-            action = self.qnet(state).argmax().item()
+        else:
+            observation = torch.Tensor(observation).to(self.device)
+            action = self.qnet(observation).argmax().item()
 
             return action
 
-    def update(self, **transition):
-        missing_keys = set(
-            [
-                "states",
-                "actions",
-                "rewards",
-                "next_states",
-                "terminated",
-                "truncated",
-            ]
-        ).difference(set(transition.keys()))
-        assert len(missing_keys) == 0, f"Missing keys {missing_keys}."
-
-        states = Tensor(np.array(transition["states"])).to(self.device)
-        actions = (
-            Tensor(transition["actions"]).to(self.device).view(-1, 1).type(torch.int64)
+    def update(self, samples):
+        cur_observations = Tensor(np.array(samples["cur_observation"])).to(self.device)
+        cur_actions = (
+            Tensor(samples["cur_action"]).to(self.device).view(-1, 1).type(torch.int64)
         )
-        rewards = Tensor(transition["rewards"]).to(self.device).view(-1, 1)
-        next_states = Tensor(np.array(transition["next_states"])).to(self.device)
-        terminated = Tensor(transition["terminated"]).to(self.device).view(-1, 1)
-        truncated = Tensor(transition["truncated"]).to(self.device).view(-1, 1)
+        rewards = Tensor(samples["reward"]).to(self.device).view(-1, 1)
+        next_observations = Tensor(np.array(samples["next_observation"])).to(
+            self.device
+        )
+        terminated = Tensor(samples["terminated"]).to(self.device).view(-1, 1)
 
-        total_rewards = self.qnet(states).gather(dim=1, index=actions)
+        total_rewards = self.qnet(cur_observations).gather(dim=1, index=cur_actions)
         if self.dqn_type == "DQN":
             max_next_total_rewards = (
-                self.target_net(next_states).max(dim=1)[0].view(-1, 1)
+                self.target_net(next_observations).max(dim=1)[0].view(-1, 1)
             )
         elif self.dqn_type == "DoubleDQN":
-            max_action = self.qnet(next_states).max(1)[1].view(-1, 1).type(torch.int64)
-            max_next_total_rewards = self.target_net(next_states).gather(1, max_action)
+            max_action = (
+                self.qnet(next_observations).max(1)[1].view(-1, 1).type(torch.int64)
+            )
+            max_next_total_rewards = self.target_net(next_observations).gather(
+                1, max_action
+            )
 
-        q_targets = rewards + self.gamma * max_next_total_rewards * (1 - terminated) * (
-            1 - truncated
-        )
+        q_targets = rewards + self.gamma * max_next_total_rewards * (1 - terminated)
 
         self.optimizer.zero_grad()
         loss = self.qnet.get_loss(total_rewards, q_targets)

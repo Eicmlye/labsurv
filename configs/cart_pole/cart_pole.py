@@ -2,18 +2,23 @@ from configs.runtime import DEVICE
 from labsurv.utils import get_time_stamp
 
 work_dir = "./output/cart_pole/"
-exp_name = "cart_pole" + "_" + get_time_stamp()
+exp_name = get_time_stamp()
 
 episodes = 500
-batch_size = 64
+steps = 200
 
 env = dict(
-    id="CartPole-v0",
-    type="",
+    type="CartPoleEnv",
 )
 
 agent = dict(
     type="DQN",
+    device=DEVICE,
+    gamma=0.98,
+    explorer_cfg=dict(
+        type="BaseEpsilonGreedyExplorer",
+        epsilon=0.01,
+    ),
     qnet_cfg=dict(
         type="SimpleQNet",
         state_dim=4,
@@ -22,17 +27,15 @@ agent = dict(
         loss_cfg=dict(type="TDLoss"),
     ),
     lr=2e-3,
-    gamma=0.98,
-    greedy_epsilon=0.01,
-    to_target_net_interval=10,
-    device=DEVICE,
-    dqn_type="DoubleDQN",
+    to_target_net_interval=5,
+    # dqn_type="DoubleDQN",
 )
 
 replay_buffer = dict(
-    type="ReplayBuffer",
+    type="BaseReplayBuffer",
     capacity=10000,
     activate_size=500,
+    batch_size=64,
 )
 
 logger_cfg = dict(

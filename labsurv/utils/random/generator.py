@@ -5,15 +5,21 @@ import numpy as np
 
 
 def np_random(seed: Optional[int] = None) -> Tuple[np.random.Generator, Any]:
-    """Generates a random number generator from the seed and returns the Generator and seed.
+    """
+    ## Description:
 
-    Args:
+        Generates a random number generator from the seed and returns the Generator and seed.
+
+    ## Arguments:
+
         seed: The seed used to create the generator
 
-    Returns:
+    ## Returns:
+
         The generator and resulting seed
 
-    Raises:
+    ## Raises:
+
         ValueError: Seed must be a non-negative integer or omitted
     """
     if seed is not None and not (isinstance(seed, int) and seed >= 0):
