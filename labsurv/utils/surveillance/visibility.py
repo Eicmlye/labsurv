@@ -45,9 +45,9 @@ def compute_single_cam_visibility(
 
     rot_mat = np.array(
         [
-            [math.cos(pan), 0, -math.sin(pan)],
-            [0, 1, 0],
-            [math.sin(pan), 0, math.cos(pan)],
+            [math.cos(pan), -math.sin(pan), 0],
+            [math.sin(pan), math.cos(pan), 0],
+            [0, 0, 1],
         ]
     ) @ np.array(
         [
