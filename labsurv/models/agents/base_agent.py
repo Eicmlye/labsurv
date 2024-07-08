@@ -27,7 +27,8 @@ class BaseAgent:
         """
         self.device = device
         self.gamma = gamma
-        self.explorer = EXPLORERS.build(explorer_cfg)
+        if explorer_cfg is not None:
+            self.explorer = EXPLORERS.build(explorer_cfg)
 
     def take_action(self, observation: Any):
         # explore or exploit
