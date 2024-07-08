@@ -2,7 +2,7 @@ import argparse
 import os
 import os.path as osp
 
-from labsurv.runners import BaseRunner
+from labsurv.runners import EpisodeBasedRunner, StepBasedRunner
 from mmengine import Config
 
 
@@ -10,7 +10,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="RL trainer.")
 
     parser.add_argument("--config", type=str, help="Path of the config file.")
-    parser.add_argument("--debug", action="store_true", help="debug mode")
+    parser.add_argument("--debug", action="store_true", help="Debug mode.")
+    parser.add_argument(  # "--episode-based"
+        "--episode-based", action="store_true", help="Whether use episode based runner."
+    )
 
     args = parser.parse_args()
 
@@ -27,7 +30,11 @@ def main():
     save_cfg_name = osp.join(cfg.work_dir, cfg.exp_name + ".py")
     cfg.dump(save_cfg_name)
 
-    runner = BaseRunner(cfg)
+    episode_based = (
+        cfg.episode_based if hasattr(cfg, "episode_based") else args.episode_based
+    )
+
+    runner = EpisodeBasedRunner(cfg) if episode_based else StepBasedRunner(cfg)
     runner.run()
 
 
