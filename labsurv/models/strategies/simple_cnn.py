@@ -1,10 +1,10 @@
 import torch.nn.functional as F
-from labsurv.builders import LOSSES, QNETS
+from labsurv.builders import LOSSES, STRATEGIES
 from torch.nn import Linear, Module
 
 
-@QNETS.register_module()
-class SimpleQNet(Module):
+@STRATEGIES.register_module()
+class SimpleCNN(Module):
     def __init__(self, state_dim, hidden_dim, action_dim, loss_cfg):
         super().__init__()
         self.hidden_layer = Linear(state_dim, hidden_dim)
