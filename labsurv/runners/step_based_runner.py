@@ -2,7 +2,7 @@ from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
 from mmengine import Config
 
 
-class BaseRunner:
+class StepBasedRunner:
     def __init__(self, cfg: Config):
         self.env = ENVIRONMENTS.build(cfg.env)
         self.agent = AGENTS.build(cfg.agent)
@@ -35,7 +35,6 @@ class BaseRunner:
                 transition["cur_action"] = cur_action
 
                 terminated = transition["terminated"]
-                transition["truncated"] = step == self.steps - 1
 
                 if self.replay_buffer is not None:
                     self.replay_buffer.add(transition)
@@ -43,9 +42,12 @@ class BaseRunner:
                 cur_observation = transition["next_observation"]
                 episode_return += transition["reward"]
 
-                if self.replay_buffer is not None and self.replay_buffer.is_active():
-                    samples = self.replay_buffer.sample()
-                    self.agent.update(samples)
+                if self.replay_buffer is not None:
+                    if self.replay_buffer.is_active():
+                        samples = self.replay_buffer.sample()
+                        self.agent.update(samples)
+                else:
+                    raise NotImplementedError()
 
             self.logger.update(episode_return)
             self.logger(self.episodes)
