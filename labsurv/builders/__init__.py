@@ -4,8 +4,8 @@ from .builder import (
     EXPLORERS,
     HOOKS,
     LOSSES,
-    QNETS,
     REPLAY_BUFFERS,
+    STRATEGIES,
 )
 
 __all__ = [
@@ -14,6 +14,6 @@ __all__ = [
     "EXPLORERS",
     "HOOKS",
     "LOSSES",
-    "QNETS",
+    "STRATEGIES",
     "REPLAY_BUFFERS",
 ]

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from labsurv.builders import AGENTS, QNETS
+from labsurv.builders import AGENTS, STRATEGIES
 from labsurv.models.agents import BaseAgent
 from torch import Tensor
 
@@ -18,8 +18,8 @@ class DQN(BaseAgent):
         dqn_type="DQN",
     ):
         super().__init__(device, gamma, explorer_cfg)
-        self.qnet = QNETS.build(qnet_cfg).to(self.device)
-        self.target_net = QNETS.build(qnet_cfg).to(self.device)
+        self.qnet = STRATEGIES.build(qnet_cfg).to(self.device)
+        self.target_net = STRATEGIES.build(qnet_cfg).to(self.device)
         self.lr = lr
         self.to_target_net_interval = to_target_net_interval
 
