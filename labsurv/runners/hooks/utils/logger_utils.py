@@ -1,8 +1,9 @@
 import time
 from datetime import datetime, timedelta
-from typing import List
+from typing import Any, List
 
 from labsurv.utils import INDENT
+from torch import Tensor
 
 
 def get_cur_time_str() -> List[str]:
@@ -71,6 +72,15 @@ def get_latest_avg_reward_str(
         return_str.append(f"last {interval} returns: {return_list[-interval:]}")
 
     return return_str
+
+
+def get_log_str(key: str, val: Any) -> List[str]:
+    if isinstance(val, float):
+        val = f"{val:.4e}"
+    elif isinstance(val, Tensor) and val.ndim == 0:
+        val = f"{val:.4f}"
+
+    return [f"{key}: {val}"]
 
 
 def merge_log_str(log_list: List[str], separator: str = INDENT):

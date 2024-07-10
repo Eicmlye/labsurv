@@ -1,3 +1,6 @@
+import os
+import os.path as osp
+
 import numpy as np
 import torch
 from labsurv.builders import AGENTS, STRATEGIES
@@ -10,26 +13,85 @@ class DQN(BaseAgent):
     def __init__(
         self,
         qnet_cfg,
+        total_episodes,
         device=None,
         gamma=0.9,
         explorer_cfg=None,
         lr=0.1,
         to_target_net_interval=5,
         dqn_type="DQN",
+        load_from=None,
+        resume_from=None,
+        test_mode=False,
     ):
-        super().__init__(device, gamma, explorer_cfg)
-        self.qnet = STRATEGIES.build(qnet_cfg).to(self.device)
-        self.target_net = STRATEGIES.build(qnet_cfg).to(self.device)
-        self.lr = lr
-        self.to_target_net_interval = to_target_net_interval
+        """
+        The following combinations to specifiy arguments are allowed:
+        1. `load_from`: train the agent from `load_from` with a new optimizer.
+        2. `resume_from`: train the agent from `resume_from` with the exact optimizer
+            `resume_from` was using.
+        3. `load_from`, `test_mode`: test the agent from `load_from`.
+        4. None of the above specified: train a brand new agent with a new optimizer.
+        """
 
-        self.update_count = 0
-        self.optimizer = torch.optim.Adam(self.qnet.parameters(), lr=self.lr)
+        if test_mode and load_from is None:
+            raise ValueError("`load_from` should not be None in test mode.")
+        if test_mode and resume_from is not None:
+            raise ValueError("Use `load_from` to load model in test mode.")
+        if load_from is not None and resume_from is not None:
+            raise ValueError(
+                "`load_from` and `resume_from` should not be specified at the same "
+                "time."
+            )
+        super().__init__(device, gamma, explorer_cfg)
+
+        self.test_mode = test_mode
+        self.target_net = STRATEGIES.build(qnet_cfg).to(self.device)
+
+        if not self.test_mode:
+            self.qnet = STRATEGIES.build(qnet_cfg).to(self.device)
+            self.lr = lr
+            self.to_target_net_interval = to_target_net_interval
+            self.update_count = 0
+            self.optimizer = torch.optim.Adam(self.qnet.parameters(), lr=self.lr)
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                self.optimizer,
+                self.lr,
+                total_steps=total_episodes,
+                pct_start=0.05,
+                anneal_strategy="linear",
+            )
+
+        if resume_from is not None:
+            self.resume(resume_from)
+        elif load_from is not None:
+            self.load(load_from)
 
         assert dqn_type in ["DQN", "DoubleDQN"], f"{dqn_type} not implemented."
         self.dqn_type = dqn_type
 
+    def load(self, checkpoint_path: str):
+        checkpoint = torch.load(checkpoint_path)
+
+        self.target_net.load_state_dict(checkpoint["model_state_dict"])
+        if not self.test_mode:
+            self.qnet.load_state_dict(checkpoint["model_state_dict"])
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+    def resume(self, checkpoint_path: str):
+        checkpoint = torch.load(checkpoint_path)
+
+        self.target_net.load_state_dict(checkpoint["model_state_dict"])
+        self.qnet.load_state_dict(checkpoint["model_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.scheduler.last_epoch = checkpoint["episode"]
+
     def take_action(self, observation):
+        if self.test_mode:
+            return self.test_take_action(observation)
+        else:
+            return self.train_take_action(observation)
+
+    def train_take_action(self, observation):
         if self.explorer.decide():
             return np.random.randint(self.qnet.output_layer.out_features)
         else:
@@ -38,7 +100,13 @@ class DQN(BaseAgent):
 
             return action
 
-    def update(self, samples):
+    def test_take_action(self, observation):
+        observation = torch.Tensor(observation).to(self.device)
+        action = self.target_net(observation).argmax().item()
+
+        return action
+
+    def update(self, samples, end_of_episode):
         cur_observations = Tensor(np.array(samples["cur_observation"])).to(self.device)
         cur_actions = (
             Tensor(samples["cur_action"]).to(self.device).view(-1, 1).type(torch.int64)
@@ -69,6 +137,28 @@ class DQN(BaseAgent):
         loss.backward()
         self.optimizer.step()
 
+        if end_of_episode:
+            self.scheduler.step()
+
         if self.update_count % self.to_target_net_interval == 0:
             self.target_net.load_state_dict(self.qnet.state_dict())
         self.update_count += 1
+
+        return loss
+
+    def save(self, episode_index: int, save_path: str):
+        checkpoint = dict(
+            model_state_dict=self.target_net.state_dict(),
+            optimizer_state_dict=self.optimizer.state_dict(),
+            episode=episode_index,
+        )
+
+        episode = episode_index + 1
+        if save_path.endswith(".pth"):
+            os.makedirs(osp.dirname(save_path), exist_ok=True)
+            save_path = ".".join(save_path.split(".")[:-1]) + f"_episode_{episode}.pth"
+        else:
+            os.makedirs(save_path, exist_ok=True)
+            save_path = osp.join(save_path, f"episode_{episode}.pth")
+
+        torch.save(checkpoint, save_path)
