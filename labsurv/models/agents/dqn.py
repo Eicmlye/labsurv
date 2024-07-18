@@ -107,15 +107,13 @@ class DQN(BaseAgent):
         return action
 
     def update(self, samples, end_of_episode):
-        cur_observations = Tensor(np.array(samples["cur_observation"])).to(self.device)
+        cur_observations = torch.row_stack(samples["cur_observation"])
         cur_actions = (
-            Tensor(samples["cur_action"]).to(self.device).view(-1, 1).type(torch.int64)
+            torch.row_stack(samples["cur_action"]).view(-1, 1).type(torch.int64)
         )
-        rewards = Tensor(samples["reward"]).to(self.device).view(-1, 1)
-        next_observations = Tensor(np.array(samples["next_observation"])).to(
-            self.device
-        )
-        terminated = Tensor(samples["terminated"]).to(self.device).view(-1, 1)
+        rewards = torch.row_stack(samples["reward"]).view(-1, 1)
+        next_observations = torch.row_stack(samples["next_observation"])
+        terminated = torch.row_stack(samples["terminated"]).view(-1, 1)
 
         total_rewards = self.qnet(cur_observations).gather(dim=1, index=cur_actions)
         if self.dqn_type == "DQN":
