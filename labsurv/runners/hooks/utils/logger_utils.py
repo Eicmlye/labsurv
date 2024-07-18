@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, List
 
-from labsurv.utils import INDENT
+from labsurv.utils import INDENT, WARN
 from torch import Tensor
 
 
@@ -62,14 +62,20 @@ def get_time_eta_strs(
 def get_latest_avg_reward_str(
     interval: int, return_list: list, show_returns: bool = False
 ) -> List[str]:
-    assert interval <= len(return_list), (
-        f"return_list has not got enough values to be averaged."
-        f"Expected {interval}, got {len(return_list)}."
-    )
+    return_str = []
 
-    return_str = [f"avg reward: {sum(return_list[-interval:]) / interval:.4f}"]
-    if show_returns:
-        return_str.append(f"last {interval} returns: {return_list[-interval:]}")
+    if interval > len(return_list):
+        print(
+            WARN(
+                f"`return_list` has not got enough values to be averaged. "
+                f"Expected {interval}, got {len(return_list)}."
+            )
+        )
+    else:
+        return_str.append(f"avg reward: {sum(return_list[-interval:]) / interval:.4f}")
+
+        if show_returns:
+            return_str.append(f"last {interval} returns: {return_list[-interval:]}")
 
     return return_str
 
