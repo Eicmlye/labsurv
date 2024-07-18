@@ -1,18 +1,18 @@
 from configs.runtime import DEVICE
 from labsurv.utils import get_time_stamp
 
-work_dir = "./output/cart_pole/"
+work_dir = "./output/cart_pole_dqn500_batch2-15/"
 exp_name = get_time_stamp()
 
 episodes = 50000
-steps = 200
+steps = 500
 
 env = dict(
     type="CartPoleEnv",
 )
 
 agent_type = "DQN"
-test_mode = True
+test_mode = False
 
 if agent_type == "DQN":
     episode_based = False
@@ -36,16 +36,18 @@ if agent_type == "DQN":
         lr=5e-5,
         to_target_net_interval=5,
         dqn_type="DoubleDQN",
-        # resume_from="output/cart_pole_dqn200_batch4096/episode_7000.pth",
-        # load_from="output/cart_pole_dqn200_batch4096/episode_7000.pth",
+        resume_from="output/cart_pole_dqn500_batch2-15/episode_2300.pth",
+        # load_from="output/cart_pole_dqn200_batch4096/episode_5000.pth",
         test_mode=test_mode,
     )
 
     replay_buffer = dict(
         type="BaseReplayBuffer",
-        capacity=100000,
-        activate_size=20000,
-        batch_size=4096,
+        device=DEVICE,
+        capacity=1000000,
+        activate_size=100000,
+        batch_size=2**15,
+        load_from="output/cart_pole_dqn500_batch2-15/episode_2300.pkl",
     )
 elif agent_type == "REINFORCE":
     episode_based = True
@@ -60,7 +62,7 @@ elif agent_type == "REINFORCE":
             hidden_dim=128,
             action_dim=2,
         ),
-        lr=2e-3,
+        lr=1e-4,
     )
 
 logger_cfg = dict(
@@ -70,4 +72,4 @@ logger_cfg = dict(
     save_filename=exp_name,
 )
 
-save_checkpoint_interval = 500
+save_checkpoint_interval = 100
