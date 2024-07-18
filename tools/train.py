@@ -3,7 +3,7 @@ import os
 import os.path as osp
 
 from labsurv.runners import EpisodeBasedRunner, StepBasedRunner
-from mmengine import Config
+from mmcv import Config
 
 
 def parse_args():
