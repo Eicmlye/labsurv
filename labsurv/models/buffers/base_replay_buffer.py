@@ -1,6 +1,11 @@
 import collections
+import os
+import os.path as osp
+import pickle
 import random
 
+import numpy as np
+import torch
 from labsurv.builders import REPLAY_BUFFERS
 
 
@@ -8,10 +13,12 @@ from labsurv.builders import REPLAY_BUFFERS
 class BaseReplayBuffer:
     def __init__(
         self,
+        device,
         batch_size: int,
         capacity: int,
         activate_size: int,
         seed: int | None = None,
+        load_from: str | None = None,
     ):
         if activate_size > capacity:
             raise ValueError(
@@ -24,13 +31,24 @@ class BaseReplayBuffer:
                 f"buffer capacity {capacity}."
             )
 
-        self._buffer = collections.deque(maxlen=capacity)
+        self.device = device
+
+        if load_from is None:
+            self._buffer = collections.deque(maxlen=capacity)
+        else:
+            self.load(load_from)
+
         self.activate_size = activate_size
         self.batch_size = batch_size
 
         self._random = random.Random(seed)
 
     def add(self, transition: dict):
+        transition = {
+            key: torch.Tensor(np.array([val])).to(self.device)
+            for key, val in transition.items()
+        }
+
         self._buffer.append(transition)
 
     def sample(self):
@@ -55,3 +73,18 @@ class BaseReplayBuffer:
 
     def is_active(self):
         return len(self) >= self.activate_size
+
+    def load(self, load_from: str):
+        with open(load_from, "rb") as f:
+            self._buffer = pickle.load(f)
+        print("Replay buffer loaded.")
+
+    def save(self, save_path: str):
+        if save_path.endswith(".pkl"):
+            os.makedirs(osp.dirname(save_path), exist_ok=True)
+        else:
+            os.makedirs(save_path, exist_ok=True)
+            save_path = osp.join(save_path, "replay_buffer.pkl")
+
+        with open(save_path, "wb") as f:
+            pickle.dump(self._buffer, f)
