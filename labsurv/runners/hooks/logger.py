@@ -25,7 +25,7 @@ class LoggerHook:
             (get_time_stamp() if save_filename is None else save_filename) + ".log",
         )
         self.return_list = []
-        self.cur_episode_index = 0
+        self.cur_episode_index = -1
 
         os.makedirs(save_dir, exist_ok=True)
 
