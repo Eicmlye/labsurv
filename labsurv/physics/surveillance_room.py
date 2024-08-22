@@ -14,7 +14,7 @@ from labsurv.utils.surveillance import (
     save_visualized_points,
     shift,
 )
-from mmengine import Config
+from mmcv import Config
 
 
 class SurveillanceRoom:

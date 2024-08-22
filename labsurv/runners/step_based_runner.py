@@ -1,5 +1,6 @@
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
-from mmengine import Config
+from mmcv import Config
+from mmcv.utils import ProgressBar
 
 
 class StepBasedRunner:

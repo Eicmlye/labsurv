@@ -2,7 +2,8 @@ from copy import deepcopy
 
 import gym
 from labsurv.utils.string import WARN
-from mmengine import ConfigDict, Registry, build_from_cfg
+from mmcv import ConfigDict
+from mmcv.utils import Registry, build_from_cfg
 
 
 def build_env(env_cfg: ConfigDict, registry: Registry):

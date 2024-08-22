@@ -1,5 +1,5 @@
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
-from mmengine import Config
+from mmcv import Config
 
 
 class EpisodeBasedRunner:
