@@ -7,6 +7,7 @@ from labsurv.runners.hooks.utils import (
     get_cur_time_str,
     get_episode_progress_str,
     get_latest_avg_reward_str,
+    get_log_str,
     get_time_eta_strs,
     merge_log_str,
 )
@@ -24,8 +25,12 @@ class LoggerHook:
             (get_time_stamp() if save_filename is None else save_filename) + ".log",
         )
         self.return_list = []
+        self.cur_episode_index = -1
 
         os.makedirs(save_dir, exist_ok=True)
+
+    def set_cur_episode_index(self, episode_index: int):
+        self.cur_episode_index = episode_index
 
     def show_log(self, log_str: str):
         print(log_str)
@@ -34,19 +39,20 @@ class LoggerHook:
 
     def update(self, return_val):
         self.return_list.append(return_val)
+        self.cur_episode_index += 1
 
-    def __call__(self, episodes: int):
-        episode = len(self.return_list)
+    def __call__(self, episodes: int, **kwargs):
         self.time = datetime.now()
 
-        if episode % self.interval == 0:
-            episode_index = episode - 1
+        if (self.cur_episode_index + 1) % self.interval == 0:
             log_list = []
             log_list += get_cur_time_str()
-            log_list += get_episode_progress_str(episode_index, episodes)
+            log_list += get_episode_progress_str(self.cur_episode_index, episodes)
             log_list += get_time_eta_strs(
-                self.build_time, self.time, episode_index, episodes
+                self.build_time, self.time, self.cur_episode_index, episodes
             )
+            for key in kwargs.keys():
+                log_list += get_log_str(key, kwargs[key])
             log_list += get_latest_avg_reward_str(
                 self.interval, self.return_list, show_returns=True
             )
