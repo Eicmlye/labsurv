@@ -3,6 +3,7 @@ from .logger_utils import (
     get_delta_str,
     get_episode_progress_str,
     get_latest_avg_reward_str,
+    get_log_str,
     get_time_eta_strs,
     merge_log_str,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "get_delta_str",
     "get_episode_progress_str",
     "get_latest_avg_reward_str",
+    "get_log_str",
     "get_time_eta_strs",
     "merge_log_str",
 ]
