@@ -1,9 +1,8 @@
 import os
 import os.path as osp
 
-import numpy as np
 import torch
-from labsurv.builders import AGENTS, STRATEGIES
+from labsurv.builders import AGENTS, EXPLORERS, STRATEGIES
 from labsurv.models.agents import BaseAgent
 from torch import Tensor
 
@@ -24,7 +23,7 @@ class DQN(BaseAgent):
         test_mode=False,
     ):
         """
-        The following combinations to specifiy arguments are allowed:
+        The following combinations to specify arguments are allowed:
         1. `load_from`: train the agent from `load_from` with a new optimizer.
         2. `resume_from`: train the agent from `resume_from` with the exact optimizer
             `resume_from` was using.
@@ -38,16 +37,22 @@ class DQN(BaseAgent):
             raise ValueError("Use `load_from` to load model in test mode.")
         if load_from is not None and resume_from is not None:
             raise ValueError(
-                "`load_from` and `resume_from` should not be specified at the same "
-                "time."
+                "`load_from` and `resume_from` should not be both specified."
             )
-        super().__init__(device, gamma, explorer_cfg)
+
+        self.device = device
+        self.gamma = gamma
 
         self.test_mode = test_mode
         self.target_net = STRATEGIES.build(qnet_cfg).to(self.device)
 
         if not self.test_mode:
             self.qnet = STRATEGIES.build(qnet_cfg).to(self.device)
+
+            if explorer_cfg is not None:
+                explorer_cfg["samples"] = range(self.qnet.output_layer.out_features)
+                self.explorer = EXPLORERS.build(explorer_cfg)
+
             self.lr = lr
             self.to_target_net_interval = to_target_net_interval
             self.update_count = 0
@@ -86,7 +91,7 @@ class DQN(BaseAgent):
 
     def train_take_action(self, observation):
         if self.explorer.decide():
-            return np.random.randint(self.qnet.output_layer.out_features)
+            return self.explorer.act()
         else:
             observation = Tensor(observation).to(self.device)
             action = self.qnet(observation).argmax().item()
