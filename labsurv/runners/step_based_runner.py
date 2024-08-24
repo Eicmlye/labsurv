@@ -22,7 +22,7 @@ class StepBasedRunner:
             self.replay_buffer = None
             if cfg.use_replay_buffer:
                 self.replay_buffer = REPLAY_BUFFERS.build(cfg.replay_buffer)
-                if "load_from" not in cfg.replay_buffer.keys():
+                if not self.replay_buffer.is_active():
                     self.generate_replay_buffer()
 
             self.save_checkpoint_interval = cfg.save_checkpoint_interval
@@ -84,9 +84,6 @@ class StepBasedRunner:
             loss = None
 
             for step in range(self.steps):
-                if terminated:
-                    break
-
                 cur_action = self.agent.take_action(cur_observation)
 
                 transition = self.env.step(cur_observation, cur_action)
@@ -108,6 +105,9 @@ class StepBasedRunner:
                         loss = self.agent.update(samples)
                 else:
                     raise NotImplementedError()
+
+                if terminated:
+                    break
 
             log_dict = dict(lr=self.agent.lr)
             if loss is not None:
