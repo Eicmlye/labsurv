@@ -1,6 +1,9 @@
+from copy import deepcopy
 from typing import Any, Dict, Optional
 
-# import numpy as np
+from gym import spaces
+
+import numpy as np
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseEnv
 from labsurv.physics import SurveillanceRoom
@@ -38,19 +41,23 @@ class BaseSurveillanceEnv(BaseEnv):
 
         return transition
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self, seed: Optional[int] = None) -> SurveillanceRoom:
         """ """
 
         # do env init works
         super().reset(seed=seed)
 
         # return init observation according to observation distribution
-        init_observation = None
+        surv_room = deepcopy(self.surv_room)
 
-        return init_observation
+        return surv_room
 
     def init_visibility(self, room_data_path: str):
+        """
+        Load the surveillance room data. Caution that self.surv_room should never be
+        modified. Any attempt to use self.surv_room must get a copy of the object.
+        """
         self.surv_room = SurveillanceRoom(load_from=room_data_path)
 
-    def save_pointcloud(points, filename):
+    def render(self):
         pass

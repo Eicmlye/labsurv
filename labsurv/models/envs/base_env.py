@@ -74,3 +74,9 @@ class BaseEnv:
         init_observation = None
 
         return init_observation
+
+    def render(self):
+        """
+        Visualization related operations.
+        """
+        raise NotImplementedError()
