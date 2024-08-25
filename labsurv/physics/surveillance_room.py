@@ -2,7 +2,7 @@ import math
 import os
 import os.path as osp
 import pickle
-from typing import List
+from typing import List, Dict
 
 import numpy as np
 from labsurv.utils.string import WARN
@@ -101,7 +101,7 @@ class SurveillanceRoom:
 
             self.cam_extrinsics = []
             self.cam_types = []
-            self.visible_points = []
+            self.visible_points = set()
         else:
             if not osp.exists(load_from):
                 raise ValueError(f"The path {load_from} does not exist.")
@@ -110,41 +110,41 @@ class SurveillanceRoom:
 
             with open(load_from, "rb") as fpkl:
                 room_data = pickle.load(fpkl)
-            self.cfg_path = room_data["cfg_path"]
+            self.cfg_path: str = room_data["cfg_path"]
 
-            self.shape = room_data["shape"]
-            self.occupancy = room_data["occupancy"]
-            self.install_permitted = room_data["install_permitted"]
-            self.must_monitor = room_data["must_monitor"]
+            self.shape: np.ndarray = room_data["shape"]
+            self.occupancy: List[np.ndarray] = room_data["occupancy"]
+            self.install_permitted: List[np.ndarray] = room_data["install_permitted"]
+            self.must_monitor: List[np.ndarray] = room_data["must_monitor"]
 
-            self.cam_extrinsics = room_data["cam_extrinsics"]
-            self.cam_types = room_data["cam_types"]
-            self.visible_points = room_data["visible_points"]
+            self.cam_extrinsics: List[np.ndarray] = room_data["cam_extrinsics"]
+            self.cam_types: List[str] = room_data["cam_types"]
+            self.visible_points: set = room_data["visible_points"]
 
         cfg = Config.fromfile(self.cfg_path)
-        self._CAM_INTRINSICS = cfg.cam_intrinsics
-        self._POINT_CONFIGS = cfg.point_configs
-        self.voxel_length = cfg.voxel_length
+        self._CAM_INTRINSICS: Dict = cfg.cam_intrinsics
+        self._POINT_CONFIGS: Dict = cfg.point_configs
+        self.voxel_length: float = cfg.voxel_length
         if not isinstance(self._CAM_INTRINSICS, dict):
             raise ValueError(
                 "Loaded cam intrinsics should be a dict, "
                 f"not {type(self._CAM_INTRINSICS)}."
             )
 
-    def get_color(self, point_type: str):
+    def get_color(self, point_type: str) -> np.ndarray:
         return COLOR_MAP[self._POINT_CONFIGS[point_type]["color"]]
 
-    def get_extra_params_namelist(self, point_type: str):
+    def get_extra_params_namelist(self, point_type: str) -> List[str]:
         return self._POINT_CONFIGS[point_type]["extra_params"]
 
     @property
     def point_types(self):
         return self._POINT_CONFIGS.keys()
 
-    def _check_point_type(self, point_type: str):
+    def _check_point_type(self, point_type: str) -> bool:
         return point_type in self.point_types
 
-    def _check_inside_room(self, points: np.ndarray | List[np.ndarray]):
+    def _check_inside_room(self, points: np.ndarray | List[np.ndarray]) -> bool:
         for point in points:
             assert point.shape == (3,), f"Invalid point coordinate {point}."
 
@@ -160,7 +160,7 @@ class SurveillanceRoom:
 
         return True
 
-    def _check_permit_install(self, cam_pos: np.ndarray):
+    def _check_permit_install(self, cam_pos: np.ndarray) -> bool:
         for permit_pos in self.install_permitted:
             if np.array_equal(cam_pos, permit_pos):
                 return True
@@ -366,7 +366,7 @@ class SurveillanceRoom:
             points_with_color, save_path, "SurveillanceRoom_" + mode[:3]
         )
 
-    def visualize_occupancy(self):
+    def visualize_occupancy(self) -> np.ndarray:
         """
         Visualize occupancy, install_permitted and must_monitor.
         """
@@ -392,7 +392,7 @@ class SurveillanceRoom:
 
         return points_with_color
 
-    def visualize_camera(self):
+    def visualize_camera(self) -> np.ndarray:
         """
         Visualize occupancy, camera pos, visible points and must_monitor.
         """

@@ -1,34 +1,41 @@
 import os.path as osp
+from typing import Optional
 
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
+from labsurv.models.agents import BaseAgent
+from labsurv.models.buffers import BaseReplayBuffer
+from labsurv.models.envs import BaseEnv
+from labsurv.runners.hooks import LoggerHook
 from mmcv import Config
 from mmcv.utils import ProgressBar
 
 
 class StepBasedRunner:
     def __init__(self, cfg: Config):
-        self.work_dir = cfg.work_dir
-        self.logger = HOOKS.build(cfg.logger_cfg)
+        self.work_dir: str = cfg.work_dir
+        self.logger: LoggerHook = HOOKS.build(cfg.logger_cfg)
 
-        self.env = ENVIRONMENTS.build(cfg.env)
-        self.agent = AGENTS.build(cfg.agent)
-        self.test_mode = self.agent.test_mode
-        self.start_episode = 0
+        self.env: BaseEnv = ENVIRONMENTS.build(cfg.env)
+        self.agent: BaseAgent = AGENTS.build(cfg.agent)
+        self.test_mode: bool = self.agent.test_mode
+        self.start_episode: int = 0
 
         # max step number for an episode, exceeding makes truncated True
-        self.steps = cfg.steps
+        self.steps: int = cfg.steps
 
         if not self.test_mode:
             self.replay_buffer = None
             if cfg.use_replay_buffer:
-                self.replay_buffer = REPLAY_BUFFERS.build(cfg.replay_buffer)
+                self.replay_buffer: Optional[BaseReplayBuffer] = REPLAY_BUFFERS.build(
+                    cfg.replay_buffer
+                )
                 if not self.replay_buffer.is_active():
                     self.generate_replay_buffer()
 
-            self.save_checkpoint_interval = cfg.save_checkpoint_interval
+            self.save_checkpoint_interval: int = cfg.save_checkpoint_interval
 
             # max episode number
-            self.episodes = cfg.episodes
+            self.episodes: int = cfg.episodes
 
             self.start_episode = self.agent.start_episode
             if "resume_from" in cfg.agent.keys() and cfg.agent.resume_from is not None:
@@ -149,7 +156,8 @@ class StepBasedRunner:
 
             prog_bar.update()
 
-        print("\nSaving gif...")
-        save_path = osp.join(self.work_dir, f"done_step_{prog_bar.completed}.gif")
-        self.env.save_gif(save_path)
-        print(f"GIF saved to {save_path}")
+        if hasattr(self.env, "save_gif"):
+            print("\nSaving gif...")
+            save_path = osp.join(self.work_dir, f"done_step_{prog_bar.completed}.gif")
+            self.env.save_gif(save_path)
+            print(f"GIF saved to {save_path}")
