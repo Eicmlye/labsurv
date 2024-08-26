@@ -1,21 +1,24 @@
+from typing import Dict, Optional
+
 import numpy as np
 import torch
 from labsurv.builders import AGENTS, STRATEGIES
 from labsurv.models.agents import BaseAgent
 from torch import Tensor
+from torch.nn import Module
 
 
 @AGENTS.register_module()
 class REINFORCE(BaseAgent):
     def __init__(
         self,
-        policy_net_cfg,
-        device=None,
-        gamma=0.9,
-        lr=0.1,
+        policy_net_cfg: Dict,
+        device: Optional[torch.cuda.device] = None,
+        gamma: float = 0.9,
+        lr: float = 0.1,
     ):
         super().__init__(device, gamma)
-        self.policy_net = STRATEGIES.build(policy_net_cfg).to(self.device)
+        self.policy_net: Module = STRATEGIES.build(policy_net_cfg).to(self.device)
         self.lr = lr
 
         self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=self.lr)
