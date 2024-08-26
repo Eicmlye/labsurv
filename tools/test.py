@@ -2,7 +2,7 @@ import argparse
 import os
 import os.path as osp
 
-from labsurv.runners import StepBasedRunner
+from labsurv.runners import StepBasedRunner, EpisodeBasedRunner
 from mmcv import Config
 
 
@@ -11,6 +11,9 @@ def parse_args():
 
     parser.add_argument("--config", type=str, help="Path of the config file.")
     parser.add_argument("--debug", action="store_true", help="Debug mode.")
+    parser.add_argument(  # "--episode-based"
+        "--episode-based", action="store_true", help="Whether to use an episode based runner."
+    )
 
     args = parser.parse_args()
 
@@ -27,7 +30,11 @@ def main():
     save_cfg_name = osp.join(cfg.work_dir, cfg.exp_name + ".py")
     cfg.dump(save_cfg_name)
 
-    runner = StepBasedRunner(cfg)
+    episode_based = (
+        cfg.episode_based if hasattr(cfg, "episode_based") else args.episode_based
+    )
+
+    runner = EpisodeBasedRunner(cfg) if episode_based else StepBasedRunner(cfg)
     runner.run()
 
 
