@@ -1,26 +1,29 @@
 import os
 import os.path as osp
+from typing import Dict, Optional
 
 import torch
 from labsurv.builders import AGENTS, EXPLORERS, STRATEGIES
 from labsurv.models.agents import BaseAgent
+from labsurv.models.explorers import BaseExplorer
 from torch import Tensor
+from torch.nn import Module
 
 
 @AGENTS.register_module()
 class DQN(BaseAgent):
     def __init__(
         self,
-        qnet_cfg,
-        device=None,
-        gamma=0.9,
-        explorer_cfg=None,
-        lr=0.1,
-        to_target_net_interval=5,
-        dqn_type="DQN",
-        load_from=None,
-        resume_from=None,
-        test_mode=False,
+        qnet_cfg: Dict,
+        device: torch.cuda.device = None,
+        gamma: float = 0.9,
+        explorer_cfg: Dict = None,
+        lr: float = 0.1,
+        to_target_net_interval: int = 5,
+        dqn_type: str = "DQN",
+        load_from: Optional[str] = None,
+        resume_from: Optional[str] = None,
+        test_mode: bool = False,
     ):
         """
         The following combinations to specify arguments are allowed:
@@ -44,15 +47,14 @@ class DQN(BaseAgent):
         self.gamma = gamma
 
         self.test_mode = test_mode
-        self.target_net = STRATEGIES.build(qnet_cfg).to(self.device)
+        self.target_net: Module = STRATEGIES.build(qnet_cfg).to(self.device)
 
         if not self.test_mode:
-            self.qnet = STRATEGIES.build(qnet_cfg).to(self.device)
-
             if explorer_cfg is not None:
-                explorer_cfg["samples"] = range(self.qnet.output_layer.out_features)
-                self.explorer = EXPLORERS.build(explorer_cfg)
+                explorer_cfg["samples"] = range(qnet_cfg.action_dim)
+                self.explorer: BaseExplorer = EXPLORERS.build(explorer_cfg)
 
+            self.qnet: Module = STRATEGIES.build(qnet_cfg).to(self.device)
             self.lr = lr
             self.to_target_net_interval = to_target_net_interval
             self.update_count = 0
