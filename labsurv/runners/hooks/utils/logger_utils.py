@@ -85,6 +85,8 @@ def get_log_str(key: str, val: Any) -> List[str]:
         val = f"{val:.4e}"
     elif isinstance(val, Tensor) and val.ndim == 0:
         val = f"{val:.4f}"
+    elif isinstance(val, Tensor) and len(val.shape) == 1 and val.shape[0] == 1:
+        val = f"{val.item():.4f}"
 
     return [f"{key}: {val}"]
 

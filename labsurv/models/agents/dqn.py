@@ -66,7 +66,8 @@ class DQN(BaseAgent):
         elif load_from is not None:
             self.load(load_from)
 
-        assert dqn_type in ["DQN", "DoubleDQN"], f"{dqn_type} not implemented."
+        if dqn_type not in ["DQN", "DoubleDQN"]:
+            raise NotImplementedError(f"{dqn_type} not implemented.")
         self.dqn_type = dqn_type
 
     def load(self, checkpoint_path: str):
@@ -106,7 +107,7 @@ class DQN(BaseAgent):
 
         return action
 
-    def update(self, samples):
+    def update(self, samples) -> Tensor:
         cur_observations = torch.row_stack(samples["cur_observation"])
         cur_actions = (
             torch.row_stack(samples["cur_action"]).view(-1, 1).type(torch.int64)
