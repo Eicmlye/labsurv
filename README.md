@@ -48,6 +48,7 @@ pip install -e .
   ```
 
   to
+
   ```python
     def describe_element(name, df):
         # ......
@@ -75,7 +76,11 @@ python tools/test.py --config configs/cart_pole/cart_pole.py
 
 ## Code Style
 
-This repository uses `black`, `isort` and `flake8` for code formatting. To format changed files, run
+This repository uses `black`, `isort` and `flake8` for code formatting. 
+
+To use shell on `Windows` OS, add your `Git` installation directory `git/bin/` to your system environmental variables. Then `sh` command is available on terminals.
+
+To format changed files, run
 
 ```bash
 sh infra/scripts/format.sh --git
