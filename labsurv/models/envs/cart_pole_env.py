@@ -3,7 +3,7 @@ import math
 import os
 import os.path as osp
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from gym import spaces
@@ -116,7 +116,7 @@ class CartPoleEnv(BaseEnv):
         self.init_observ = partial(self._np_random.uniform, size=(4,))
 
         # visualization
-        self.frames = []
+        self.frames: List[Image.Image] = []
 
     def step(self, observation, action) -> Dict[str, Any]:
         """
@@ -163,6 +163,14 @@ class CartPoleEnv(BaseEnv):
         )
 
         reward = 1.0 if not terminated else 0.0
+        # NOTE(eric): reward for being far from the edge.
+        reward += 0.5 * (self.x_threshold - abs(x)) / self.x_threshold
+        reward += (
+            0.5
+            * (self.theta_threshold_radians - abs(theta))
+            / self.theta_threshold_radians
+        )
+        reward /= 2
 
         transition = dict(
             next_observation=new_observation,

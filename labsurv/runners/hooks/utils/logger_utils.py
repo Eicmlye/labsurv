@@ -75,7 +75,11 @@ def get_latest_avg_reward_str(
         return_str.append(f"avg reward: {sum(return_list[-interval:]) / interval:.4f}")
 
         if show_returns:
-            return_str.append(f"last {interval} returns: {return_list[-interval:]}")
+            return_str.append(f"last {interval} returns: [")
+            return_str[-1] += f"{return_list[-interval]:.4f}"
+            for item in return_list[-interval + 1:]:
+                return_str[-1] += f", {item:.4f}"
+            return_str[-1] += "]"
 
     return return_str
 

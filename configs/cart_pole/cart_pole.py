@@ -1,12 +1,11 @@
-from labsurv.utils import get_time_stamp
-
 from configs.cart_pole.agents import dqn_agent, reinforce_agent
+from labsurv.utils import get_time_stamp
 
 work_dir = "./output/cart_pole/"
 exp_name = get_time_stamp()
 
-episodes = 50000
-steps = 500
+episodes = 20000
+steps = 500000
 
 env = dict(
     type="CartPoleEnv",

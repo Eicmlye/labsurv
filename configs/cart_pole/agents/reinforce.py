@@ -1,9 +1,8 @@
 from configs.runtime import DEVICE
 
 agent_cfg = dict(
-    episode_based = True,
-
-    agent = dict(
+    episode_based=True,
+    agent=dict(
         type="REINFORCE",
         device=DEVICE,
         gamma=0.98,
@@ -14,7 +13,7 @@ agent_cfg = dict(
             action_dim=2,
         ),
         lr=5e-5,
-        # resume_from="output/cart_pole_reinforce/episode_10000.pth",
-        # load_from="output/cart_pole_reinforce/episode_50000.pth",
+        # resume_from="output/cart_pole_reinforce_newreward/episode_10000.pth",
+        # load_from="output/cart_pole_reinforce_newreward/episode_20000.pth",
     ),
 )
