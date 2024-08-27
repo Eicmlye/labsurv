@@ -140,9 +140,6 @@ class StepBasedRunner:
         for step in range(self.steps):
             self.env.render(cur_observation, step)
 
-            if terminated:
-                break
-
             cur_action = self.agent.take_action(cur_observation)
 
             transition = self.env.step(cur_observation, cur_action)
@@ -155,6 +152,9 @@ class StepBasedRunner:
             episode_return.append(transition["reward"])
 
             prog_bar.update()
+
+            if terminated:
+                break
 
         if hasattr(self.env, "save_gif"):
             print("\nSaving gif...")

@@ -58,10 +58,13 @@ elif agent_type == "REINFORCE":
         policy_net_cfg=dict(
             type="SimplePolicyNet",
             state_dim=4,
-            hidden_dim=128,
+            hidden_dim=256,
             action_dim=2,
         ),
-        lr=1e-4,
+        lr=5e-5,
+        # resume_from="output/cart_pole_trial/episode_9900.pth",
+        #load_from="output/cart_pole_reinforce/episode_50000.pth",
+        test_mode=test_mode,
     )
 
 logger_cfg = dict(
@@ -71,4 +74,4 @@ logger_cfg = dict(
     save_filename=exp_name,
 )
 
-save_checkpoint_interval = 100
+save_checkpoint_interval = 1000
