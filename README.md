@@ -32,7 +32,9 @@ pip install -e .
 ### Package Modification
 
 - `pyntcloud`
+
   - For fewer warnings, change code in `Lib\site-packages\pyntcloud\io\ply.py` from
+
   ```python
     def describe_element(name, df):
         # ......
@@ -44,6 +46,7 @@ pip install -e .
 
         return element
   ```
+
   to
   ```python
     def describe_element(name, df):
@@ -56,6 +59,19 @@ pip install -e .
 
         return element
   ```
+
+## Quick Start
+
+Make sure your current working directory is `labsurv/`, then
+
+```bash
+# train a new agent for cart pole
+python tools/train.py --config configs/cart_pole/cart_pole.py
+
+# test an existing agent for cart pole
+# should change `load_from` in config file
+python tools/test.py --config configs/cart_pole/cart_pole.py
+```
 
 ## Code Style
 
@@ -79,7 +95,7 @@ The `Runner` class is the information processing center during the learning proc
 
 ### Agent
 
-The `Agent` is the class to perform RL algorithms. It is recommended to inherit from `BaseAgent` class when creating a new `Agent`. 
+The `Agent` is the class to perform RL algorithms. It is recommended to inherit from `BaseAgent` class when creating a new `Agent`.
 
 An `Agent` must implement the `take_action()` and `update()` methods.
 
@@ -88,16 +104,16 @@ An `Agent` must implement the `take_action()` and `update()` methods.
 
 ### Environment
 
-The `Environment` is the class to model the extrinsic reward and terminating condition. It is designed to be a little bit different from the `gym.Envs` class, to better decouple the `Agent` and `Environment` and to adapt to dynamically changing `Environment`s. It is recommended to inherit from `BaseEnv` class when creating a new `Env`. 
+The `Environment` is the class to model the extrinsic reward and terminating condition. It is designed to be a little bit different from the `gym.Envs` class, to better decouple the `Agent` and `Environment` and to adapt to dynamically changing `Environment`s. It is recommended to inherit from `BaseEnv` class when creating a new `Env`.
 
 An `Environment` must implement the `step()` and `reset()` methods.
 
-- `step()`: Run one timestep of the environment's dynamics. The `Environment` takes in the current observation and action to perform a step. The observation is designed to be a sort of information spreading across the `Agent` and `Environment`, rather than a static state of `Environment`. 
+- `step()`: Run one timestep of the environment's dynamics. The `Environment` takes in the current observation and action to perform a step. The observation is designed to be a sort of information spreading across the `Agent` and `Environment`, rather than a static state of `Environment`.
 - `reset()`: Reset a dynamimc environment to the initial state and returns an initial observation according to the initial state distribution. For static `Environment`s, there is no need to do state-initialization. `Environment` should specify its initial state distribution to generate `reset()` outputs.
 
 ### Replay Buffer
 
-The `ReplayBuffer` is the class to store experience and to sample batches for `Agent` to update its strategy. A `BaseReplayBuffer` class is created for further uses. 
+The `ReplayBuffer` is the class to store experience and to sample batches for `Agent` to update its strategy. A `BaseReplayBuffer` class is created for further uses.
 
 ## Tools Usage
 
@@ -129,6 +145,6 @@ And find output in `output/surv_room/`.
 
 #### Methods
 
-The `SurveillanceRoom` class implements `add_block()` and `add_cam()` method as its main function. You may add `occupancy`, `install_permitted` and `must_monitor` blocks by `add_block()`, and add multiple sorts of cameras by `add_cam()`. The intrinsics of the cameras should be saved in `cfg_path` beforehand. 
+The `SurveillanceRoom` class implements `add_block()` and `add_cam()` method as its main function. You may add `occupancy`, `install_permitted` and `must_monitor` blocks by `add_block()`, and add multiple sorts of cameras by `add_cam()`. The intrinsics of the cameras should be saved in `cfg_path` beforehand.
 
 An example of the camera configuration is given in `configs\surveillance\_base_\envs\std_surveil.py`. You may simply add new types of cameras as value dict of `cam_intrinsics`, and it is recommended to choose from existed intrinsic params dict `clips`, `focals` and `resols`.

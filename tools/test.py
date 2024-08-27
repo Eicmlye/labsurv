@@ -34,6 +34,8 @@ def main():
         cfg.episode_based if hasattr(cfg, "episode_based") else args.episode_based
     )
 
+    cfg.agent.test_mode = True
+
     runner = EpisodeBasedRunner(cfg) if episode_based else StepBasedRunner(cfg)
     runner.run()
 

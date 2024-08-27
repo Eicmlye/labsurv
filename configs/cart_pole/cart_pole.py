@@ -1,71 +1,28 @@
-from configs.runtime import DEVICE
 from labsurv.utils import get_time_stamp
+
+from configs.cart_pole.agents import dqn_agent, reinforce_agent
 
 work_dir = "./output/cart_pole/"
 exp_name = get_time_stamp()
 
-episodes = 10000
+episodes = 50000
 steps = 500
 
 env = dict(
     type="CartPoleEnv",
 )
 
-agent_type = "DQN"
-test_mode = False
+agent_type = "REINFORCE"
 
 if agent_type == "DQN":
-    episode_based = False
-
-    agent = dict(
-        type="DQN",
-        device=DEVICE,
-        gamma=0.98,
-        explorer_cfg=dict(
-            type="BaseEpsilonGreedyExplorer",
-            epsilon=0.1,
-        ),
-        qnet_cfg=dict(
-            type="SimpleCNN",
-            state_dim=4,
-            hidden_dim=128,
-            action_dim=2,
-            loss_cfg=dict(type="TDLoss"),
-        ),
-        lr=5e-5,
-        to_target_net_interval=5,
-        dqn_type="DoubleDQN",
-        # resume_from="output/cart_pole_trial/episode_9900.pth",
-        # load_from="output/cart_pole_trial/episode_9900.pth",
-        test_mode=test_mode,
-    )
-
-    replay_buffer = dict(
-        type="BaseReplayBuffer",
-        device=DEVICE,
-        capacity=10000,
-        activate_size=500,
-        batch_size=200,
-        # load_from="output/cart_pole_dqn500_batch2-15/episode_2300.pkl",
-    )
+    agent_cfg = dqn_agent
 elif agent_type == "REINFORCE":
-    episode_based = True
+    agent_cfg = reinforce_agent
 
-    agent = dict(
-        type="REINFORCE",
-        device=DEVICE,
-        gamma=0.98,
-        policy_net_cfg=dict(
-            type="SimplePolicyNet",
-            state_dim=4,
-            hidden_dim=256,
-            action_dim=2,
-        ),
-        lr=5e-5,
-        # resume_from="output/cart_pole_trial/episode_9900.pth",
-        #load_from="output/cart_pole_reinforce/episode_50000.pth",
-        test_mode=test_mode,
-    )
+episode_based = agent_cfg["episode_based"]
+agent = agent_cfg["agent"]
+if "replay_buffer" in agent_cfg.keys():
+    replay_buffer = agent_cfg["replay_buffer"]
 
 logger_cfg = dict(
     type="LoggerHook",
