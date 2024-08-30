@@ -1,6 +1,6 @@
 import os
 import os.path as osp
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -55,6 +55,8 @@ class REINFORCE(BaseAgent):
         elif load_from is not None:
             self.load(load_from)
 
+        self.action_num = policy_net_cfg.action_dim
+
     def load(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
@@ -69,26 +71,38 @@ class REINFORCE(BaseAgent):
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.start_episode = checkpoint["episode"]
 
-    def take_action(self, observation):
+    def take_action(self, observation) -> int | Tensor:
         if self.test_mode:
             return self.test_take_action(observation)
         else:
             return self.train_take_action(observation)
 
-    def train_take_action(self, observation):
+    def train_take_action(self, observation) -> int | np.ndarray:
         observation = Tensor(observation).to(self.device)
-        actions = self.policy_net(observation)
-        action_distribution = torch.distributions.Categorical(probs=actions)
+        policy_net_output = self.policy_net(observation)
 
-        return action_distribution.sample().item()
+        if isinstance(policy_net_output, Tuple):
+            actions = policy_net_output[0]
+            params = policy_net_output[1]
 
-    def test_take_action(self, observation):
+            action_distribution = torch.distributions.Categorical(probs=actions)
+            chosen_action = action_distribution.sample()
+
+            return torch.concatenate((chosen_action, params)).cpu().numpy()
+        else:
+            actions = policy_net_output
+            action_distribution = torch.distributions.Categorical(probs=actions)
+            chosen_action = action_distribution.sample()
+
+            return chosen_action.item()
+
+    def test_take_action(self, observation) -> int:
         observation = Tensor(observation).to(self.device)
         action = self.policy_net(observation).argmax().item()
 
         return action
 
-    def update(self, markov_chain) -> Tensor:
+    def update(self, markov_chain: Dict[str, List[np.ndarray]]) -> float | Tensor:
         cur_observations = markov_chain["cur_observation"]
         cur_actions = markov_chain["cur_action"]
         rewards = markov_chain["reward"]
@@ -97,15 +111,28 @@ class REINFORCE(BaseAgent):
         self.optimizer.zero_grad()
         for step in reversed(range(len(cur_observations))):
             cur_observation = Tensor(np.array(cur_observations[step])).to(self.device)
-            cur_action = Tensor([cur_actions[step]]).type(torch.int64).to(self.device)
+            actions_tensor = Tensor(
+                [cur_actions[step]]
+                if isinstance(cur_actions[step], int)
+                else cur_actions[step]
+            ).to(self.device)
+            cur_action = (
+                actions_tensor.type(torch.int64).to(self.device)
+                if isinstance(cur_actions[step], int)
+                else actions_tensor[0].type(torch.int64).to(self.device)
+            )
             reward = Tensor([rewards[step]]).to(self.device)
 
             discounted_reward = self.gamma * discounted_reward + reward
-            loss = -discounted_reward * torch.log(
-                self.policy_net(cur_observation).gather(0, cur_action)
-            )
+            policy_net_output = self.policy_net(cur_observation)
+            if isinstance(policy_net_output, Tuple):
+                policy_net_output = policy_net_output[0][0]
 
+            loss = -discounted_reward * torch.log(
+                policy_net_output.gather(0, cur_action)
+            )
             loss.backward()
+
         self.optimizer.step()
 
         return loss

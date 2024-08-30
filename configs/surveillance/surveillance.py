@@ -1,33 +1,27 @@
-from configs.runtime import DEVICE
+from configs.surveillance._base_.agents import reinforce_agent
+from configs.surveillance._base_.envs import room_data_path
 from labsurv.utils import get_time_stamp
 
 work_dir = "./output/surveillance/"
 exp_name = get_time_stamp()
 
-episodes = 500
-steps = 200
+episodes = 2000
+steps = 10
 
 env = dict(
     type="BaseSurveillanceEnv",
+    room_data_path=room_data_path,
 )
 
-agent = dict(
-    type="",
-    device=DEVICE,
-    gamma=0.98,
-    explorer_cfg=dict(
-        type="BaseEpsilonGreedyExplorer",
-        epsilon=0.01,
-    ),
-    lr=2e-3,
-)
+agent_type = "REINFORCE"
 
-replay_buffer = dict(
-    type="BaseReplayBuffer",
-    capacity=10000,
-    activate_size=500,
-    batch_size=64,
-)
+if agent_type == "REINFORCE":
+    agent_cfg = reinforce_agent
+
+episode_based = agent_cfg["episode_based"]
+agent = agent_cfg["agent"]
+if "replay_buffer" in agent_cfg.keys():
+    replay_buffer = agent_cfg["replay_buffer"]
 
 logger_cfg = dict(
     type="LoggerHook",
@@ -35,3 +29,5 @@ logger_cfg = dict(
     save_dir=work_dir,
     save_filename=exp_name,
 )
+
+save_checkpoint_interval = 100

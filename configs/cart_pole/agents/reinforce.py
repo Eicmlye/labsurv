@@ -8,6 +8,7 @@ agent_cfg = dict(
         gamma=0.98,
         policy_net_cfg=dict(
             type="SimplePolicyNet",
+            device=DEVICE,
             state_dim=4,
             hidden_dim=256,
             action_dim=2,
