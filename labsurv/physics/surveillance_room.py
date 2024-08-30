@@ -2,12 +2,14 @@ import math
 import os
 import os.path as osp
 import pickle
-from typing import List, Dict
+from typing import Dict, List, Optional
 
 import numpy as np
 from labsurv.utils.string import WARN
 from labsurv.utils.surveillance import (
     COLOR_MAP,
+    DeleteUninstalledCameraError,
+    InstallAtExistingCameraError,
     build_block,
     compute_single_cam_visibility,
     concat_points_with_color,
@@ -20,9 +22,9 @@ from mmcv import Config
 class SurveillanceRoom:
     def __init__(
         self,
-        cfg_path: str | None = None,
-        shape: List[int] | None = None,
-        load_from: str | None = None,
+        cfg_path: Optional[str] = None,
+        shape: Optional[List[int]] = None,
+        load_from: Optional[str] = None,
     ):
         """
         ## Description:
@@ -167,6 +169,13 @@ class SurveillanceRoom:
 
         return False
 
+    def _check_installed(self, cam_pos: np.ndarray) -> Optional[int]:
+        for index, installed in enumerate(self.cam_extrinsics):
+            if np.array_equal(cam_pos, installed[:3]):
+                return index
+
+        return None
+
     def _check_match_extra_params(
         self, point_type: str, **extra_params
     ) -> int | List[int]:
@@ -195,7 +204,11 @@ class SurveillanceRoom:
                 self.voxel_length,
             )
 
-        return vis_dict
+        self.visible_points = set()
+        for cam_index, target_dict in vis_dict.items():
+            for target_index in target_dict.keys():
+                if target_dict[target_index]:
+                    self.visible_points.add(target_index)
 
     def add_block(
         self,
@@ -260,18 +273,13 @@ class SurveillanceRoom:
                     target_point_list.append(point)
 
         if len(self.cam_extrinsics) > 0:
-            vis_dict = self._compute_visibility()
-            self.visible_points = set()
-            for cam_index, target_dict in vis_dict.items():
-                for target_index in target_dict.keys():
-                    if target_dict[target_index]:
-                        self.visible_points.add(target_index)
+            self._compute_visibility()
 
     def add_cam(
         self,
         pos: List[int] | np.ndarray,
         direction: List[float] | np.ndarray,
-        cam_type: str,
+        cam_type: str | int,
     ):
         """
         Arguments:
@@ -287,8 +295,18 @@ class SurveillanceRoom:
         assert direction[0] > -math.pi and direction[0] <= math.pi
         assert direction[1] >= -math.pi / 2 and direction[1] <= math.pi / 2
 
-        if cam_type not in self._CAM_INTRINSICS.keys():
-            raise ValueError(f"SurveillanceRoom does not support {cam_type} cameras.")
+        if isinstance(cam_type, (int, np.int16)):
+            if cam_type >= len(self._CAM_INTRINSICS.keys()):
+                raise ValueError(
+                    f"SurveillanceRoom supports {len(self._CAM_INTRINSICS.keys())} "
+                    f"types of cameras. Cam Index {cam_type} is invalid."
+                )
+
+            cam_type = list(self._CAM_INTRINSICS.keys())[cam_type]
+        elif cam_type not in self._CAM_INTRINSICS.keys():
+            raise ValueError(
+                f"SurveillanceRoom does not support \"{cam_type}\" cameras."
+            )
 
         if isinstance(pos, List):
             pos = np.array(pos)
@@ -303,17 +321,41 @@ class SurveillanceRoom:
 
         for cam_extrinsic in self.cam_extrinsics:
             if np.array_equal(extrinsics, cam_extrinsic):
-                raise ValueError(f"Existed camera found at {pos}.")
+                raise InstallAtExistingCameraError(f"Existed camera found at {pos}.")
 
         self.cam_extrinsics.append(extrinsics)
         self.cam_types.append(cam_type)
 
-        vis_dict = self._compute_visibility()
-        self.visible_points = set()
-        for cam_index, target_dict in vis_dict.items():
-            for target_index in target_dict.keys():
-                if target_dict[target_index]:
-                    self.visible_points.add(target_index)
+        self._compute_visibility()
+
+    def del_cam(self, pos: int | List[int] | np.ndarray):
+        if not isinstance(pos, int):
+            del_index = self._check_installed(pos)
+            if del_index is None:
+                raise DeleteUninstalledCameraError("Cannot delete uninstalled camera.")
+        else:
+            if pos >= len(self.install_permitted):
+                raise ValueError(
+                    f"Only {len(self.install_permitted)} positions are allowed, but "
+                    f"got Index {pos}."
+                )
+            pos = self.install_permitted[pos]
+
+        self.cam_extrinsics.pop(del_index)
+        self.cam_types.pop(del_index)
+
+        self._compute_visibility()
+
+    def adjust_cam(
+        self, pos: List[int] | np.ndarray, direction: List[float] | np.ndarray
+    ):
+        adjust_index = self._check_installed(pos)
+        if adjust_index is None:
+            raise ValueError("Cannot adjust uninstalled camera.")
+
+        self.cam_extrinsics[adjust_index][3:] = direction
+
+        self._compute_visibility()
 
     def save(self, save_path: str):
         """
@@ -434,3 +476,31 @@ class SurveillanceRoom:
             )
 
         return points_with_color
+
+    def to_array(self) -> np.ndarray:
+        output = np.zeros((self.shape[0], self.shape[1], self.shape[2], 7))
+
+        for occ in self.occupancy:
+            occ = occ.astype(np.int16)
+            output[occ[0], occ[1], occ[2], 0] = 1
+
+        for permit in self.install_permitted:
+            permit = permit.astype(np.int16)
+            output[permit[0], permit[1], permit[2], 1] = 1
+
+        for must in self.must_monitor:
+            must = must.astype(np.int16)
+            output[must[0], must[1], must[2], 2] = 1
+
+        for index, extrinsic in enumerate(self.cam_extrinsics):
+            pos = extrinsic[0:3].astype(np.int16)
+            output[pos[0], pos[1], pos[2], 3] = 1
+            output[pos[0], pos[1], pos[2], 4] = extrinsic[3]
+            output[pos[0], pos[1], pos[2], 5] = extrinsic[4]
+            output[pos[0], pos[1], pos[2], 6] = list(self._CAM_INTRINSICS.keys()).index(
+                self.cam_types[index]
+            )
+
+        output = np.expand_dims(output, 0).reshape((1, -1))
+
+        return output
