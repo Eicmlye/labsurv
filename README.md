@@ -76,7 +76,7 @@ python tools/test.py --config configs/cart_pole/cart_pole.py
 
 ## Code Style
 
-This repository uses `black`, `isort` and `flake8` for code formatting. 
+This repository uses `black`, `isort` and `flake8` for code formatting.
 
 To use shell on `Windows` OS, add your `Git` installation directory `git/bin/` to your system environmental variables. Then `sh` command is available on terminals.
 
@@ -122,20 +122,6 @@ The `ReplayBuffer` is the class to store experience and to sample batches for `A
 
 ## Tools Usage
 
-### `Room`
-
-#### Quick start
-
-```bash
-python tools/demo/room/build_room.py
-```
-
-And find output in `output/room/BaseRoom.ply`.
-
-#### Methods
-
-Currently `BaseRoom` implements a `add_block()` method, which enables the user to add solid blocks to the `Room`. This class does not recognize different objects, i.e., once added, the points are independent from where they came from, and are merged into the cluster of points it's in.
-
 ### `SurveillanceRoom`
 
 This class generates the `SurveillanceRoom` structure for the environment `BaseSurveillanceEnv`.
@@ -147,6 +133,8 @@ python tools/demo/room/build_surveil_room.py
 ```
 
 And find output in `output/surv_room/`.
+
+You may also find generated samples in `tools/demo/room/samples/`.
 
 #### Methods
 

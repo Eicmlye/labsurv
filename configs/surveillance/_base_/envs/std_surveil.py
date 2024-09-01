@@ -5,8 +5,8 @@
 # 2/3 inches: 靶面尺寸约为8.8mm x 6.6mm, 常用于专业级监控和广播级摄像机, 适合远距离监控和低光照环境.
 # 1 inch: 靶面尺寸约为12.7mm x 9.6mm, 用于高端监控设备和专业摄影机, 提供高图像质量和细节.
 
-clips = dict(  # millimeter
-    common=[4.8, 3.6],
+clips = dict(  # meter
+    common=[4.8e-3, 3.6e-3],
 )
 
 # 普通监控摄像头焦距
@@ -16,8 +16,8 @@ clips = dict(  # millimeter
 # 6mm: 较窄的视角, 适用于需要更集中监控的区域, 如门口或特定走廊.
 # 8mm: 更窄的视角, 适合远距离监控, 如停车场或街道对面的建筑物.
 
-focals = dict(  # millimeter
-    mid=4,
+focals = dict(  # meter
+    mid=4e-3,
 )
 
 # 普通监控摄像头分辨率
@@ -64,7 +64,7 @@ point_configs = dict(
         ],
     ),
     camera=dict(
-        color="orange",
+        color="blue",
         extra_params=[
             "pan",  # [-pi, pi)
             "tilt",  # [-pi/2, pi/2]

@@ -2,12 +2,14 @@ import math
 import os
 import os.path as osp
 import pickle
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import numpy as np
+import torch
 from labsurv.utils.string import WARN
 from labsurv.utils.surveillance import (
     COLOR_MAP,
+    AdjustUninstalledCameraError,
     DeleteUninstalledCameraError,
     InstallAtExistingCameraError,
     build_block,
@@ -17,11 +19,16 @@ from labsurv.utils.surveillance import (
     shift,
 )
 from mmcv import Config
+from torch import Tensor
 
 
 class SurveillanceRoom:
+    INT = torch.int64
+    FLOAT = torch.float16
+
     def __init__(
         self,
+        device: Optional[torch.cuda.device],
         cfg_path: Optional[str] = None,
         shape: Optional[List[int]] = None,
         load_from: Optional[str] = None,
@@ -73,16 +80,17 @@ class SurveillanceRoom:
 
         if (cfg_path is None or shape is None) and load_from is None:
             raise ValueError(
-                "Either (`cfg_path`, `shape`) or `load_from` should be specified."
+                "Either (`cfg_path`, `shape`) or `load_from` should be " "specified."
             )
         if cfg_path is not None and shape is not None and load_from is not None:
             print(
                 WARN(
-                    "Both (`cfg_path`, `shape`) and `load_from` are specified. "
-                    "Only use `load_from`."
+                    "Both (`cfg_path`, `shape`) and `load_from` are "
+                    "specified. Only use `load_from`."
                 )
             )
 
+        self.device = device
         if load_from is None:
             if not (
                 len(shape) == 3
@@ -94,16 +102,26 @@ class SurveillanceRoom:
                     "A room should be in 3d shape with all side lengths integers."
                 )
 
-            self.cfg_path = cfg_path
+            self.cfg_path: str = cfg_path
+            self.shape: List[int] = shape
+            self.occupancy: Tensor = torch.zeros(
+                self.shape, dtype=self.INT, device=self.device
+            )
+            self.install_permitted: Tensor = torch.zeros(
+                self.shape, dtype=self.INT, device=self.device
+            )
+            # need_monitor, h_res_req_min, h_res_req_max, v_res_req_min, v_res_req_max
+            self.must_monitor: Tensor = torch.zeros(
+                self.shape + [5], dtype=self.FLOAT, device=self.device
+            )
 
-            self.shape = np.array(shape)
-            self.occupancy = []
-            self.install_permitted = []
-            self.must_monitor = []
-
-            self.cam_extrinsics = []
-            self.cam_types = []
-            self.visible_points = set()
+            # is_installed, pan, tilt, cam_type
+            self.cam_extrinsics: Tensor = torch.zeros(
+                self.shape + [4], dtype=self.FLOAT, device=self.device
+            )
+            self.visible_points: Tensor = torch.zeros(
+                self.shape, dtype=self.INT, device=self.device
+            )
         else:
             if not osp.exists(load_from):
                 raise ValueError(f"The path {load_from} does not exist.")
@@ -114,18 +132,18 @@ class SurveillanceRoom:
                 room_data = pickle.load(fpkl)
             self.cfg_path: str = room_data["cfg_path"]
 
-            self.shape: np.ndarray = room_data["shape"]
-            self.occupancy: List[np.ndarray] = room_data["occupancy"]
-            self.install_permitted: List[np.ndarray] = room_data["install_permitted"]
-            self.must_monitor: List[np.ndarray] = room_data["must_monitor"]
+            self.shape: List[int] = room_data["shape"]
+            self.occupancy: Tensor = room_data["occupancy"]
+            self.install_permitted: Tensor = room_data["install_permitted"]
+            self.must_monitor: Tensor = room_data["must_monitor"]
 
-            self.cam_extrinsics: List[np.ndarray] = room_data["cam_extrinsics"]
-            self.cam_types: List[str] = room_data["cam_types"]
-            self.visible_points: set = room_data["visible_points"]
+            self.cam_extrinsics: Tensor = room_data["cam_extrinsics"]
+            self.visible_points: Tensor = room_data["visible_points"]
 
         cfg = Config.fromfile(self.cfg_path)
         self._CAM_INTRINSICS: Dict = cfg.cam_intrinsics
-        self._POINT_CONFIGS: Dict = cfg.point_configs
+        self._CAM_TYPES: List[str] = list(self._CAM_INTRINSICS.keys())
+        self._POINT_CONFIGS: Dict[str, Dict[str, str | List[str]]] = cfg.point_configs
         self.voxel_length: float = cfg.voxel_length
         if not isinstance(self._CAM_INTRINSICS, dict):
             raise ValueError(
@@ -134,51 +152,83 @@ class SurveillanceRoom:
             )
 
     def get_color(self, point_type: str) -> np.ndarray:
+        """
+        Get corresponding color RGB representation from a point type name string.
+        """
         return COLOR_MAP[self._POINT_CONFIGS[point_type]["color"]]
 
     def get_extra_params_namelist(self, point_type: str) -> List[str]:
         return self._POINT_CONFIGS[point_type]["extra_params"]
 
-    @property
-    def point_types(self):
-        return self._POINT_CONFIGS.keys()
+    def _assert_dtype_device(
+        self, tensor: Tensor, dtype, device: Optional[torch.cuda.device] = None
+    ):
+        assert dtype in [self.INT, self.FLOAT]
+        if device is None:
+            device = self.device
+
+        assert (
+            tensor.device == device
+        ), f"Different devices found. Expected {device}, got {tensor.device}."
+        assert tensor.dtype == dtype
 
     def _check_point_type(self, point_type: str) -> bool:
-        return point_type in self.point_types
+        """
+        Check if the given point type is known.
+        """
+        return point_type in self._POINT_CONFIGS.keys()
 
-    def _check_inside_room(self, points: np.ndarray | List[np.ndarray]) -> bool:
+    def _check_inside_room(self, points: Tensor) -> bool:
+        """
+        # Arguments:
+
+            points (Tensor): input shape should be [3] or [n, 3].
+        """
+        dim = points.ndim
+        assert dim == 1 or dim == 2, f"Cannot deal with {dim}-dimensional tensors."
+        self._assert_dtype_device(points, self.INT)
+
+        if dim == 1:
+            points = [points]
+
         for point in points:
-            assert point.shape == (3,), f"Invalid point coordinate {point}."
+            assert point.numel() == 3, f"Invalid point coordinate {point}."
 
-            if (
-                point[0] < 0
-                or point[0] >= self.shape[0]
-                or point[1] < 0
-                or point[1] >= self.shape[1]
-                or point[2] < 0
-                or point[2] >= self.shape[2]
-            ):
+            try:
+                self.occupancy[point[0], point[1], point[2]]
+            except IndexError:
                 return False
 
         return True
 
-    def _check_permit_install(self, cam_pos: np.ndarray) -> bool:
-        for permit_pos in self.install_permitted:
-            if np.array_equal(cam_pos, permit_pos):
-                return True
+    def _check_permit_install(self, cam_pos: Tensor) -> bool:
+        """
+        # Arguments:
 
-        return False
+            cam_pos (Tensor): input shape should be [3] or [n, 3].
+        """
+        dim = cam_pos.ndim
+        assert dim == 1 or dim == 2, f"Cannot deal with {dim}-dimensional tensors."
+        self._assert_dtype_device(cam_pos, self.INT)
 
-    def _check_installed(self, cam_pos: np.ndarray) -> Optional[int]:
-        for index, installed in enumerate(self.cam_extrinsics):
-            if np.array_equal(cam_pos, installed[:3]):
-                return index
+        if dim == 2:
+            assert (
+                cam_pos.shape[1] == 3
+            ), f"Invalid point coordinate of length {cam_pos.shape[1]}."
+            chosen_pos_permissions = self.install_permitted[
+                cam_pos[:, 0], cam_pos[:, 1], cam_pos[:, 2]
+            ]
+            return chosen_pos_permissions[chosen_pos_permissions == 0].numel() == 0
 
-        return None
+        # cam_pos.ndim == 1
+        return self.install_permitted[cam_pos[0], cam_pos[1], cam_pos[2]]
 
     def _check_match_extra_params(
         self, point_type: str, **extra_params
-    ) -> int | List[int]:
+    ) -> List[Set[str]] | Set[str]:
+        """
+        Check if the keys of the given param dict matches that of the required one.
+        """
         provided = set(extra_params.keys())
         if "extra_params" not in self._POINT_CONFIGS[point_type].keys():
             if len(extra_params.keys()) == 0:
@@ -193,60 +243,55 @@ class SurveillanceRoom:
 
         return [required, provided]
 
-    def _compute_visibility(self):
-        vis_dict = dict()
-        for index, cam_extrinsic in enumerate(self.cam_extrinsics):
-            vis_dict[index] = compute_single_cam_visibility(
-                cam_extrinsic,
-                self._CAM_INTRINSICS[self.cam_types[index]],
-                self.occupancy,
-                self.must_monitor,
-                self.voxel_length,
-            )
-
-        self.visible_points = set()
-        for cam_index, target_dict in vis_dict.items():
-            for target_index in target_dict.keys():
-                if target_dict[target_index]:
-                    self.visible_points.add(target_index)
-
     def add_block(
         self,
         shape: List[int],
         point_type: str = "occupancy",
-        near_origin_vertex: np.ndarray | List[int] = np.array([0, 0, 0]),
+        near_origin_vertex: Optional[Tensor] = None,
         **kwargs,
     ):
+        # NOTE(eric): THIS METHOD SHOULD ONLY BE USED BEFORE ANY CAMERA OPERATION IS
+        # MADE. THIS METHOD WILL NOT CHECK VISIBILITY CHANGES.
         if not self._check_point_type(point_type):
             raise ValueError(
                 f"SurveillanceRoom does not support {point_type} type points."
             )
 
-        points, _ = build_block(shape, self.get_color(point_type))
+        if near_origin_vertex is None:
+            near_origin_vertex = torch.tensor(
+                [0, 0, 0], dtype=self.INT, device=self.device
+            )
+        else:
+            self._assert_dtype_device(near_origin_vertex, self.INT)
+
+        points = build_block(shape, self.device)
         if not self._check_inside_room(points):
             raise ValueError("Point outside of the room.")
 
         # consider `near_origin_vertex` as the displacement vector
-        points = shift(points, near_origin_vertex)
+        points = shift(points, near_origin_vertex, int_output=True)
 
-        # WARN: list object is mutable, so `target_point_list` is a pointer
-        target_point_list = None
+        # NOTE(eric): `target_mask` is a pointer
+        target_mask = None
         if point_type == "occupancy":
-            target_point_list = self.occupancy
+            target_mask = self.occupancy
         elif point_type == "install_permitted":
-            target_point_list = self.install_permitted
+            target_mask = self.install_permitted
         elif point_type == "must_monitor":
-            target_point_list = self.must_monitor
+            target_mask = self.must_monitor
 
         extra_params = self._check_match_extra_params(point_type, **kwargs)
-        if isinstance(extra_params, set):
+        appendix: Optional[Tensor] = None
+        if isinstance(extra_params, Set):
             if len(extra_params) > 0:
                 try:
-                    appendix = np.array(
+                    appendix = torch.tensor(
                         [
                             kwargs[key]
                             for key in self.get_extra_params_namelist(point_type)
-                        ]
+                        ],
+                        dtype=self.FLOAT,
+                        device=self.device,
                     )
                 except KeyError:
                     raise ValueError(
@@ -259,103 +304,178 @@ class SurveillanceRoom:
                 f"Expected {extra_params[0]}, got {extra_params[1]}."
             )
 
-        for point in points:
-            new_point = True
-            for target_point in target_point_list:
-                if np.array_equal(point, target_point):
-                    new_point = False
-                    break
+        if appendix is not None:
+            full_appendix = torch.cat(
+                (torch.tensor([1], dtype=self.FLOAT, device=self.device), appendix)
+            ).repeat(points.shape[0], 1)
 
-            if new_point:
-                if len(kwargs.keys()) > 0:
-                    target_point_list.append(np.hstack((point, appendix)))
-                else:
-                    target_point_list.append(point)
+            target_mask[points[:, 0], points[:, 1], points[:, 2]] = full_appendix
+        else:
+            target_mask[points[:, 0], points[:, 1], points[:, 2]] = 1
 
-        if len(self.cam_extrinsics) > 0:
-            self._compute_visibility()
-
-    def add_cam(
-        self,
-        pos: List[int] | np.ndarray,
-        direction: List[float] | np.ndarray,
-        cam_type: str | int,
-    ):
+    def add_cam(self, pos: Tensor, direction: Tensor, cam_type: str | int):
         """
-        Arguments:
+        # Arguments:
 
-            pos (List[int] | np.ndarray): the position of the camera. Must be on the
-            room points.
+            pos (Tensor): the position of the camera. Must be on the room points.
 
-            direction (List[float] | np.ndarray): the pan and tilt angle of the camera.
-            pan in (-pi, pi], tilt in [-pi/2, pi/2].
+            direction (Tensor): the pan and tilt angle of the camera. pan in
+            [-pi, pi), tilt in [-pi/2, pi/2].
 
-            cam_type (str): the type of camera.
+            cam_type (str | int): the type (index) of camera.
         """
-        assert direction[0] > -math.pi and direction[0] <= math.pi
-        assert direction[1] >= -math.pi / 2 and direction[1] <= math.pi / 2
-
-        if isinstance(cam_type, (int, np.int16)):
-            if cam_type >= len(self._CAM_INTRINSICS.keys()):
-                raise ValueError(
-                    f"SurveillanceRoom supports {len(self._CAM_INTRINSICS.keys())} "
-                    f"types of cameras. Cam Index {cam_type} is invalid."
-                )
-
-            cam_type = list(self._CAM_INTRINSICS.keys())[cam_type]
-        elif cam_type not in self._CAM_INTRINSICS.keys():
-            raise ValueError(
-                f"SurveillanceRoom does not support \"{cam_type}\" cameras."
-            )
-
-        if isinstance(pos, List):
-            pos = np.array(pos)
-        if not self._check_inside_room([pos]):
+        assert pos.ndim == 1 and pos.numel() == 3
+        self._assert_dtype_device(pos, self.INT)
+        if not self._check_inside_room(pos):
             raise ValueError("Point outside of the room.")
         if not self._check_permit_install(pos):
             raise ValueError(f"{pos} is not permitted to install.")
+        if self.cam_extrinsics[pos[0], pos[1], pos[2]][0] == 1:
+            raise InstallAtExistingCameraError(f"Existed camera found at {pos}.")
 
-        if isinstance(direction, List):
-            direction = np.array(direction)
-        extrinsics = np.hstack((pos, direction))
+        self._assert_dtype_device(direction, self.FLOAT)
+        assert direction.ndim == 1 and direction.numel() == 2
+        assert direction[0] >= -math.pi and direction[0] < math.pi
+        assert direction[1] >= -math.pi / 2 and direction[1] <= math.pi / 2
 
-        for cam_extrinsic in self.cam_extrinsics:
-            if np.array_equal(extrinsics, cam_extrinsic):
-                raise InstallAtExistingCameraError(f"Existed camera found at {pos}.")
-
-        self.cam_extrinsics.append(extrinsics)
-        self.cam_types.append(cam_type)
-
-        self._compute_visibility()
-
-    def del_cam(self, pos: int | List[int] | np.ndarray):
-        if not isinstance(pos, int):
-            del_index = self._check_installed(pos)
-            if del_index is None:
-                raise DeleteUninstalledCameraError("Cannot delete uninstalled camera.")
-        else:
-            if pos >= len(self.install_permitted):
+        if isinstance(cam_type, int):
+            if cam_type >= len(self._CAM_TYPES):
                 raise ValueError(
-                    f"Only {len(self.install_permitted)} positions are allowed, but "
-                    f"got Index {pos}."
+                    f"SurveillanceRoom supports {len(self._CAM_TYPES)} "
+                    f"types of cameras. Cam Index {cam_type} is invalid."
                 )
-            pos = self.install_permitted[pos]
+        elif cam_type not in self._CAM_TYPES:
+            raise ValueError(
+                f"SurveillanceRoom does not support \"{cam_type}\" cameras."
+            )
+        else:
+            cam_type = self._CAM_TYPES.index(cam_type)
 
-        self.cam_extrinsics.pop(del_index)
-        self.cam_types.pop(del_index)
+        extrinsics = torch.cat(
+            (
+                torch.tensor([1], dtype=self.FLOAT, device=self.device),
+                direction,
+                torch.tensor([cam_type], dtype=self.FLOAT, device=self.device),
+            )
+        )
+        self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
 
-        self._compute_visibility()
+        vis_mask = compute_single_cam_visibility(
+            pos,
+            direction,
+            self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
+            self.occupancy,
+            self.must_monitor,
+            self.voxel_length,
+        )
+
+        self.visible_points += vis_mask
+
+    def del_cam(self, pos: Tensor):
+        """
+        # Arguments:
+
+            pos (Tensor): the position of the camera. Must be on the room points.
+        """
+        assert pos.ndim == 1 and pos.numel() == 3
+        self._assert_dtype_device(pos, self.INT)
+        if not self._check_inside_room(pos):
+            raise ValueError("Point outside of the room.")
+        if self.cam_extrinsics[pos[0], pos[1], pos[2]][0] == 0:
+            raise DeleteUninstalledCameraError("Cannot delete uninstalled camera.")
+
+        extrinsics = torch.cat(
+            (
+                torch.tensor([0], dtype=self.FLOAT, device=self.device),
+                self.cam_extrinsics[pos[0], pos[1], pos[2]][1:],
+            )
+        )
+        self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
+
+        vis_mask = compute_single_cam_visibility(
+            pos,
+            extrinsics[1:3],
+            self._CAM_INTRINSICS[self._CAM_TYPES[extrinsics[-1]]],
+            self.occupancy,
+            self.must_monitor,
+            self.voxel_length,
+        )
+
+        self.visible_points -= vis_mask
 
     def adjust_cam(
-        self, pos: List[int] | np.ndarray, direction: List[float] | np.ndarray
+        self, pos: Tensor, direction: Tensor, cam_type: str | int | None = None
     ):
-        adjust_index = self._check_installed(pos)
-        if adjust_index is None:
-            raise ValueError("Cannot adjust uninstalled camera.")
+        """
+        # Arguments:
 
-        self.cam_extrinsics[adjust_index][3:] = direction
+            pos (Tensor): the position of the camera. Must be on the room points.
 
-        self._compute_visibility()
+            direction (Tensor): the pan and tilt angle of the camera. pan in
+            [-pi, pi), tilt in [-pi/2, pi/2].
+
+            cam_type (str | int | None): the type (index) of camera. If is None,
+            cam_type will not change.
+        """
+        assert pos.ndim == 1 and pos.numel() == 3
+        self._assert_dtype_device(pos, self.INT)
+        if not self._check_inside_room(pos):
+            raise ValueError("Point outside of the room.")
+        if not self._check_permit_install(pos):
+            raise ValueError(f"{pos} is not permitted to install.")
+        if self.cam_extrinsics[pos[0], pos[1], pos[2]][0] == 0:
+            raise AdjustUninstalledCameraError("Cannot adjust uninstalled camera.")
+
+        self._assert_dtype_device(direction, self.FLOAT)
+        assert direction.ndim == 1 and direction.numel() == 2
+        assert direction[0] >= -math.pi and direction[0] < math.pi
+        assert direction[1] >= -math.pi / 2 and direction[1] <= math.pi / 2
+        direction = direction.to(self.device)
+
+        if isinstance(cam_type, int):
+            if cam_type >= len(self._CAM_TYPES):
+                raise ValueError(
+                    f"SurveillanceRoom supports {len(self._CAM_TYPES)} "
+                    f"types of cameras. Cam Index {cam_type} is invalid."
+                )
+        elif cam_type not in self._CAM_TYPES:
+            raise ValueError(
+                f"SurveillanceRoom does not support \"{cam_type}\" cameras."
+            )
+        else:
+            cam_type = self._CAM_TYPES.index(cam_type)
+
+        cam_type = torch.tensor([cam_type], dtype=self.FLOAT, device=self.device)
+
+        pred_extrinsics = self.cam_extrinsics[pos[0], pos[1], pos[2]]
+        pred_vis_mask = compute_single_cam_visibility(
+            pos,
+            pred_extrinsics[1:3],
+            self._CAM_INTRINSICS[self._CAM_TYPES[pred_extrinsics[-1]]],
+            self.occupancy,
+            self.must_monitor,
+            self.voxel_length,
+        )
+        self.visible_points -= pred_vis_mask
+
+        extrinsics = torch.cat(
+            (
+                torch.tensor([1], dtype=self.FLOAT, device=self.device),
+                direction,
+                cam_type,
+            )
+        )
+        self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
+
+        pred_vis_mask = compute_single_cam_visibility(
+            pos,
+            direction,
+            self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
+            self.occupancy,
+            self.must_monitor,
+            self.voxel_length,
+        )
+        self.visible_points += pred_vis_mask
 
     def save(self, save_path: str):
         """
@@ -377,7 +497,6 @@ class SurveillanceRoom:
                     install_permitted=self.install_permitted,
                     must_monitor=self.must_monitor,
                     cam_extrinsics=self.cam_extrinsics,
-                    cam_types=self.cam_types,
                     visible_points=self.visible_points,
                 ),
                 fpkl,
@@ -408,99 +527,72 @@ class SurveillanceRoom:
             points_with_color, save_path, "SurveillanceRoom_" + mode[:3]
         )
 
-    def visualize_occupancy(self) -> np.ndarray:
+    def visualize_occupancy(self) -> Tensor:
         """
         Visualize occupancy, install_permitted and must_monitor.
         """
 
-        EPSILON = np.array([0.1, 0, 0])
+        EPSILON = torch.tensor([0.1, 0, 0], device=self.device)
         occupancy_with_color = concat_points_with_color(
             self.occupancy, self.get_color("occupancy")
         )
         install_permitted_with_color = concat_points_with_color(
-            self.install_permitted, self.get_color("install_permitted"), EPSILON
+            self.install_permitted, self.get_color("install_permitted")  # , EPSILON
         )
         must_monitor_with_color = concat_points_with_color(
-            self.must_monitor, self.get_color("must_monitor"), -EPSILON
+            self.must_monitor, self.get_color("must_monitor")  # , -EPSILON
         )
 
-        points_with_color = np.row_stack(
-            (
+        points_with_color = torch.cat(
+            (  # points rendered later will cover the earlier ones.
+                must_monitor_with_color,
                 occupancy_with_color,
                 install_permitted_with_color,
-                must_monitor_with_color,
             ),
+            0,
         )
 
         return points_with_color
 
-    def visualize_camera(self) -> np.ndarray:
+    def visualize_camera(self) -> Tensor:
         """
         Visualize occupancy, camera pos, visible points and must_monitor.
         """
 
-        XEPSILON = np.array([0.1, 0, 0])
-        YEPSILON = np.array([0, 0.1, 0])
+        XEPSILON = torch.tensor([0.1, 0, 0], device=self.device)
+        YEPSILON = torch.tensor([0, 0.1, 0], device=self.device)
         occupancy_with_color = concat_points_with_color(
             self.occupancy, self.get_color("occupancy")
         )
         cameras_with_color = concat_points_with_color(
-            self.cam_extrinsics, self.get_color("camera"), XEPSILON
+            self.cam_extrinsics, self.get_color("camera")  # , XEPSILON
         )
         visible_with_color = concat_points_with_color(
-            [self.must_monitor[index] for index in self.visible_points],
-            self.get_color("visible"),
-            -XEPSILON,
+            self.visible_points, self.get_color("visible")  # , -XEPSILON
         )
         must_monitor_with_color = concat_points_with_color(
-            self.must_monitor, self.get_color("must_monitor"), YEPSILON
+            self.must_monitor, self.get_color("must_monitor")  # , YEPSILON
         )
 
         if visible_with_color is not None:
-            points_with_color = np.row_stack(
-                (
+            points_with_color = torch.cat(
+                (  # points rendered later will cover the earlier ones.
+                    # must_monitor_with_color,
                     occupancy_with_color,
                     cameras_with_color,
                     visible_with_color,
-                    must_monitor_with_color,
                 ),
+                0,
             )
         else:
             print(WARN("No visible point found."))
-            points_with_color = np.row_stack(
-                (
+            points_with_color = torch.cat(
+                (  # points rendered later will cover the earlier ones.
+                    must_monitor_with_color,
                     occupancy_with_color,
                     cameras_with_color,
-                    must_monitor_with_color,
                 ),
+                0,
             )
 
         return points_with_color
-
-    def to_array(self) -> np.ndarray:
-        output = np.zeros((self.shape[0], self.shape[1], self.shape[2], 7))
-
-        for occ in self.occupancy:
-            occ = occ.astype(np.int16)
-            output[occ[0], occ[1], occ[2], 0] = 1
-
-        for permit in self.install_permitted:
-            permit = permit.astype(np.int16)
-            output[permit[0], permit[1], permit[2], 1] = 1
-
-        for must in self.must_monitor:
-            must = must.astype(np.int16)
-            output[must[0], must[1], must[2], 2] = 1
-
-        for index, extrinsic in enumerate(self.cam_extrinsics):
-            pos = extrinsic[0:3].astype(np.int16)
-            output[pos[0], pos[1], pos[2], 3] = 1
-            output[pos[0], pos[1], pos[2], 4] = extrinsic[3]
-            output[pos[0], pos[1], pos[2], 5] = extrinsic[4]
-            output[pos[0], pos[1], pos[2], 6] = list(self._CAM_INTRINSICS.keys()).index(
-                self.cam_types[index]
-            )
-
-        output = np.expand_dims(output, 0).reshape((1, -1))
-
-        return output

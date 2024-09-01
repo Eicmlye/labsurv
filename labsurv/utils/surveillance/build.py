@@ -1,26 +1,24 @@
-from typing import List
+from typing import List, Optional
 
 import numpy as np
+import torch
+from torch import Tensor
 
 COLOR_MAP = dict(
     red=np.array([255, 0, 0]),
     green=np.array([0, 255, 0]),
     blue=np.array([0, 0, 255]),
     yellow=np.array([255, 255, 0]),
-    orange=np.array([255, 165, 0]),
     grey=np.array([128, 128, 128]),
     white=np.array([255, 255, 255]),
 )
 
 
-def build_block(
-    shape: List[int],
-    color: np.ndarray | str | List[int] = np.array([128, 128, 128]),
-) -> tuple[np.ndarray, np.ndarray]:
+def build_block(shape: List[int], device: Optional[torch.cuda.device] = None) -> Tensor:
     """
-    Returns:
+    # Returns:
 
-        points (np.ndarray): an N * 3 array with all the point coordinates in the block
+        points (Tensor): an N * 3 tensor with all the point coordinates in the block
         given.
     """
     if len(shape) != 3 or not (
@@ -32,13 +30,6 @@ def build_block(
             "A block should be in 3d shape with all side lengths integers."
         )
 
-    if isinstance(color, str):
-        if color.lower() not in COLOR_MAP.keys():
-            raise ValueError(f"Unknown color string {color}, use rgb instead.")
-        color = COLOR_MAP[color.lower()]
-    elif isinstance(color, List):
-        color = np.array(color)
-
     # resolution of the block
     x_res, y_res, z_res = shape
 
@@ -48,6 +39,8 @@ def build_block(
         np.linspace(0, z_res - 1, z_res),
     )
     points = np.column_stack((x_mesh.ravel(), y_mesh.ravel(), z_mesh.ravel()))
-    colors = np.array([color] * len(points))
 
-    return points, colors
+    if device is None:
+        return torch.tensor(points, dtype=torch.int64)
+    else:
+        return torch.tensor(points, dtype=torch.int64, device=device)
