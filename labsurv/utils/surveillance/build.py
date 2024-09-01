@@ -16,9 +16,15 @@ COLOR_MAP = dict(
 
 def build_block(shape: List[int], device: Optional[torch.cuda.device] = None) -> Tensor:
     """
-    # Returns:
+    ## Arguments:
 
-        points (Tensor): an N * 3 tensor with all the point coordinates in the block
+        shape (List[int]): [3], the shape of the block.
+
+        device (Optional[torch.cuda.device]): the device where all tensors are placed.
+
+    ## Returns:
+
+        points (Tensor): [N, 3], torch.int64, all the point coordinates in the block
         given.
     """
     if len(shape) != 3 or not (
@@ -31,16 +37,6 @@ def build_block(shape: List[int], device: Optional[torch.cuda.device] = None) ->
         )
 
     # resolution of the block
-    x_res, y_res, z_res = shape
+    points = torch.ones(shape, device=device).nonzero().type(torch.int64)
 
-    x_mesh, y_mesh, z_mesh = np.meshgrid(
-        np.linspace(0, x_res - 1, x_res),
-        np.linspace(0, y_res - 1, y_res),
-        np.linspace(0, z_res - 1, z_res),
-    )
-    points = np.column_stack((x_mesh.ravel(), y_mesh.ravel(), z_mesh.ravel()))
-
-    if device is None:
-        return torch.tensor(points, dtype=torch.int64)
-    else:
-        return torch.tensor(points, dtype=torch.int64, device=device)
+    return points

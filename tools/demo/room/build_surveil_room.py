@@ -1,14 +1,11 @@
-import os.path as osp
-
+import torch
 from configs.runtime import DEVICE
 from labsurv.physics import SurveillanceRoom
-import torch
-from torch import Tensor
 
 
 def main():
     load_from = None
-    load_from = "output/surv_room/SurveillanceRoom.pkl"
+    # load_from = "output/surv_room/SurveillanceRoom.pkl"
 
     cfg_path = "configs/surveillance/_base_/envs/std_surveil.py"
     if load_from is not None:
@@ -29,13 +26,13 @@ def main():
         print("Building occupancy blocks...")
         room.add_block(
             [1, 10, 10],
-            near_origin_vertex=torch.tensor([20, 0, 0], device=DEVICE),
+            displacement=torch.tensor([20, 0, 0], device=DEVICE),
         )
         print("Building permission blocks...")
         room.add_block(
             [10, 10, 10],
             point_type="install_permitted",
-            near_origin_vertex=torch.tensor([5, 5, 5], device=DEVICE),
+            displacement=torch.tensor([5, 5, 5], device=DEVICE),
         )
 
         print("Building monitored blocks...")
@@ -48,7 +45,7 @@ def main():
         room.add_block(
             full_shape,
             point_type="must_monitor",
-            near_origin_vertex=torch.tensor([0, 0, 0], device=DEVICE),
+            displacement=torch.tensor([0, 0, 0], device=DEVICE),
             **resol_requirement,
         )
 

@@ -1,15 +1,15 @@
-from typing import Dict
+from typing import Dict, List
 
 import torch
-from torch import Tensor
 from mmcv.utils import ProgressBar
+from torch import Tensor
 
 
 def normalize_coords_list(tensor: Tensor) -> Tensor:
     """
-    # Arguments:
+    ## Arguments:
 
-        tensor (Tensor): N * 3 tensor.
+        tensor (Tensor): [N, 3].
     """
     return tensor / torch.linalg.vector_norm(tensor, dim=1).view(-1, 1)
 
@@ -17,7 +17,7 @@ def normalize_coords_list(tensor: Tensor) -> Tensor:
 def compute_single_cam_visibility(
     cam_pos: Tensor,
     direction: Tensor,
-    intrinsic: Dict,
+    intrinsic: Dict[str, float | List[float]],
     occupancy: Tensor,
     target: Tensor,
     voxel_length: float,
@@ -25,32 +25,38 @@ def compute_single_cam_visibility(
     """
     ## Arguments:
 
-        extrinsic (Tensor):
+        cam_pos (Tensor): [3], torch.int64, the position of the camera.
 
-        intrinsic (dict): {clip_shape=[],focal_length=,resolution=[]}, the intrinsic of
-        camera.
+        direction (Tensor): [2], torch.float16, the `pan` and `tilt` of the camera.
 
-        occupancy (Tensor):
+        intrinsic (Dict[str, float | List[float]]): camera intrinsics.
 
-        voxel_length (float): the length of sides of pixels in meters.
+        occupancy (Tensor): [W, D, H], torch.int64, occupancy mask.
+
+        target (Tensor): [W, D, H, 4], torch.float16,
+        [need_monitor, h_res_req_min, h_res_req_max, v_res_req_min, v_res_req_max].
+
+        voxel_length (float): length of sides of voxels in meters.
 
     ## Returns:
 
-        vis_mask (Tensor):
+        vis_mask (Tensor): [W, D, H], torch.int64, the visibility mask of the camera.
     """
     device = occupancy.device
+    INT = torch.int64
+    FLOAT = torch.float16
 
-    assert cam_pos.dtype == torch.int64
+    assert cam_pos.dtype == occupancy.dtype == INT
     assert cam_pos.device == direction.device == target.device == device
-    
+
     pan = direction[0]
     tilt = direction[1]
     clip_shape = torch.tensor(
-        intrinsic["clip_shape"], dtype=torch.float16, device=device
+        intrinsic["clip_shape"], dtype=FLOAT, device=device
     )  # horizontal, vertical
-    f = torch.tensor([intrinsic["focal_length"]], dtype=torch.float16, device=device)
+    f = torch.tensor([intrinsic["focal_length"]], dtype=FLOAT, device=device)
     resolution = torch.tensor(
-        intrinsic["resolution"], dtype=torch.float16, device=device
+        intrinsic["resolution"], dtype=FLOAT, device=device
     )  # horizontal, vertical
 
     rot_mat = torch.tensor(
@@ -59,7 +65,7 @@ def compute_single_cam_visibility(
             [torch.sin(pan), torch.cos(pan), 0],
             [0, 0, 1],
         ],
-        dtype=torch.float16,
+        dtype=FLOAT,
         device=device,
     ) @ torch.tensor(
         [
@@ -67,7 +73,7 @@ def compute_single_cam_visibility(
             [0, 1, 0],
             [torch.sin(tilt), 0, torch.cos(tilt)],
         ],
-        dtype=torch.float16,
+        dtype=FLOAT,
         device=device,
     )
 
@@ -77,7 +83,7 @@ def compute_single_cam_visibility(
     # change all lov from world coord to cam coord
     target_mask = target[:, :, :, 0]
     all_coords = target_mask.nonzero()  # N * 3
-    lov = (all_coords - cam_pos).type(torch.float16)  # N * 3
+    lov = (all_coords - cam_pos).type(FLOAT)  # N * 3
     all_coords_cam_coord = (rot_mat.permute(1, 0) @ lov.permute(1, 0)).permute(
         1, 0
     )  # N * 3
@@ -152,11 +158,16 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
 
     ## Arguments:
 
-        cam_pos (Tensor): the position of the camera.
+        cam_pos (Tensor): [3], torch.int64, the position of the camera.
 
-        lov (Tensor): the vector from camera pos to target pos.
+        lov (Tensor): [N, 3], torch.int64, the vector from camera pos to target pos.
 
-        occupancy (Tensor): W * D * H.
+        occupancy (Tensor): [W, D, H], torch.int64, occupancy mask.
+
+    ## Returns:
+
+        obstacle_mask (Tensor): [N], torch.bool, visibility mask respect to
+        obstacles.
     """
     device = occupancy.device
     assert cam_pos.device == lov.device == device
@@ -168,7 +179,7 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
 
     obstacle_mask = torch.zeros([len(lov)], dtype=torch.bool, device=device)
 
-    print("Computing camera's light of view w.r.t. obstacles...")
+    print("Checking if camera's light of view passes any obstacles...")
     prog_bar = ProgressBar(len(lov))
     for index, target in enumerate(lov):
         lambdas = (voxel_bounds - torch.cat((cam_pos, cam_pos))) / torch.cat(
@@ -176,7 +187,9 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
         )  # N * 6, [x-, y-, z-, x+, y+, z+]
         intersections = cam_pos.repeat(6) + lambdas.repeat_interleave(
             3, 1
-        ) * target.repeat(6)  # N * 18
+        ) * target.repeat(
+            6
+        )  # N * 18
         # [
         #   x_{I,x-}, y_{I, x-}, z_{I, x-},
         #   x_{I,y-}, y_{I, y-}, z_{I, y-},
@@ -186,11 +199,9 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
         #   x_{I,z+}, y_{I, z+}, z_{I, z+},
         # ]
 
-        intersection_mask = (
-            (intersections > voxel_lower_bounds.repeat(1, 6))
-            & (intersections < voxel_upper_bounds.repeat(1, 6))
-        )
-        # import pdb; pdb.set_trace()
+        intersection_mask = (intersections > voxel_lower_bounds.repeat(1, 6)) & (
+            intersections < voxel_upper_bounds.repeat(1, 6)
+        )  # N * 18
         obstacle_mask[index] = (
             (intersection_mask.view(-1, 6, 3).sum(dim=2) == 2)
             & (lambdas >= 0)
