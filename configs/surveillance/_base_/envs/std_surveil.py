@@ -39,6 +39,9 @@ resols = {  # pixel
 }
 
 cam_intrinsics = dict(
+    # cam_name=dict(
+    #   param_name=param_dict[specific_param_type],
+    # )
     std_cam=dict(
         clip_shape=clips["common"],
         focal_length=focals["mid"],
@@ -48,6 +51,12 @@ cam_intrinsics = dict(
 
 
 point_configs = dict(
+    # point_type=dict(
+    #   color="",  # this is necessary
+    #   extra_params=[
+    #       # this is optional
+    #   ],
+    # )
     occupancy=dict(
         color="grey",
     ),

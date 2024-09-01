@@ -1,3 +1,5 @@
+import os
+import os.path as osp
 from typing import List
 
 from labsurv.utils.string import CLEAR_FORMAT
@@ -46,3 +48,36 @@ def INFO(content: str, prefix: str = None):
     prefix = "[" + prefix + "]"
 
     return color_str("blue", [prefix, content])
+
+
+def to_filename(path: str, expected_extension: str, default_filename: str) -> str:
+    """
+    ## Description:
+
+        Automatically change `path` to an expected filename.
+
+        - If `path` is an expected file, i.e., ended with `expected_extension`,
+        all the parent directories will be made, and `path` is returned.
+        - If `path is not ended with `expected_extension`, then it is considered as a
+        directory. This directory will be made along with all the parent directories,
+        and the default filename is returned with `path/` as prefix.
+
+    ## Arguments:
+
+        path (str): the input file path.
+
+        expected_extension (str): the expected extension for the file.
+
+        default_filename (str): the default filename when `path` is a directory.
+    """
+    if not expected_extension.startswith("."):
+        expected_extension = "." + expected_extension
+
+    if not path.endswith(expected_extension):
+        os.makedirs(path, exist_ok=True)
+        result = osp.join(path, default_filename + expected_extension)
+    else:
+        os.makedirs(osp.dirname(path), exist_ok=True)
+        result = path
+
+    return result
