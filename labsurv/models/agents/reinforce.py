@@ -88,7 +88,7 @@ class REINFORCE(BaseAgent):
             action_distribution = torch.distributions.Categorical(probs=actions)
             chosen_action = action_distribution.sample()
 
-            return torch.concatenate((chosen_action, params)).cpu().numpy()
+            return torch.cat((chosen_action, params)).cpu().numpy()
         else:
             actions = policy_net_output
             action_distribution = torch.distributions.Categorical(probs=actions)

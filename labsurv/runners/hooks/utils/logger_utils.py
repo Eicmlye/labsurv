@@ -1,6 +1,7 @@
 import time
+from collections import deque
 from datetime import datetime, timedelta
-from typing import Any, List
+from typing import Any, Dict, List
 
 from labsurv.utils import INDENT, WARN
 from torch import Tensor
@@ -60,26 +61,45 @@ def get_time_eta_strs(
 
 
 def get_latest_avg_reward_str(
-    interval: int, return_list: list, show_returns: bool = False
+    interval: int, return_list: deque, show_returns: bool = False
 ) -> List[str]:
+    if not isinstance(return_list[0], Dict):
+        raise ValueError("`return_list` type is rewritten, the code should be updated.")
+    return_dict = dict()
+    for item in return_list:
+        for key, val in item.items():
+            if key not in return_dict.keys():
+                return_dict[key] = [val]
+            else:
+                return_dict[key].append(val)
+
     return_str = []
 
-    if interval > len(return_list):
+    if interval > len(return_dict["reward"]):
         print(
             WARN(
                 f"`return_list` has not got enough values to be averaged. "
-                f"Expected {interval}, got {len(return_list)}."
+                f"Expected {interval}, got {len(return_dict["reward"])}."
             )
         )
     else:
-        return_str.append(f"avg reward: {sum(return_list[-interval:]) / interval:.4f}")
+        return_str.append(
+            f"avg reward: {sum(return_dict["reward"][-interval:]) / interval:.4f}"
+        )
 
         if show_returns:
-            return_str.append(f"last {interval} returns: [")
-            return_str[-1] += f"{return_list[-interval]:.4f}"
-            for item in return_list[-interval + 1:]:
-                return_str[-1] += f", {item:.4f}"
-            return_str[-1] += "]"
+            return_str.append(f"\nlast {interval} returns: ")
+            for key, val in return_dict.items():
+                return_str.append(f"\n\t{key:<12}: [")
+                if "cov" in key:
+                    return_str[-1] += f"{return_dict[key][-interval]:.2%}"
+                    for item in return_dict[key][-interval + 1 :]:
+                        return_str[-1] += f", {item:.2%}"
+                else:
+                    return_str[-1] += f"{return_dict[key][-interval]:.4f}"
+                    for item in return_dict[key][-interval + 1 :]:
+                        return_str[-1] += f", {item:.4f}"
+                return_str[-1] += "]"
 
     return return_str
 

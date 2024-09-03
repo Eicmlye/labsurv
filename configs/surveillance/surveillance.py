@@ -1,25 +1,30 @@
+from configs.runtime import DEVICE
 from configs.surveillance._base_.agents import reinforce_agent
-from configs.surveillance._base_.envs import room_data_path
 from labsurv.utils import get_time_stamp
 
 work_dir = "./output/surveillance/"
 exp_name = get_time_stamp()
+
+runner = dict(
+    type="OCPEpisodeBasedRunner",
+)
 
 episodes = 2000
 steps = 10
 
 env = dict(
     type="BaseSurveillanceEnv",
-    room_data_path=room_data_path,
+    room_data_path="output/surv_room/SurveillanceRoom.pkl",
+    device=DEVICE,
+    save_path=work_dir,
 )
 
 agent_type = "REINFORCE"
-
+agent_cfg = None
 if agent_type == "REINFORCE":
     agent_cfg = reinforce_agent
-
-episode_based = agent_cfg["episode_based"]
 agent = agent_cfg["agent"]
+
 if "replay_buffer" in agent_cfg.keys():
     replay_buffer = agent_cfg["replay_buffer"]
 

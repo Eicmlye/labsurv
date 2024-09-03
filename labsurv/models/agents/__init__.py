@@ -1,5 +1,6 @@
 from .base_agent import BaseAgent
 from .dqn import DQN
+from .ocp_reinforce import OCPREINFORCE
 from .policy_iteration import PolicyIterationAgent
 from .qlearning import QLearningAgent
 from .reinforce import REINFORCE
@@ -12,4 +13,5 @@ __all__ = [
     "QLearningAgent",
     "SARSAAgent",
     "REINFORCE",
+    "OCPREINFORCE",
 ]

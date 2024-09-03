@@ -5,6 +5,7 @@ from .builder import (
     HOOKS,
     LOSSES,
     REPLAY_BUFFERS,
+    RUNNERS,
     STRATEGIES,
 )
 
@@ -16,4 +17,5 @@ __all__ = [
     "LOSSES",
     "STRATEGIES",
     "REPLAY_BUFFERS",
+    "RUNNERS",
 ]
