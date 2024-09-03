@@ -1,7 +1,7 @@
 import os.path as osp
 from typing import Optional
 
-from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS
+from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS, RUNNERS
 from labsurv.models.agents import BaseAgent
 from labsurv.models.buffers import BaseReplayBuffer
 from labsurv.models.envs import BaseEnv
@@ -10,6 +10,7 @@ from mmcv import Config
 from mmcv.utils import ProgressBar
 
 
+@RUNNERS.register_module()
 class StepBasedRunner:
     def __init__(self, cfg: Config):
         self.work_dir: str = cfg.work_dir

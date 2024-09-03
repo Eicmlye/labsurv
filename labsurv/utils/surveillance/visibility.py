@@ -44,7 +44,7 @@ def compute_single_cam_visibility(
     """
     device = occupancy.device
     INT = torch.int64
-    FLOAT = torch.float16
+    FLOAT = torch.float
 
     assert cam_pos.dtype == occupancy.dtype == INT
     assert cam_pos.device == direction.device == target.device == device

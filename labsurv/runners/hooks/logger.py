@@ -1,6 +1,8 @@
 import os
 import os.path as osp
+from collections import deque
 from datetime import datetime
+from typing import Dict
 
 from labsurv.builders import HOOKS
 from labsurv.runners.hooks.utils import (
@@ -24,7 +26,7 @@ class LoggerHook:
             save_dir,
             (get_time_stamp() if save_filename is None else save_filename) + ".log",
         )
-        self.return_list = []
+        self.return_list: deque = deque(maxlen=2 * log_interval)
         self.cur_episode_index = -1
 
         os.makedirs(save_dir, exist_ok=True)
@@ -37,7 +39,7 @@ class LoggerHook:
         with open(self.log_file, "a+") as f:
             f.write(log_str + "\n")
 
-    def update(self, return_val):
+    def update(self, return_val: float | Dict[str, float]):
         self.return_list.append(return_val)
         self.cur_episode_index += 1
 
@@ -53,6 +55,7 @@ class LoggerHook:
             )
             for key in kwargs.keys():
                 log_list += get_log_str(key, kwargs[key])
+
             log_list += get_latest_avg_reward_str(
                 self.interval, self.return_list, show_returns=True
             )

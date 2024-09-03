@@ -60,7 +60,7 @@ class SurveillanceRoom:
     """
 
     INT = torch.int64
-    FLOAT = torch.float16
+    FLOAT = torch.float
 
     def __init__(
         self,
@@ -99,7 +99,7 @@ class SurveillanceRoom:
             )
 
         self.device = device
-        self.modified_camera: bool = False
+        self.cam_modify_num: int = 0
         if load_from is None:
             if not (
                 len(shape) == 3
@@ -177,7 +177,9 @@ class SurveillanceRoom:
             device = self.device
 
         assert (
-            tensor.device == device
+            str(tensor.device).startswith("cuda") and str(device).startswith("cuda")
+        ) or (
+            str(tensor.device).startswith("cpu") and str(device).startswith("cpu")
         ), f"Different devices found. Expected {device}, got {tensor.device}."
         assert tensor.dtype == dtype
 
@@ -275,7 +277,7 @@ class SurveillanceRoom:
         # NOTE(eric): THIS METHOD SHOULD ONLY BE USED BEFORE ANY CAMERA OPERATION IS
         # MADE. THIS METHOD WILL NOT CHECK VISIBILITY CHANGES.
         assert (
-            not self.modified_camera
+            self.cam_modify_num == 0
         ), "Adding blocks after modifying cameras will result in visibility error."
 
         if not self._check_point_type(point_type):
@@ -347,7 +349,7 @@ class SurveillanceRoom:
 
             cam_type (str | int): the type (index) of camera.
         """
-        self.modified_camera = True
+        self.cam_modify_num += 1
 
         assert pos.ndim == 1 and pos.numel() == 3
         self._assert_dtype_device(pos, self.INT)
@@ -407,7 +409,7 @@ class SurveillanceRoom:
 
             pos (Tensor): [3], torch.int64, the position of the camera.
         """
-        self.modified_camera = True
+        self.cam_modify_num += 1
 
         assert pos.ndim == 1 and pos.numel() == 3
         self._assert_dtype_device(pos, self.INT)
@@ -427,7 +429,7 @@ class SurveillanceRoom:
         vis_mask = compute_single_cam_visibility(
             pos,
             extrinsics[1:3],
-            self._CAM_INTRINSICS[self._CAM_TYPES[extrinsics[-1]]],
+            self._CAM_INTRINSICS[self._CAM_TYPES[extrinsics[-1].type(self.INT)]],
             self.occupancy,
             self.must_monitor,
             self.voxel_length,
@@ -449,7 +451,7 @@ class SurveillanceRoom:
             cam_type (str | int | None): the type (index) of camera. If is None,
             `cam_type` will not change.
         """
-        self.modified_camera = True
+        self.cam_modify_num += 1
 
         assert pos.ndim == 1 and pos.numel() == 3
         self._assert_dtype_device(pos, self.INT)
@@ -488,7 +490,7 @@ class SurveillanceRoom:
                 f"Unsupported cam_type {cam_type} in type {type(cam_type)}"
             )
 
-        cam_type = torch.tensor([cam_type], dtype=self.FLOAT, device=self.device)
+        cam_type_tensor = torch.tensor([cam_type], dtype=self.FLOAT, device=self.device)
 
         pred_vis_mask = compute_single_cam_visibility(
             pos,
@@ -504,7 +506,7 @@ class SurveillanceRoom:
             (
                 torch.tensor([1], dtype=self.FLOAT, device=self.device),
                 direction,
-                cam_type,
+                cam_type_tensor,
             )
         )
         self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
@@ -560,14 +562,15 @@ class SurveillanceRoom:
         else:
             raise ValueError(f"Unsupported mode {mode}.")
 
-        save_visualized_points(
-            points_with_color, save_path, "SurveillanceRoom_" + mode[:3]
-        )
+        if points_with_color is not None:
+            save_visualized_points(
+                points_with_color, save_path, "SurveillanceRoom_" + mode[:3]
+            )
 
     def visualize_occupancy(self) -> Tensor:
         """
         ## Desctiption:
-         
+
             Visualize occupancy, install_permitted and must_monitor.
 
         ## Returns:
@@ -602,7 +605,7 @@ class SurveillanceRoom:
         ## Description:
 
             Visualize occupancy, camera pos, visible points and must_monitor.
-            
+
         ## Returns:
 
             points_with_color (Tensor): [N, 6], [x, y, z, R, G, B], torch.float16.
@@ -616,6 +619,11 @@ class SurveillanceRoom:
         cameras_with_color = concat_points_with_color(
             self.cam_extrinsics, self.get_color("camera")  # , XEPSILON
         )
+
+        if cameras_with_color is None:
+            print(WARN("No cameras have been placed. Visualization aborted."))
+            return None
+
         visible_with_color = concat_points_with_color(
             self.visible_points, self.get_color("visible")  # , -XEPSILON
         )
@@ -645,3 +653,29 @@ class SurveillanceRoom:
             )
 
         return points_with_color
+
+    def get_info(self) -> Tensor:
+        """
+        ## Description:
+
+            Merge all the tensor attributes to a single tensor.
+
+        ## Returns:
+
+            reuslt (Tensor): [12, W, D, H], torch.float16.
+        """
+
+        # .type method always return a new tensor
+        result = torch.cat(
+            (
+                self.occupancy.type(self.FLOAT).unsqueeze(0),  # [1, W, D, H]
+                self.install_permitted.type(self.FLOAT).unsqueeze(0),  # [1, W, D, H]
+                self.must_monitor.type(self.FLOAT).permute(3, 0, 1, 2),  # [5, W, D, H]
+                self.cam_extrinsics.type(self.FLOAT).permute(
+                    3, 0, 1, 2
+                ),  # [4, W, D, H]
+                self.visible_points.type(self.FLOAT).unsqueeze(0),  # [1, W, D, H]
+            )
+        )
+
+        return result

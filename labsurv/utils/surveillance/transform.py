@@ -16,7 +16,7 @@ def shift(points: Tensor, displacement: Tensor, int_output: bool = False):
     """
     device = points.device
     INT = torch.int64
-    FLOAT = torch.float16
+    FLOAT = torch.float
     assert displacement.device == device, "Different devices found."
 
     result_points = points.type(FLOAT)

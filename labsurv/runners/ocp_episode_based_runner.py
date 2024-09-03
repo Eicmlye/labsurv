@@ -1,24 +1,24 @@
 import os.path as osp
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-import numpy as np
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS, RUNNERS
-from labsurv.models.agents import BaseAgent
+from labsurv.models.agents import OCPREINFORCE
 from labsurv.models.buffers import BaseReplayBuffer
-from labsurv.models.envs import BaseEnv
+from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
 from mmcv import Config
 from mmcv.utils import ProgressBar
+from torch import Tensor
 
 
 @RUNNERS.register_module()
-class EpisodeBasedRunner:
+class OCPEpisodeBasedRunner:
     def __init__(self, cfg: Config):
         self.work_dir: str = cfg.work_dir
         self.logger: LoggerHook = HOOKS.build(cfg.logger_cfg)
 
-        self.env: BaseEnv = ENVIRONMENTS.build(cfg.env)
-        self.agent: BaseAgent = AGENTS.build(cfg.agent)
+        self.env: BaseSurveillanceEnv = ENVIRONMENTS.build(cfg.env)
+        self.agent: OCPREINFORCE = AGENTS.build(cfg.agent)
         self.test_mode: bool = self.agent.test_mode
         self.start_episode: int = 0
 
@@ -55,25 +55,39 @@ class EpisodeBasedRunner:
     def train(self):
         cur_observation = None
         for episode in range(self.start_episode, self.episodes):
-            cur_observation = self.env.reset()
+            print(f"Episode {episode + 1}:")
+            cur_observation: Tensor = self.env.reset()  # [12, W, D, H]
 
-            episode_return = 0
-            terminated = False
-            markov_chain: Dict[str, List[np.ndarray]] = dict()
+            episode_return: Dict[str, float] = dict(
+                reward=0,
+                final_cov=0,
+                max_cov=0,
+            )
+            terminated: bool = False
+            markov_chain: Dict[str, Tensor] = dict()
 
             for step in range(self.steps):
-                cur_action = self.agent.take_action(cur_observation)
+                print(f"Step {step + 1}:")
+                cur_action, params = self.agent.take_action(
+                    cur_observation.unsqueeze(0)
+                )
 
-                transition = self.env.step(cur_observation, cur_action)
+                transition, episode_return["final_cov"] = self.env.step(
+                    cur_observation, cur_action, params
+                )
+                episode_return["max_cov"] = max(
+                    episode_return["final_cov"], episode_return["max_cov"]
+                )
+
                 transition["cur_observation"] = cur_observation
-                transition["cur_action"] = cur_action
+                transition["cur_action"] = (cur_action, params)
 
                 terminated = transition["terminated"]
                 # truncated = step == self.steps - 1
 
                 cur_observation = transition["next_observation"]
-                episode_return += transition["reward"]
-
+                episode_return["reward"] += transition["reward"]
+            
                 for key, val in transition.items():
                     if key not in markov_chain.keys():
                         markov_chain[key] = [val]
@@ -83,7 +97,11 @@ class EpisodeBasedRunner:
                 if terminated:
                     break
 
+                print("\r\033[1A\033[K", end="")
+
             loss = self.agent.update(markov_chain)
+
+            print("\r\033[1A\033[K", end="")
 
             log_dict = dict(lr=self.agent.lr)
             if loss is not None:
@@ -95,22 +113,29 @@ class EpisodeBasedRunner:
             if (episode + 1) % self.save_checkpoint_interval == 0:
                 self.agent.save(episode, self.work_dir)
 
+            for key, val in markov_chain.items():
+                for item in val:
+                    if isinstance(item, tuple):
+                        item = (None, None)
+                    elif isinstance(item, Tensor):
+                        del item
+
     def test(self):
-        cur_observation = self.env.reset()
+        cur_observation: Tensor = self.env.reset()
 
         episode_return = []
-        terminated = False
+        terminated: bool = False
 
         print("Rendering test results...")
         prog_bar = ProgressBar(self.steps)
         for step in range(self.steps):
             self.env.render(cur_observation, step)
 
-            cur_action = self.agent.take_action(cur_observation)
+            cur_action, params = self.agent.take_action(cur_observation.unsqueeze(0))
 
-            transition = self.env.step(cur_observation, cur_action)
+            transition = self.env.step(cur_observation, cur_action, params)
             transition["cur_observation"] = cur_observation
-            transition["cur_action"] = cur_action
+            transition["cur_action"] = (cur_action, params)
 
             terminated = transition["terminated"]
 
