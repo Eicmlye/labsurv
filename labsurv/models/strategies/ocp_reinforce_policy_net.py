@@ -17,7 +17,7 @@ from torch.nn import (
 
 
 @STRATEGIES.register_module()
-class OCPSimplePolicyNet(Module):
+class OCPREINFORCEPolicyNet(Module):
     INT = torch.int64
     FLOAT = torch.float
 

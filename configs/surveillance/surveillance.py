@@ -13,7 +13,7 @@ episodes = 10000
 steps = 50
 
 env = dict(
-    type="BaseSurveillanceEnv",
+    type="OCPREINFORCEEnv",
     room_data_path="output/surv_room/SurveillanceRoom.pkl",
     device=DEVICE,
     save_path=work_dir,
