@@ -1,17 +1,20 @@
 import os
 import os.path as osp
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import torch
 from labsurv.builders import AGENTS, STRATEGIES
 from labsurv.models.agents import BaseAgent
+from numpy import ndarray as array
 from torch import Tensor
 from torch.nn import Module
 
 
 @AGENTS.register_module()
 class OCPREINFORCE(BaseAgent):
+    INT = torch.int64
+    FLOAT = torch.float
+
     def __init__(
         self,
         policy_net_cfg: Dict,
@@ -71,77 +74,101 @@ class OCPREINFORCE(BaseAgent):
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.start_episode = checkpoint["episode"]
 
-    def take_action(self, observation: Tensor) -> int | Tensor:
+    def take_action(self, observation: array) -> Tuple[array, array]:
         if self.test_mode:
             return self.test_take_action(observation)
         else:
             return self.train_take_action(observation)
 
-    def train_take_action(self, observation: Tensor) -> int | np.ndarray:
-        action, params = self.policy_net(observation)
+    def train_take_action(self, observation: array) -> Tuple[array, array]:
+        observation = torch.tensor(observation, dtype=self.FLOAT, device=self.device)
+        with torch.no_grad():  # if grad, memory leaks
+            action, params = self.policy_net(observation.unsqueeze(0))
 
         action_distribution = torch.distributions.Categorical(probs=action)
-        chosen_action = action_distribution.sample()
+        chosen_action: array = action_distribution.sample().cpu().numpy().copy()
 
         # normalization on params: set mu to target interval
         # consider 3sigma as half of the target interval
         params[0] = (params[0] + 1) / 2  # (0, 1)
         params[1] = params[1].clamp(
-            min=torch.tensor([0], dtype=torch.float, device=self.device),
-            max=torch.tensor([1 / 3], dtype=torch.float, device=self.device),
+            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+            max=torch.tensor([1 / 3], dtype=self.FLOAT, device=self.device),
         )
         pos_dist = torch.distributions.Normal(loc=params[0], scale=params[1])
         params[2] = params[2] * torch.pi  # (-pi, pi)
         params[3] = params[3].clamp(
-            min=torch.tensor([0], dtype=torch.float, device=self.device),
-            max=torch.tensor([torch.pi / 3], dtype=torch.float, device=self.device),
+            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+            max=torch.tensor([torch.pi / 3], dtype=self.FLOAT, device=self.device),
         )
         pan_dist = torch.distributions.Normal(loc=params[2], scale=params[3])
         params[4] = params[4] * torch.pi / 2  # (-pi/2, pi/2)
         params[5] = params[5].clamp(
-            min=torch.tensor([0], dtype=torch.float, device=self.device),
-            max=torch.tensor([torch.pi / 6], dtype=torch.float, device=self.device),
+            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+            max=torch.tensor([torch.pi / 6], dtype=self.FLOAT, device=self.device),
         )
         tilt_dist = torch.distributions.Normal(loc=params[4], scale=params[5])
         params[6] = (params[6] + 1) / 2  # (0, 1)
         params[7] = params[7].clamp(
-            min=torch.tensor([0], dtype=torch.float, device=self.device),
-            max=torch.tensor([1 / 3], dtype=torch.float, device=self.device),
+            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+            max=torch.tensor([1 / 3], dtype=self.FLOAT, device=self.device),
         )
         cam_type_dist = torch.distributions.Normal(loc=params[6], scale=params[7])
 
-        chosen_params = torch.cat(
-            (  # .sample() returns 0 dimensional tensor (float number-like)
-                pos_dist.sample().unsqueeze(0),
-                pan_dist.sample().unsqueeze(0),
-                tilt_dist.sample().unsqueeze(0),
-                cam_type_dist.sample().unsqueeze(0),
+        chosen_params: array = (
+            torch.cat(
+                (  # .sample() returns 0 dimensional tensor (float number-like)
+                    pos_dist.sample().unsqueeze(0),
+                    pan_dist.sample().unsqueeze(0),
+                    tilt_dist.sample().unsqueeze(0),
+                    cam_type_dist.sample().unsqueeze(0),
+                )
             )
+            .cpu()
+            .numpy()
+            .copy()
         )  # [4]
 
         return chosen_action, chosen_params
 
-    def test_take_action(self, observation: Tensor) -> int:
-        action, params = self.policy_net(observation)
+    def test_take_action(self, observation: array) -> Tuple[array, array]:
+        observation: Tensor = torch.tensor(
+            observation, dtype=self.FLOAT, device=self.device
+        )
+        with torch.no_grad():
+            action, params = self.policy_net(observation.unsqueeze(0))
 
-        return action.argmax().item(), params[[0, 2, 4, 6]]
+        return (
+            action.argmax().cpu().numpy().copy(),
+            params[[0, 2, 4, 6]].cpu().numpy().copy(),
+        )
 
-    def update(self, markov_chain: Dict[str, Tensor | int | Tuple]) -> float | Tensor:
-        cur_observations = markov_chain["cur_observation"]
-        cur_action_with_params = markov_chain["cur_action"]
-        rewards = markov_chain["reward"]
+    def update(
+        self, markov_chain: Dict[str, List[array | float | Tuple[array, array]]]
+    ) -> float:
+        cur_observations: List[array] = markov_chain["cur_observation"]
+        cur_action_with_params: List[Tuple[array, array]] = markov_chain["cur_action"]
+        rewards: List[float] = markov_chain["reward"]
 
-        discounted_reward = 0
+        discounted_reward: float = 0.0
         self.optimizer.zero_grad()
         for step in reversed(range(len(cur_observations))):
-            cur_observation = cur_observations[step]
+            cur_observation: Tensor = torch.tensor(
+                cur_observations[step], dtype=self.FLOAT, device=self.device
+            )
             cur_action, cur_params = cur_action_with_params[step]
-            reward = rewards[step]
+            cur_action: Tensor = torch.tensor(
+                cur_action, dtype=self.INT, device=self.device
+            )
+            cur_params: Tensor = torch.tensor(
+                cur_params, dtype=self.FLOAT, device=self.device
+            )
+            reward: float = rewards[step]
 
             discounted_reward = self.gamma * discounted_reward + reward
             action_probs, predict_params = self.policy_net(cur_observation.unsqueeze(0))
 
-            loss = -discounted_reward * (
+            loss: Tensor = -discounted_reward * (
                 # action
                 torch.log(action_probs[cur_action])
                 # pos
@@ -169,7 +196,7 @@ class OCPREINFORCE(BaseAgent):
 
         self.optimizer.step()
 
-        return loss
+        return loss.item()
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(

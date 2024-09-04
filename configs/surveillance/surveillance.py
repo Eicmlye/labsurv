@@ -9,8 +9,8 @@ runner = dict(
     type="OCPEpisodeBasedRunner",
 )
 
-episodes = 2000
-steps = 10
+episodes = 10000
+steps = 50
 
 env = dict(
     type="BaseSurveillanceEnv",

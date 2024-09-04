@@ -1,9 +1,9 @@
-import torch
 import argparse
 import os
 import os.path as osp
 from copy import deepcopy
 
+import torch
 from labsurv.builders import RUNNERS
 from labsurv.runners import EpisodeBasedRunner, StepBasedRunner
 from mmcv import Config

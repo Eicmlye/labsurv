@@ -1,5 +1,6 @@
 import argparse
 
+import numpy as np
 import torch
 from configs.runtime import DEVICE
 from labsurv.physics import SurveillanceRoom
@@ -85,40 +86,40 @@ def main(size: str):
         print("Building occupancy blocks...")
         room.add_block(
             [3, 3, 3],
-            displacement=torch.tensor([3, 3, 3], device=DEVICE),
+            displacement=np.array([3, 3, 3]),
         )
 
         print("Building permission blocks...")
         room.add_block(
-            [1, 10, 8],
+            [1, 10, 6],
             point_type="install_permitted",
-            displacement=torch.tensor([0, 0, 2], device=DEVICE),
+            displacement=np.array([0, 0, 4]),
         )
         room.add_block(
-            [10, 1, 8],
+            [10, 1, 6],
             point_type="install_permitted",
-            displacement=torch.tensor([0, 0, 2], device=DEVICE),
+            displacement=np.array([0, 0, 4]),
         )
         # room.add_block(
         #     [10, 10, 1],
         #     point_type="install_permitted",
-        #     displacement=torch.tensor([0, 0, 0], device=DEVICE),
+        #     displacement=np.array([0, 0, 0]),
         # )
         room.add_block(
-            [1, 10, 8],
+            [1, 10, 6],
             point_type="install_permitted",
-            displacement=torch.tensor([9, 0, 2], device=DEVICE),
+            displacement=np.array([9, 0, 4]),
         )
         room.add_block(
-            [10, 1, 8],
+            [10, 1, 6],
             point_type="install_permitted",
-            displacement=torch.tensor([0, 9, 2], device=DEVICE),
+            displacement=np.array([0, 9, 4]),
         )
-        room.add_block(
-            [10, 10, 1],
-            point_type="install_permitted",
-            displacement=torch.tensor([0, 0, 9], device=DEVICE),
-        )
+        # room.add_block(
+        #     [10, 10, 1],
+        #     point_type="install_permitted",
+        #     displacement=np.array([0, 0, 9]),
+        # )
 
         print("Building monitored blocks...")
         resol_requirement = dict(
@@ -130,20 +131,20 @@ def main(size: str):
         room.add_block(
             [2, 6, 6],
             point_type="must_monitor",
-            displacement=torch.tensor([1, 2, 0], device=DEVICE),
+            displacement=np.array([1, 2, 0]),
             **resol_requirement,
         )
         room.add_block(
             [2, 6, 2],
             point_type="must_monitor",
-            displacement=torch.tensor([7, 1, 3], device=DEVICE),
+            displacement=np.array([7, 1, 3]),
             **resol_requirement,
         )
 
         # print("Adding cameras...")
         # room.add_cam(
-        #     torch.tensor([5, 10, 7], device=DEVICE),
-        #     torch.tensor([torch.pi / 2, 0], dtype=torch.float, device=DEVICE),
+        #     np.array([5, 10, 7]),
+        #     np.array([torch.pi / 2, 0], dtype=torch.float),
         #     "std_cam",
         # )
 
@@ -214,7 +215,7 @@ def parse_args():
     parser.add_argument("--demo", action="store_true", help="Build demo room.")
     parser.add_argument(  # --size
         "--size",
-        choices=["tiny", "standard", "large"],
+        choices=["tiny", "standard"],
         default="tiny",
         help="Size of the room.",
     )

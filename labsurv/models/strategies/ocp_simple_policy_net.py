@@ -32,7 +32,7 @@ class OCPSimplePolicyNet(Module):
         super().__init__()
         self.device = device
 
-        neck_layers = 1
+        neck_layers = 2
         self.neck = Sequential()
         for layer in range(neck_layers):
             cur_layer = Sequential(
@@ -67,7 +67,8 @@ class OCPSimplePolicyNet(Module):
                 )
             )
 
-            # NOTE(eric): using kaiming init is important. w/o that, the linear layer barely learns anything.
+            # NOTE(eric): using kaiming init is important. w/o that, the linear layer
+            # barely learns anything.
             torch.nn.init.kaiming_normal_(
                 cur_layer.conv.weight, mode="fan_out", nonlinearity="relu"
             )
@@ -160,10 +161,10 @@ class OCPSimplePolicyNet(Module):
 
         # del_cam and adjust_cam are only available when any cam is installed
         if torch.sign(observation[0, 7].sum()) == 0:
-            action[[0]] = F.softmax(action[[0]], dim=0)
+            action[[0, 3]] = F.softmax(action[[0, 3]], dim=0)
             action[[1, 2]] = 0
         else:
-            action = F.softmax(action, dim=0)  # (prob_act_1, prob_act_2, prob_act_3)
+            action = F.softmax(action, dim=0)
 
         params = torch.flatten(self.params_head(x))
         params = self.params_out(params)  # [mu, sigma] * 4
@@ -175,4 +176,4 @@ class OCPSimplePolicyNet(Module):
             torch.sigmoid(params[[0, 2, 4, 6]]) * 2 - 1
         )  # mu in (-1, 1)
 
-        return (action, params)
+        return action, params
