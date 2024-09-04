@@ -2,7 +2,7 @@ import os.path as osp
 from typing import Dict, List, Optional, Tuple
 
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS, RUNNERS
-from labsurv.models.agents import OCPREINFORCE
+from labsurv.models.agents import BaseAgent
 from labsurv.models.buffers import BaseReplayBuffer
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
@@ -18,7 +18,7 @@ class OCPEpisodeBasedRunner:
         self.logger: LoggerHook = HOOKS.build(cfg.logger_cfg)
 
         self.env: BaseSurveillanceEnv = ENVIRONMENTS.build(cfg.env)
-        self.agent: OCPREINFORCE = AGENTS.build(cfg.agent)
+        self.agent: BaseAgent = AGENTS.build(cfg.agent)
         self.test_mode: bool = self.agent.test_mode
         self.start_episode: int = 0
 
