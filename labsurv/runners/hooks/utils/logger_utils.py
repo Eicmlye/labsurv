@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from labsurv.utils import INDENT, WARN
+from labsurv.utils.string.pretty_str import color_str
 from torch import Tensor
 
 
@@ -90,27 +91,50 @@ def get_latest_avg_reward_str(
         if show_returns:
             return_str.append(f"\nlast {interval} returns: ")
             for key, val in return_dict.items():
-                return_str.append(f"\n\t{key:<12}: [")
+                return_str.append(f"\n\t{key:<15}: [")
+                highlight = None
                 if "cov" in key:
-                    return_str[-1] += f"{return_dict[key][-interval]:.2%}"
-                    for item in return_dict[key][-interval + 1 :]:
-                        return_str[-1] += f", {item:.2%}"
+                    highlight = max(val[-interval:])
+                    for index, item in enumerate(val[-interval:]):
+                        result = f"{item:>8.2%}"
+                        return_str[-1] += (
+                            color_str("red", [result]) if highlight == item else result
+                        ) + ", "
+                elif "count" in key:
+                    highlight = min(val[-interval:])
+                    for index, item in enumerate(val[-interval:]):
+                        result = f"{item:>8d}"
+                        return_str[-1] += (
+                            color_str("red", [result]) if highlight == item else result
+                        ) + ", "
                 else:
-                    return_str[-1] += f"{return_dict[key][-interval]:.4f}"
-                    for item in return_dict[key][-interval + 1 :]:
-                        return_str[-1] += f", {item:.4f}"
-                return_str[-1] += "]"
+                    if "loss" in key:
+                        highlight = min(val[-interval:])
+                    elif "reward" in key:
+                        highlight = max(val[-interval:])
+                    else:
+                        highlight = max(val[-interval:])
+
+                    for index, item in enumerate(val[-interval:]):
+                        result = f"{item:>8.4f}"
+                        return_str[-1] += (
+                            color_str("red", [result]) if highlight == item else result
+                        ) + ", "
+                return_str[-1] += "\b\b]"
 
     return return_str
 
 
 def get_log_str(key: str, val: Any) -> List[str]:
-    if isinstance(val, float):
+    if isinstance(val, float) and "lr" in key:
         val = f"{val:.4e}"
-    elif isinstance(val, Tensor) and val.ndim == 0:
+    elif isinstance(val, float) and "loss" in key:
         val = f"{val:.4f}"
-    elif isinstance(val, Tensor) and len(val.shape) == 1 and val.shape[0] == 1:
-        val = f"{val.item():.4f}"
+    elif isinstance(val, Tensor):
+        raise ValueError(
+            "Putting Tensor in List may result in untraced tensor memory. "
+            "Try to change the Tensor to float or np.ndarray."
+        )
 
     return [f"{key}: {val}"]
 

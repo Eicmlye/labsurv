@@ -1,13 +1,14 @@
 import os
 import os.path as osp
 from copy import deepcopy
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseEnv
 from labsurv.physics import SurveillanceRoom
 from labsurv.utils.string import to_filename
+from numpy import ndarray as array
 from torch import Tensor
 
 
@@ -63,15 +64,17 @@ class BaseSurveillanceEnv(BaseEnv):
 
         self.device = device
         self.save_path = save_path
+        self.action_count = 0
+        self.lazy_count = 0
         self.init_visibility(room_data_path)
 
         self.history_cost = torch.zeros_like(
-            self.surv_room.occupancy, dtype=self.INT, device=self.device
+            self._surv_room.occupancy, dtype=self.INT, device=self.device
         )
 
     def step(
-        self, observation: Tensor, action: int, params: Tensor
-    ) -> Tuple[Dict[str, Any], float]:
+        self, observation: array, action: array, params: array, total_steps: int
+    ) -> Tuple[Dict[str, float | array], float]:
         """
         ## Description:
 
@@ -86,17 +89,36 @@ class BaseSurveillanceEnv(BaseEnv):
             params (Tensor): [4], torch.float16,
             [pos_index_lambda, pan, tilt, cam_type_lambda]
         """
+        ADD = 0
+        DEL = 1
+        ADJUST = 2
+        STOP = 3
+        self.action_count += 1
 
-        direction = params[1:3].clamp(
-            torch.tensor(
-                [-torch.pi, -torch.pi / 2], dtype=self.FLOAT, device=self.device
-            ),
-            torch.tensor(
-                [torch.pi - 1e-5, torch.pi / 2], dtype=self.FLOAT, device=self.device
-            ),
+        observation: Tensor = torch.tensor(
+            observation, dtype=self.FLOAT, device=self.device
+        )
+        action: int = torch.tensor(action, dtype=self.FLOAT, device=self.device).item()
+        params: Tensor = torch.tensor(params, dtype=self.FLOAT, device=self.device)
+
+        direction: array = (
+            params[1:3]
+            .clamp(
+                torch.tensor(
+                    [-torch.pi, -torch.pi / 2], dtype=self.FLOAT, device=self.device
+                ),
+                torch.tensor(
+                    [torch.pi - 1e-5, torch.pi / 2],
+                    dtype=self.FLOAT,
+                    device=self.device,
+                ),
+            )
+            .cpu()
+            .numpy()
+            .copy()
         )
 
-        cam_type = (
+        cam_type: int = (
             params[3]
             .clamp(
                 torch.zeros([1], device=self.device),
@@ -107,23 +129,34 @@ class BaseSurveillanceEnv(BaseEnv):
             .item()
         )
 
-        total_target_point_num = self.info_room.must_monitor[:, :, :, 0].sum().item()
+        total_target_point_num: float = (
+            self.info_room.must_monitor[:, :, :, 0].sum().item()
+        )
         # pred_cam_count = self.info_room.cam_extrinsics[:, :, :, 0].sum().item()
-        pred_coverage = (
+        pred_coverage: float = (
             self.info_room.visible_points > 0
         ).sum().item() / total_target_point_num
 
-        if action == 0:  # add cam
+        pred_cam_count = (
+            self.info_room.cam_extrinsics[:, :, :, 0].sum().type(self.INT).item()
+        )
+        vis_mask = None
+        if action == ADD:  # add cam
             # choose from uninstalled permitted pos
-            candidates = (
-                torch.logical_xor(
-                    self.info_room.install_permitted,
-                    self.info_room.cam_extrinsics[:, :, :, 0],
+            candidates: array = (
+                (
+                    torch.logical_xor(
+                        self.info_room.install_permitted,
+                        self.info_room.cam_extrinsics[:, :, :, 0],
+                    )
+                    .nonzero()
+                    .type(self.INT)
                 )
-                .nonzero()
-                .type(self.INT)
+                .cpu()
+                .numpy()
+                .copy()
             )
-            pos_index = (
+            pos_index: int = (
                 (params[0] * (len(candidates) - 1))
                 .clamp(
                     torch.zeros([1], device=self.device),
@@ -133,23 +166,26 @@ class BaseSurveillanceEnv(BaseEnv):
                 .type(self.INT)
                 .item()
             )
-            pos = candidates[pos_index].type(self.INT)
+            pos: array = candidates[pos_index]
 
             print(
-                f"Current coverage {pred_coverage:.2%}. \nAdd camera at "
-                f"[{pos[0].item()}, {pos[1].item()}, {pos[2].item()}], "
-                f"with pan={direction[0].item():.4f}, tilt={direction[1].item():.4f}, "
+                f"Current coverage {pred_coverage:.2%} with {pred_cam_count:d} cameras. \n"
+                f"Add camera at [{pos[0]}, {pos[1]}, {pos[2]}], "
+                f"with pan={direction[0]:.4f}, tilt={direction[1]:.4f}, "
                 f"type {cam_type} cam..."
             )
-            self.info_room.add_cam(pos, direction, cam_type)
+            vis_mask = self.info_room.add_cam(pos, direction, cam_type)
             print("\r\033[1A\033[K\033[1A\033[K", end="")
             self.history_cost[pos[0], pos[1], pos[2]] += 1
-        elif action == 1:  # del cam
+        elif action == DEL:  # del cam
             # choose from installed pos
-            candidates = (
-                self.info_room.cam_extrinsics[:, :, :, 0].nonzero().type(self.INT)
+            candidates: array = (
+                (self.info_room.cam_extrinsics[:, :, :, 0].nonzero().type(self.INT))
+                .cpu()
+                .numpy()
+                .copy()
             )
-            pos_index = (
+            pos_index: int = (
                 (params[0] * (len(candidates) - 1))
                 .clamp(
                     torch.zeros([1], device=self.device),
@@ -159,21 +195,24 @@ class BaseSurveillanceEnv(BaseEnv):
                 .type(self.INT)
                 .item()
             )
-            pos = candidates[pos_index].type(self.INT)
+            pos: array = candidates[pos_index]
 
             print(
-                f"Current coverage {pred_coverage:.2%}. \nDel camera at "
-                f"[{pos[0].item()}, {pos[1].item()}, {pos[2].item()}]..."
+                f"Current coverage {pred_coverage:.2%} with {pred_cam_count:d} cameras. \n"
+                f"Del camera at [{pos[0]}, {pos[1]}, {pos[2]}]..."
             )
-            self.info_room.del_cam(pos)
+            vis_mask = self.info_room.del_cam(pos)
             print("\r\033[1A\033[K\033[1A\033[K", end="")
             self.history_cost[pos[0], pos[1], pos[2]] += 1
-        elif action == 2:  # adjust cam
+        elif action == ADJUST:  # adjust cam
             # choose from installed pos
-            candidates = (
-                self.info_room.cam_extrinsics[:, :, :, 0].nonzero().type(self.INT)
+            candidates: array = (
+                (self.info_room.cam_extrinsics[:, :, :, 0].nonzero().type(self.INT))
+                .cpu()
+                .numpy()
+                .copy()
             )
-            pos_index = (
+            pos_index: int = (
                 (params[0] * (len(candidates) - 1))
                 .clamp(
                     torch.zeros([1], device=self.device),
@@ -183,55 +222,73 @@ class BaseSurveillanceEnv(BaseEnv):
                 .type(self.INT)
                 .item()
             )
-            pos = candidates[pos_index].type(self.INT)
+            pos: array = candidates[pos_index]
 
             print(
-                f"Current coverage {pred_coverage:.2%}. \nMov camera from "
-                f"[{pos[0].item()}, {pos[1].item()}, {pos[2].item()}], "
-                f"to pan={direction[0].item():.4f}, tilt={direction[1].item():.4f}, "
+                f"Current coverage {pred_coverage:.2%} with {pred_cam_count:d} cameras. \n"
+                f"Mov camera at [{pos[0]}, {pos[1]}, {pos[2]}], "
+                f"to pan={direction[0]:.4f}, tilt={direction[1]:.4f}, "
                 f"type {cam_type} cam..."
             )
-            self.info_room.adjust_cam(pos, direction, cam_type)
+            vis_mask = self.info_room.adjust_cam(pos, direction, cam_type)
             print("\r\033[1A\033[K\033[1A\033[K", end="")
             self.history_cost[pos[0], pos[1], pos[2]] += 3
+        elif action == STOP:  # stop
+            print(
+                f"Current coverage {pred_coverage:.2%} with {pred_cam_count:d} cameras. \n"
+                "Stop modifying."
+            )
+            print("\r\033[1A\033[K\033[1A\033[K", end="")
         else:
             raise ValueError(f"Unknown action {action}.")
 
-        # cur_cam_count = self.info_room.cam_extrinsics[:, :, :, 0].sum().item()
-        cur_coverage = (
+        cur_coverage: float = (
             self.info_room.visible_points > 0
         ).sum().item() / total_target_point_num
 
-        lambdas = [0.5, 0.25, 0.5]
-        reward = (
-            # > part 1: 100% at most
-            lambdas[0]
-            # rewards positive coverage changes
-            * (cur_coverage - pred_coverage)
-            # punish frequently adjustment on the same position
-            / self.history_cost[pos[0], pos[1], pos[2]].item()
-            # > part 2: -100% at most
-            # basically the normalization terms
-            - lambdas[1] * (
-                torch.abs(params[0] - 0.5) * 2
-                + torch.abs(params[1]) / torch.pi
-                + torch.abs(params[2]) / torch.pi * 2
-                + torch.abs(params[3] - 0.5) * 2
-            ).item() / 4
-            # > part 3: 100% at most
-            # the total coverage
-            + lambdas[2] * cur_coverage
+        if abs(cur_coverage - pred_coverage) <= 0.01 or action == ADJUST:
+            self.lazy_count += 1
+        else:
+            self.lazy_count = 0
+
+        cam_count = (
+            self.info_room.cam_extrinsics[:, :, :, 0].sum().type(self.INT).item()
         )
+
+        lambdas = [1, 1, 1]
+        total_lambda = sum(lambdas)
+        for index in range(len(lambdas)):
+            lambdas[index] /= total_lambda
+
+        reward = 0
+        camera_threshold = 5
+        if action != STOP:
+            reward += (
+                # camera reward
+                vis_mask.sum() / total_target_point_num
+                # coverage reward, the difference that vis_mask brings
+                * (cur_coverage - pred_coverage)
+            )
+            
+        if action == STOP or self.action_count == total_steps:
+            reward += (
+                # mission completion
+                (cur_coverage - 1)
+                # steps taken
+                * self.action_count / total_steps
+                # camera used
+                * (1 if cam_count < camera_threshold else cam_count) / total_steps
+            )
 
         transition = dict(
             next_observation=self.info_room.get_info(),
             reward=reward,
-            terminated=False,
+            terminated=(action == STOP),
         )
 
-        return transition, cur_coverage
+        return transition, cur_coverage, cam_count
 
-    def reset(self, seed: Optional[int] = None) -> Tensor:
+    def reset(self, seed: Optional[int] = None) -> array:
         """
         ## Description:
 
@@ -246,20 +303,28 @@ class BaseSurveillanceEnv(BaseEnv):
         super().reset(seed=seed)
 
         # return init observation according to observation distribution
-        self.info_room = deepcopy(self.surv_room)
+        del self.info_room
+        self.info_room = deepcopy(self._surv_room)
+
+        self.action_count = 0
+        self.lazy_count = 0
+        self.history_cost = torch.zeros_like(
+            self._surv_room.occupancy, dtype=self.INT, device=self.device
+        )
 
         return self.info_room.get_info()
 
     def init_visibility(self, room_data_path: str):
         """
-        Load the surveillance room data. Caution that self.surv_room should never be
-        modified. Any attempt to use self.surv_room must get a copy of the object.
+        Load the surveillance room data. Caution that self._surv_room should never be
+        modified. Any attempt to use self._surv_room must get a copy of the object.
         """
-        self.surv_room = SurveillanceRoom(device=self.device, load_from=room_data_path)
+        self._surv_room = SurveillanceRoom(device=self.device, load_from=room_data_path)
+        self.info_room = None
 
-    def render(self, observation: Tensor, step: int):
+    def render(self, observation: array, step: int):
         os.makedirs(self.save_path, exist_ok=True)
-        cur_step_save_path = osp.join(self.save_path, f"step_{step}")
+        cur_step_save_path = osp.join(self.save_path, f"step_{step + 1}")
 
         self.info_room.save(to_filename(cur_step_save_path, "pkl", "SurveillanceRoom"))
         self.info_room.visualize(
