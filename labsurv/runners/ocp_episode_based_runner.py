@@ -26,6 +26,8 @@ class OCPEpisodeBasedRunner:
         self.steps = cfg.steps
 
         if not self.test_mode:
+            self.eval_interval = cfg.eval_interval
+
             self.replay_buffer = None
             if cfg.use_replay_buffer:
                 self.replay_buffer: Optional[BaseReplayBuffer] = REPLAY_BUFFERS.build(
@@ -130,7 +132,7 @@ class OCPEpisodeBasedRunner:
 
             cur_action, params = self.agent.take_action(cur_observation)
 
-            transition, _, _ = self.env.step(cur_observation, cur_action, params)
+            transition, _, _ = self.env.step(cur_observation, cur_action, params, self.steps)
             transition["cur_observation"] = cur_observation
             transition["cur_action"] = (cur_action, params)
 

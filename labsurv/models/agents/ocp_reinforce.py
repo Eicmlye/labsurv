@@ -85,49 +85,53 @@ class OCPREINFORCE(BaseAgent):
         with torch.no_grad():  # if grad, memory leaks
             action, params = self.policy_net(observation.unsqueeze(0))
 
-        action_distribution = torch.distributions.Categorical(probs=action)
-        chosen_action: array = action_distribution.sample().cpu().numpy().copy()
+        if torch.rand([1]).item() < 0.5:
+            action_distribution = torch.distributions.Categorical(probs=action)
+            chosen_action: array = action_distribution.sample().cpu().numpy().copy()
 
-        # normalization on params: set mu to target interval
-        # consider 3sigma as half of the target interval
-        params[0] = (params[0] + 1) / 2  # (0, 1)
-        params[1] = params[1].clamp(
-            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
-            max=torch.tensor([1 / 3], dtype=self.FLOAT, device=self.device),
-        )
-        pos_dist = torch.distributions.Normal(loc=params[0], scale=params[1])
-        params[2] = params[2] * torch.pi  # (-pi, pi)
-        params[3] = params[3].clamp(
-            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
-            max=torch.tensor([torch.pi / 3], dtype=self.FLOAT, device=self.device),
-        )
-        pan_dist = torch.distributions.Normal(loc=params[2], scale=params[3])
-        params[4] = params[4] * torch.pi / 2  # (-pi/2, pi/2)
-        params[5] = params[5].clamp(
-            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
-            max=torch.tensor([torch.pi / 6], dtype=self.FLOAT, device=self.device),
-        )
-        tilt_dist = torch.distributions.Normal(loc=params[4], scale=params[5])
-        params[6] = (params[6] + 1) / 2  # (0, 1)
-        params[7] = params[7].clamp(
-            min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
-            max=torch.tensor([1 / 3], dtype=self.FLOAT, device=self.device),
-        )
-        cam_type_dist = torch.distributions.Normal(loc=params[6], scale=params[7])
-
-        chosen_params: array = (
-            torch.cat(
-                (  # .sample() returns 0 dimensional tensor (float number-like)
-                    pos_dist.sample().unsqueeze(0),
-                    pan_dist.sample().unsqueeze(0),
-                    tilt_dist.sample().unsqueeze(0),
-                    cam_type_dist.sample().unsqueeze(0),
-                )
+            # normalization on params: set mu to target interval
+            # consider 3sigma as half of the target interval
+            params[0] = (params[0] + 1) / 2  # (0, 1)
+            params[1] = params[1].clamp(
+                min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+                max=torch.tensor([1 / 3], dtype=self.FLOAT, device=self.device),
             )
-            .cpu()
-            .numpy()
-            .copy()
-        )  # [4]
+            pos_dist = torch.distributions.Normal(loc=params[0], scale=params[1])
+            params[2] = params[2] * torch.pi  # (-pi, pi)
+            params[3] = params[3].clamp(
+                min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+                max=torch.tensor([torch.pi / 3], dtype=self.FLOAT, device=self.device),
+            )
+            pan_dist = torch.distributions.Normal(loc=params[2], scale=params[3])
+            params[4] = params[4] * torch.pi / 2  # (-pi/2, pi/2)
+            params[5] = params[5].clamp(
+                min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+                max=torch.tensor([torch.pi / 6], dtype=self.FLOAT, device=self.device),
+            )
+            tilt_dist = torch.distributions.Normal(loc=params[4], scale=params[5])
+            params[6] = (params[6] + 1) / 2  # (0, 1)
+            params[7] = params[7].clamp(
+                min=torch.tensor([0], dtype=self.FLOAT, device=self.device),
+                max=torch.tensor([1 / 3], dtype=self.FLOAT, device=self.device),
+            )
+            cam_type_dist = torch.distributions.Normal(loc=params[6], scale=params[7])
+
+            chosen_params: array = (
+                torch.cat(
+                    (  # .sample() returns 0 dimensional tensor (float number-like)
+                        pos_dist.sample().unsqueeze(0),
+                        pan_dist.sample().unsqueeze(0),
+                        tilt_dist.sample().unsqueeze(0),
+                        cam_type_dist.sample().unsqueeze(0),
+                    )
+                )
+                .cpu()
+                .numpy()
+                .copy()
+            )  # [4]
+        else:
+            chosen_action = action.argmax().cpu().numpy().copy()
+            chosen_params = params[[0, 2, 4, 6]].cpu().numpy().copy()
 
         return chosen_action, chosen_params
 

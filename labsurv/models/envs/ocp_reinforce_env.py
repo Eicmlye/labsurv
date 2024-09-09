@@ -28,10 +28,12 @@ class OCPREINFORCEEnv(BaseSurveillanceEnv):
             The action is a `ndarray` with shape `(1,)` which can take values `{0, 1}`
             indicating the (un)installation of a camera.
 
-            | Num | Action     |
-            | --- | -----------|
-            |  0  | add_cam    |
-            |  1  | del_cam    |
+            | Num | Action     | Parameters               |
+            | --- | ---------- | ------------------------ |
+            |  0  | add_cam    | pos, direction, cam_type |
+            |  1  | del_cam    | pos                      |
+            |  2  | adjust_cam | pos, direction, cam_type |
+            |  3  | stop       | None                     |
 
         ## Observation space:
 
@@ -67,11 +69,11 @@ class OCPREINFORCEEnv(BaseSurveillanceEnv):
 
         ## Arguments:
 
-            observation (Tensor): [12, W, D, H], torch.float16, the info tensor.
+            observation (np.ndarray): [12, W, D, H], np.float32, the info array.
 
-            action (int): the action index.
+            action (np.ndarray): the action index.
 
-            params (Tensor): [4], torch.float16,
+            params (np.ndarray): [4], np.float32,
             [pos_index_lambda, pan, tilt, cam_type_lambda]
         """
         ADD = 0
@@ -83,7 +85,7 @@ class OCPREINFORCEEnv(BaseSurveillanceEnv):
         observation: Tensor = torch.tensor(
             observation, dtype=self.FLOAT, device=self.device
         )
-        action: int = torch.tensor(action, dtype=self.FLOAT, device=self.device).item()
+        action: int = torch.tensor(action, dtype=self.INT, device=self.device).item()
         params: Tensor = torch.tensor(params, dtype=self.FLOAT, device=self.device)
 
         direction: array = (
@@ -217,7 +219,7 @@ class OCPREINFORCEEnv(BaseSurveillanceEnv):
             )
             vis_mask = self.info_room.adjust_cam(pos, direction, cam_type)
             print("\r\033[1A\033[K\033[1A\033[K", end="")
-            self.history_cost[pos[0], pos[1], pos[2]] += 3
+            self.history_cost[pos[0], pos[1], pos[2]] += 1
         elif action == STOP:  # stop
             print(
                 f"Current coverage {pred_coverage:.2%} with {pred_cam_count:d} cameras. \n"
@@ -246,23 +248,43 @@ class OCPREINFORCEEnv(BaseSurveillanceEnv):
             lambdas[index] /= total_lambda
 
         reward = 0
-        camera_threshold = 5
         if action != STOP:
+            max_modify_num = 5
+            max_cam_num = 5
             reward += (
                 # camera reward
-                vis_mask.sum() / total_target_point_num
+                vis_mask.sum()
+                / total_target_point_num
                 # coverage reward, the difference that vis_mask brings
                 * (cur_coverage - pred_coverage)
+                # punish frequently modifying the same position
+                # clear reward if modify too many times
+                * (
+                    1
+                    - min(max_modify_num, self.history_cost[pos[0], pos[1], pos[2]])
+                    / max_modify_num
+                )
+                # camera used
+                * (cam_count <= max_cam_num)
             )
-            
+
         if action == STOP or self.action_count == total_steps:
+            camera_threshold = [3, 5]
             reward += (
                 # mission completion
                 (cur_coverage - 1)
                 # steps taken
-                * self.action_count / total_steps
+                * (
+                    abs(self.action_count - camera_threshold[0])
+                    + abs(self.action_count - camera_threshold[1])
+                )
+                / total_steps
                 # camera used
-                * (1 if cam_count < camera_threshold else cam_count) / total_steps
+                * (
+                    abs(cam_count - camera_threshold[0])
+                    + abs(cam_count - camera_threshold[1])
+                )
+                / total_steps
             )
 
         transition = dict(

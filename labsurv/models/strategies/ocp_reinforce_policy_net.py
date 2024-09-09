@@ -161,7 +161,10 @@ class OCPREINFORCEPolicyNet(Module):
 
         # del_cam and adjust_cam are only available when any cam is installed
         if torch.sign(observation[0, 7].sum()) == 0:
-            action[[0, 3]] = F.softmax(action[[0, 3]], dim=0)
+            if action.numel() > 3:
+                action[[0, 3]] = F.softmax(action[[0, 3]], dim=0)
+            else:
+                action[[0]] = F.softmax(action[[0]], dim=0)
             action[[1, 2]] = 0
         else:
             action = F.softmax(action, dim=0)
