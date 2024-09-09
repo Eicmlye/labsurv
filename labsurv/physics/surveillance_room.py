@@ -25,18 +25,26 @@ class SurveillanceRoom:
     """
     ## Description:
 
-        The `SurveillanceRoom` class is responsible for the geometric data and
-        camera settings of the room interior. It is not necessary to be a SINGLE
-        room. One may make it a large region of interest and add blocks to separate
-        different rooms.
+        The `SurveillanceRoom` class stores the geometric data and camera settings of
+        the room interior. It is not necessary to be a SINGLE room. One may make it a
+        large region of interest and add blocks to separate different rooms.
 
     ## Attributes:
 
         INT: synonyms for torch.int64.
 
-        FLOAT: synonyms for torch.float16.
+        FLOAT: synonyms for torch.float.
 
-        modified_camera (bool): whether camera operations have been made.
+        AINT: synonyms for np.int64.
+
+        AFLOAT: synonyms for np.float32.
+
+        cam_modify_num (int): number of camera operations have been made.
+
+        device (torch.cuda_device): the device all the tensors are stored.
+
+        cfg_path (Optional[str]): the configuration file path of the clip size,
+        focal length and other parameters of the cameras and the room.
 
         shape (List[int]): [3], the shape of the room.
 
@@ -45,13 +53,13 @@ class SurveillanceRoom:
         install_permitted (Tensor): [W, D, H], torch.int64, the boolean mask of the
         installation permission.
 
-        must_monitor (Tensor): [W, D, H, 5], torch.float16,
+        must_monitor (Tensor): [W, D, H, 5], torch.float,
         [need_monitor, h_res_req_min, h_res_req_max, v_res_req_min, v_res_req_max].
         [:,:,:, 0] is a mask indicating if the position should be monitored,
         [:,:,:, 1:] represent the horizontal/vertical resolution requirements for
         current position.
 
-        cam_extrinsics (Tensor): [W, D, H, 4], torch.float16,
+        cam_extrinsics (Tensor): [W, D, H, 4], torch.float,
         [is_installed, pan, tilt, cam_type].
         [:,:,:, 0] is a mask indicating if any camera is installed at this position,
         [:,:,:, 1:] are the orientation and cam type of the cameras installed.
@@ -271,7 +279,7 @@ class SurveillanceRoom:
 
             point_type (str): the type of the point, chosen from cfg file.
 
-            displacement (Optional[Tensor]): [3], torch.int64, the displacement of the
+            displacement (Optional[np.ndarray]): [3], np.int64, the displacement of the
             block, consider the block is geenrated from the origin. If None, set
             default to tensor([0, 0, 0]).
 
@@ -347,12 +355,16 @@ class SurveillanceRoom:
         """
         ## Arguments:
 
-            pos (Tensor): [3], torch.int64, the position of the camera.
+            pos (np.ndarray): [3], np.int64, the position of the camera.
 
-            direction (Tensor): [2], torch.float16, the `pan` and `tilt` angle of the
+            direction (np.ndarray): [2], np.float32, the `pan` and `tilt` angle of the
             camera. `pan` in [-pi, pi), `tilt` in [-pi/2, pi/2].
 
             cam_type (str | int): the type (index) of camera.
+
+        ## Returns:
+
+            vis_mask (np.ndarray): the visibility mask of the added camera.
         """
         self.cam_modify_num += 1
 
@@ -414,7 +426,11 @@ class SurveillanceRoom:
         """
         ## Arguments:
 
-            pos (Tensor): [3], torch.int64, the position of the camera.
+            pos (np.ndarray): [3], np.int64, the position of the camera.
+
+        ## Returns:
+
+            vis_mask (np.ndarray): the visibility mask of the deleted camera.
         """
         self.cam_modify_num += 1
 
@@ -452,13 +468,18 @@ class SurveillanceRoom:
         """
         ## Arguments:
 
-            pos (Tensor): [3], torch.int64, the position of the camera.
+            pos (np.ndarray): [3], np.int64, the position of the camera.
 
-            direction (Tensor): [2], torch.float16, the `pan` and `tilt` angle of the
-            camera. `pan` in [-pi, pi), `tilt` in [-pi/2, pi/2].
+            direction (np.ndarray): [2], np.float32, the `pan` and `tilt` angle
+            of the camera. `pan` in [-pi, pi), `tilt` in [-pi/2, pi/2].
 
             cam_type (str | int | None): the type (index) of camera. If is None,
             `cam_type` will not change.
+
+        ## Returns:
+
+            vis_mask (np.ndarray): the visibility difference mask of the modified
+            camera.
         """
         self.cam_modify_num += 1
 
@@ -668,11 +689,11 @@ class SurveillanceRoom:
         """
         ## Description:
 
-            Merge all the tensor attributes to a single tensor.
+            Merge all the tensor attributes to a single array.
 
         ## Returns:
 
-            reuslt (Tensor): [12, W, D, H], torch.float16.
+            result (np.ndarray): [12, W, D, H], np.float32.
         """
 
         # .type method always return a new tensor
