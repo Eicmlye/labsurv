@@ -135,7 +135,7 @@ class OCPDDPGValueNet(Module):
         x: Tensor = observation.clone().detach()
         x[:, [8, 9, 10]] *= x[:, [7]]
 
-        x = self.neck(observation)
+        x = self.neck(x)
         x = self.adaptive_pooling(x)
         x = torch.cat((x.flatten(start_dim=1), action_with_params), dim=1)
 

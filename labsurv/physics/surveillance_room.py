@@ -501,7 +501,7 @@ class SurveillanceRoom:
         pred_extrinsics = self.cam_extrinsics[pos[0], pos[1], pos[2]]
         pred_cam_type = pred_extrinsics[-1].type(self.INT).item()
 
-        if isinstance(cam_type, int):
+        if isinstance(cam_type, (int, np.int64)):
             if cam_type >= len(self._CAM_TYPES):
                 raise ValueError(
                     f"SurveillanceRoom supports {len(self._CAM_TYPES)} "

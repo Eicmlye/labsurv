@@ -2,6 +2,7 @@ from typing import List, Optional
 
 import numpy as np
 from labsurv.builders import EXPLORERS
+from numpy import ndarray as array
 
 from .base_explorer import BaseExplorer
 
@@ -24,7 +25,7 @@ class BaseEpsilonGreedyExplorer(BaseExplorer):
 
         self.samples = samples if isinstance(samples, int) else np.array(samples)
 
-    def decide(self):
+    def decide(self, observation: array):
         return self._random.uniform(0, 1) < self.epsilon
 
     def act(self):
