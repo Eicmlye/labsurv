@@ -36,9 +36,10 @@ def main():
 
     # NOTE(eric): mmcv.Config dump() method cannot treat DEVICE="cuda:0" correctly as a
     # string, instead, the item will be written as DEVICE=cuda:0, which raises
-    # yapf_third_party._ylib2to3.pgen2.parse.ParseError: bad input: type=11, value=':', context=('', (1, 11))
-    # when parsing the config file text. Therefore, here we hack the item and after dumping
-    # the item is recovered.
+    # [yapf_third_party._ylib2to3.pgen2.parse.ParseError: bad input: type=11,
+    # value=':', context=('', (1, 11))]
+    # when parsing the config file text. Therefore, here we hack the item and after
+    # dumping the item is recovered.
 
     cfg.dump(save_cfg_name)
 

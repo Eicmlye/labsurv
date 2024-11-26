@@ -8,7 +8,7 @@ work_dir = f"./output/ocp/{agent_type.lower()}/trail"
 exp_name = get_time_stamp()
 
 episodes = 10000
-steps = 10
+steps = 30
 
 env = dict(
     type=None,

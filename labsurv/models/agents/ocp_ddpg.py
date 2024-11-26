@@ -100,7 +100,7 @@ class OCPDDPG(BaseAgent):
         self.critic_opt.load_state_dict(checkpoint["critic"]["optimizer_state_dict"])
         self.start_episode = checkpoint["episode"]
 
-    def take_action(self, observation: array) -> array:
+    def take_action(self, observation: array, all_explore: bool = False) -> array:
         """
         ## Arguments:
 
@@ -114,12 +114,14 @@ class OCPDDPG(BaseAgent):
         if self.test_mode:
             return self.test_take_action(observation)
         else:
-            if self.explorer.decide():
+            if all_explore or self.explorer.decide(observation):
                 # [7], when take action, batch is always 1
                 return (
                     _pos_index2coord(
                         torch.tensor(observation[0], device=self.device),
-                        torch.tensor(self.explorer.act(), device=self.device),
+                        torch.tensor(
+                            self.explorer.act(observation), device=self.device
+                        ),
                     )
                     .squeeze(0)
                     .cpu()
@@ -197,7 +199,9 @@ class OCPDDPG(BaseAgent):
         # critic weights update
         target_q = self.critic_target(
             next_observations, self.actor_target(next_observations)
-        ).squeeze(1)  # [B]
+        ).squeeze(
+            1
+        )  # [B]
         discounted_target_q = rewards + self.gamma * target_q * (1 - terminated)
         critic_loss = torch.mean(
             F.mse_loss(
