@@ -217,8 +217,8 @@ class OCPDDPGEnv(BaseSurveillanceEnv):
                     / total_steps
                 )
         else:
-            print("\nILLEGAL action operated.")
-            print("\r\033[1A\033[K\033[1A\033[K", end="")
+            print("ILLEGAL action operated.")
+            # import pdb; pdb.set_trace()
             reward -= 0.1
 
         transition = dict(

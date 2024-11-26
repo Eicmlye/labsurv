@@ -1,9 +1,9 @@
 import os.path as osp
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS, RUNNERS
 from labsurv.models.agents import BaseAgent
-from labsurv.models.buffers import BaseReplayBuffer
+from labsurv.models.buffers import BaseReplayBuffer, OCPPriorityReplayBuffer
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
 from mmcv import Config
@@ -55,7 +55,9 @@ class OCPStepBasedRunner:
                     if terminated or self.replay_buffer.is_active():
                         break
 
-                    cur_action_with_params = self.agent.take_action(cur_observation)
+                    cur_action_with_params = self.agent.take_action(
+                        cur_observation, all_explore=True
+                    )
 
                     transition, _, _ = self.env.step(
                         cur_observation, cur_action_with_params, self.steps
@@ -97,8 +99,12 @@ class OCPStepBasedRunner:
             for step in range(self.steps):
                 cur_action_with_params = self.agent.take_action(cur_observation)
 
-                transition, _, _ = self.env.step(
+                transition, cur_coverage, cam_count = self.env.step(
                     cur_observation, cur_action_with_params, self.steps
+                )
+                print(
+                    f"{episode + 1} / {step + 1}: {cur_coverage * 100:.2f}% "
+                    f"with {cam_count} cams & reward {transition["reward"]:.4f}"
                 )
                 transition["cur_observation"] = cur_observation
                 transition["cur_action"] = cur_action_with_params
@@ -110,10 +116,20 @@ class OCPStepBasedRunner:
                     self.replay_buffer.add(transition)
 
                 cur_observation = transition["next_observation"]
+                # add intrinsic reward
+                transition["reward"] += self.agent.explorer.reward
+
                 episode_return["reward"] += transition["reward"]
 
                 if self.replay_buffer is not None:
                     if self.replay_buffer.is_active():
+                        if isinstance(self.replay_buffer, OCPPriorityReplayBuffer):
+                            self.replay_buffer.update(
+                                self.agent.actor_target,
+                                self.agent.critic_target,
+                                self.agent.gamma,
+                            )
+
                         samples = self.replay_buffer.sample()
                         (
                             episode_return["critic_loss"],
