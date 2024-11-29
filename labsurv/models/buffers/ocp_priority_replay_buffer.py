@@ -15,8 +15,11 @@ class SumTree:
     Data structure for O(log n) priority experience replay.
     """
 
-    def __init__(self, capacity: int = 1, seed: int | None = None):
+    def __init__(
+        self, device: torch.cuda.device, capacity: int = 1, seed: int | None = None
+    ):
         assert capacity > 0
+        self.device = device
 
         self.capacity: int = capacity
         self.tree: List[float] = [0] * (2 * capacity)  # start index from 1
@@ -27,7 +30,7 @@ class SumTree:
 
     def __len__(self):
         length = 0
-        for index in range(self.capacity):
+        for index in range(1, self.capacity + 1):
             if self.data[index] is not None:
                 length += 1
 
@@ -42,7 +45,7 @@ class SumTree:
         self._update(index, new_val)
         self._write += 1
 
-        if self._write > self.capacity:
+        if self._write >= self.capacity:
             self._write = 0
 
     def _update(self, index: int, new_val: float):
@@ -89,28 +92,49 @@ class SumTree:
         Update the priority of all the nodes.
         """
         cache_td_error = []
-        for data_index in range(self.capacity):
+        for data_index in range(1, self.capacity + 1):
             if self.data[data_index] is None:
                 break
 
-            cur_observation = self.data[data_index]["cur_observation"]
-            cur_action = self.data[data_index]["cur_action"]
-            next_observation = self.data[data_index]["next_observation"]
-            reward = self.data[data_index]["reward"]
-            terminated = self.data[data_index]["terminated"]
-
             with torch.no_grad():
+                cur_observation = torch.tensor(
+                    self.data[data_index]["cur_observation"],
+                    dtype=torch.float32,
+                    device=self.device,
+                ).unsqueeze(0)
+                cur_action = torch.tensor(
+                    self.data[data_index]["cur_action"],
+                    dtype=torch.float32,
+                    device=self.device,
+                ).unsqueeze(0)
+                next_observation = torch.tensor(
+                    self.data[data_index]["next_observation"],
+                    dtype=torch.float32,
+                    device=self.device,
+                ).unsqueeze(0)
+                reward = torch.tensor(
+                    self.data[data_index]["reward"],
+                    dtype=torch.float32,
+                    device=self.device,
+                ).unsqueeze(0)
+                terminated = torch.tensor(
+                    self.data[data_index]["terminated"],
+                    dtype=torch.float32,
+                    device=self.device,
+                ).unsqueeze(0)
+
                 target_q = critic(next_observation, actor(next_observation))
                 discounted_target_q = reward + gamma * target_q * (1 - terminated)
                 td_error = discounted_target_q - critic(cur_observation, cur_action)
-            cache_td_error.append(td_error)
+            cache_td_error.append(td_error.item())
 
         cache_prob = torch.sigmoid(torch.tensor(cache_td_error, dtype=torch.float32))
 
-        for data_index in range(len(cache_td_error)):
-            index = data_index + self.capacity
+        for error_index in range(len(cache_td_error)):
+            data_index = error_index + 1
+            index = error_index + self.capacity
 
-            self._update(index, cache_prob[data_index].item())
+            self._update(index, cache_prob[error_index].item())
 
     def sample(self, batch_size: int) -> Dict[str, List[bool | float | array]]:
         """
@@ -166,7 +190,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         self.device = device
 
         if load_from is None:
-            self._buffer = SumTree(capacity)
+            self._buffer = SumTree(device, capacity)
         else:
             self.load(load_from)
 

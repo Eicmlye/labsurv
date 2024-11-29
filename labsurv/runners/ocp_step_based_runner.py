@@ -67,7 +67,10 @@ class OCPStepBasedRunner:
 
                     terminated = transition["terminated"]
 
-                    if self.replay_buffer is not None:
+                    if (
+                        self.replay_buffer is not None
+                        and not self.replay_buffer.is_active()
+                    ):
                         self.replay_buffer.add(transition)
                         prog_bar.update()
 

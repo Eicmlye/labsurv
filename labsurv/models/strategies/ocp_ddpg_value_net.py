@@ -5,7 +5,6 @@ from labsurv.builders import STRATEGIES
 from torch import Tensor
 from torch.nn import (
     AdaptiveMaxPool3d,
-    BatchNorm1d,
     BatchNorm3d,
     Conv3d,
     Linear,
@@ -72,48 +71,57 @@ class OCPDDPGValueNet(Module):
             (adaptive_pooling_dim, adaptive_pooling_dim, adaptive_pooling_dim)
         )
 
-        self.linear = Sequential()
-        for layer in range(linear_layers):
-            cur_layer = Sequential(
-                OrderedDict(
-                    [
-                        (  # linear
-                            "linear",
-                            Linear(
-                                in_features=(
-                                    neck_hidden_dim
-                                    // 2 ** (neck_layers - 1)
-                                    * adaptive_pooling_dim**3
-                                    + 7
-                                    if layer == 0
-                                    else hidden_dim // 2 ** (layer - 1)
-                                ),
-                                out_features=(hidden_dim // 2**layer),
-                                dtype=self.FLOAT,
-                                device=self.device,
-                            ),
-                        ),
-                        ("bn", BatchNorm1d(hidden_dim // 2**layer)),
-                        ("relu", ReLU(inplace=True)),
-                    ]
-                )
-            )
-
-            # NOTE(eric): using kaiming init is necessary. w/o that, the linear layer
-            # barely learns anything.
-            torch.nn.init.kaiming_normal_(
-                cur_layer.linear.weight, mode="fan_out", nonlinearity="relu"
-            )
-            torch.nn.init.constant_(cur_layer.linear.bias, 0)
-
-            self.linear.append(cur_layer)
-
-        self.out = Linear(
-            hidden_dim // 2 ** (linear_layers - 1),
-            1,
+        self.linear = Linear(
+            in_features=(
+                neck_hidden_dim // 2 ** (neck_layers - 1) * adaptive_pooling_dim**3 + 7
+            ),
+            out_features=1,
             dtype=self.FLOAT,
             device=self.device,
         )
+
+        # self.linear = Sequential()
+        # for layer in range(linear_layers):
+        #     cur_layer = Sequential(
+        #         OrderedDict(
+        #             [
+        #                 (  # linear
+        #                     "linear",
+        #                     Linear(
+        #                         in_features=(
+        #                             neck_hidden_dim
+        #                             // 2 ** (neck_layers - 1)
+        #                             * adaptive_pooling_dim**3
+        #                             + 7
+        #                             if layer == 0
+        #                             else hidden_dim // 2 ** (layer - 1)
+        #                         ),
+        #                         out_features=(hidden_dim // 2**layer),
+        #                         dtype=self.FLOAT,
+        #                         device=self.device,
+        #                     ),
+        #                 ),
+        #                 ("bn", BatchNorm1d(hidden_dim // 2**layer)),
+        #                 ("relu", ReLU(inplace=True)),
+        #             ]
+        #         )
+        #     )
+
+        #     # NOTE(eric): using kaiming init is necessary. w/o that, the linear layer
+        #     # barely learns anything.
+        #     torch.nn.init.kaiming_normal_(
+        #         cur_layer.linear.weight, mode="fan_out", nonlinearity="relu"
+        #     )
+        #     torch.nn.init.constant_(cur_layer.linear.bias, 0)
+
+        #     self.linear.append(cur_layer)
+
+        # self.out = Linear(
+        #     hidden_dim // 2 ** (linear_layers - 1),
+        #     1,
+        #     dtype=self.FLOAT,
+        #     device=self.device,
+        # )
 
     def forward(self, observation: Tensor, action_with_params: Tensor) -> Tensor:
         assert observation.ndim == 5, (
@@ -141,6 +149,6 @@ class OCPDDPGValueNet(Module):
 
         x = self.linear(x)
 
-        x = self.out(x)
+        # x = self.out(x)
 
         return x  # B * 1
