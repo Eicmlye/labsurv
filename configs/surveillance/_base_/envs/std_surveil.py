@@ -1,3 +1,5 @@
+from torch import pi as PI
+
 # 感光元件尺寸
 # 1/4 inches: 靶面尺寸约为3.2mm x 2.4mm, 常用于小型监控设备, 如家庭安全摄像头.
 # 1/3 inches: 靶面尺寸约为4.8mm x 3.6mm, 适用于普通监控摄像头, 常见于室内和室外的一般监控场景.
@@ -39,13 +41,20 @@ resols = {  # pixel
 }
 
 cam_intrinsics = dict(
+    # `template`
     # cam_name=dict(
     #   param_name=param_dict[specific_param_type],
     # )
+    # `std_cam`
+    # std_cam=dict(
+    #     clip_shape=clips["common"],
+    #     focal_length=focals["mid"],
+    #     resolution=resols["SD"],
+    # ),
+    # `std_cam`
     std_cam=dict(
-        clip_shape=clips["common"],
-        focal_length=focals["mid"],
-        resolution=resols["SD"],
+        aov=[PI / 3, PI / 3],
+        dof=[4, 0.5],
     ),
 )
 
