@@ -44,8 +44,8 @@ class OCPStepBasedRunner:
         cur_observation = None
 
         # generate replay buffer
-        print("Replay buffer generating...")
         if self.replay_buffer is not None:
+            print("Replay buffer generating...")
             prog_bar = ProgressBar(self.replay_buffer.activate_size)
             while not self.replay_buffer.is_active():
                 cur_observation = self.env.reset()
@@ -59,8 +59,15 @@ class OCPStepBasedRunner:
                         cur_observation, all_explore=True
                     )
 
+                    section_nums = [
+                        self.agent.actor.pan_section_num,
+                        self.agent.actor.tilt_section_num,
+                    ]
                     transition, _, _ = self.env.step(
-                        cur_observation, cur_action_with_params, self.steps
+                        cur_observation,
+                        cur_action_with_params,
+                        self.steps,
+                        section_nums,
                     )
                     transition["cur_observation"] = cur_observation
                     transition["cur_action"] = cur_action_with_params
@@ -75,7 +82,9 @@ class OCPStepBasedRunner:
                         prog_bar.update()
 
                     cur_observation = transition["next_observation"]
-        print("\nReplay buffer generated.")
+            print("\nReplay buffer generated.")
+        else:
+            raise RuntimeError("No replay buffer detected.")
 
         # save buffer cache
         self.replay_buffer.save(self.work_dir)
@@ -96,18 +105,20 @@ class OCPStepBasedRunner:
                 critic_loss=0,
                 actor_loss=0,
                 reward=0,
+                coverage=0,
+                cam_num=0,
             )
             terminated = False
 
             for step in range(self.steps):
                 cur_action_with_params = self.agent.take_action(cur_observation)
 
+                section_nums = [
+                    self.agent.actor.pan_section_num,
+                    self.agent.actor.tilt_section_num,
+                ]
                 transition, cur_coverage, cam_count = self.env.step(
-                    cur_observation, cur_action_with_params, self.steps
-                )
-                print(
-                    f"{episode + 1} / {step + 1}: {cur_coverage * 100:.2f}% "
-                    f"with {cam_count} cams & reward {transition["reward"]:.4f}"
+                    cur_observation, cur_action_with_params, self.steps, section_nums
                 )
                 transition["cur_observation"] = cur_observation
                 transition["cur_action"] = cur_action_with_params
@@ -123,6 +134,8 @@ class OCPStepBasedRunner:
                 transition["reward"] += self.agent.explorer.reward
 
                 episode_return["reward"] += transition["reward"]
+                episode_return["coverage"] = cur_coverage
+                episode_return["cam_num"] = cam_count
 
                 if self.replay_buffer is not None:
                     if self.replay_buffer.is_active():
@@ -140,6 +153,11 @@ class OCPStepBasedRunner:
                         ) = self.agent.update(samples)
                 else:
                     raise NotImplementedError()
+
+                print(
+                    f"[Episode {episode + 1:>4} Step {step + 1:>3}]\t{cur_coverage * 100:.2f}% "
+                    f"| {cam_count:>3} cams | reward {transition["reward"]:.4f}"
+                )
 
                 if terminated:
                     break
