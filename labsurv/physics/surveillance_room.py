@@ -1,6 +1,7 @@
 import os.path as osp
 import pickle
-from typing import Dict, List, Optional, Set
+from copy import deepcopy
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import torch
@@ -16,7 +17,7 @@ from labsurv.utils.surveillance import (
     save_visualized_points,
     shift,
 )
-from mmcv import Config
+from mmcv import Config, ProgressBar
 from numpy import ndarray as array
 from torch import Tensor
 
@@ -721,3 +722,92 @@ class SurveillanceRoom:
         )
 
         return result
+
+    def direction_similarity(
+        self,
+        pos: array,
+        direction: List[float],
+        section_nums: List[int],
+        cam_type: int,
+    ) -> Tuple[float]:
+        cur_vec = np.array(
+            [
+                np.cos(direction[1]) * np.cos(direction[0]),
+                np.cos(direction[1]) * np.sin(direction[0]),
+                np.sin(direction[1]),
+            ]
+        )
+
+        best_vec, max_delta_cov = best_installation(self, pos, section_nums, cam_type)
+        direction_similarity = np.sum(cur_vec * best_vec)
+
+        return direction_similarity, max_delta_cov
+
+
+def best_installation(
+    room: SurveillanceRoom, pos: array, section_nums: List[int], cam_type: int
+) -> Tuple[array | float]:
+    """
+    ## Description:
+
+        Find the installation directions that increases the most coverage at `pos`
+        with `cam_type`.
+
+    ## Return:
+
+        normalized_avg_vec (np.ndarray): A normalized vector of the averaged best
+        direction [x, y, z].
+
+        best_coverage_increment (float): The coverage increment when best installed.
+    """
+    pan_list = [
+        -np.pi + 2 * np.pi / section_nums[0] * k for k in range(section_nums[0])
+    ]
+    tilt_list = [
+        -np.pi / 2 + np.pi / section_nums[1] * k for k in range(section_nums[1])
+    ]
+
+    total_target_point_num: float = room.must_monitor[:, :, :, 0].sum().item()
+    pred_coverage: float = (
+        room.visible_points > 0
+    ).sum().item() / total_target_point_num
+
+    best_coverage_increment: float = 0
+    best_parameters = []
+
+    print("\nComputing best installation params...")
+    prog_bar = ProgressBar(len(pan_list) * len(tilt_list))
+    for pan in pan_list:
+        for tilt in tilt_list:
+            cache_room: SurveillanceRoom = deepcopy(room)
+            cache_room.add_cam(pos, np.array([pan, tilt]), cam_type)
+            cur_coverage: float = (
+                cache_room.visible_points > 0
+            ).sum().item() / total_target_point_num
+
+            cov_incre = cur_coverage - pred_coverage
+
+            if cov_incre > best_coverage_increment:
+                best_coverage_increment = cov_incre
+                best_parameters = [[pan, tilt]]
+            elif cov_incre == best_coverage_increment:
+                best_parameters.append([pan, tilt])
+
+            prog_bar.update()
+    print("\r\033[K\033[1A\033[K\033[1A")
+
+    best_vecs_list = []
+    for direction in best_parameters:
+        best_vecs_list.append(
+            [
+                np.cos(direction[1]) * np.cos(direction[0]),
+                np.cos(direction[1]) * np.sin(direction[0]),
+                np.sin(direction[1]),
+            ]
+        )
+    best_vecs: array = np.array(best_vecs_list)
+
+    avg_vec = np.mean(best_vecs, axis=0)
+    normalized_avg_vec = avg_vec / np.linalg.norm(avg_vec)
+
+    return normalized_avg_vec, best_coverage_increment
