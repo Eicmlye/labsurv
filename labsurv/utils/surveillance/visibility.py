@@ -274,10 +274,10 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
 
         Check if the light of view is block by any obstacles.
 
-        This is 6 linear programming problem, checking if the intersections of the lov
-        segment and the 6 surfaces of the voxel are between the other surfaces of
-        dimensions. Specifically, let camera be P, target be Q and the center of voxel
-        be T, then solving \lambda from
+        This is equivalant to 6 linear programming problems, checking if the
+        intersections of the lov segment and the 6 surfaces of the voxel are between
+        the other surfaces of dimensions. Specifically, let camera be P, target be Q
+        and the center of voxel be T, then solving \lambda from
 
         x_P + \lambda_{x-}\delta_x = x_T - 0.5, where \delta_x = PQ_x = lov_x
 
@@ -315,7 +315,7 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
 
     obstacle_mask = torch.zeros([len(lov)], dtype=torch.bool, device=device)
 
-    print("Checking if camera's light of view passes any obstacles...")
+    print("\nChecking if camera's light of view passes any obstacles...")
     prog_bar = ProgressBar(len(lov))
     for index, target in enumerate(lov):
         lambdas = (voxel_bounds - torch.cat((cam_pos, cam_pos))) / torch.cat(
@@ -327,17 +327,26 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
             6
         )  # N * 18
         # [
-        #   x_{I,x-}, y_{I, x-}, z_{I, x-},
-        #   x_{I,y-}, y_{I, y-}, z_{I, y-},
-        #   x_{I,z-}, y_{I, z-}, z_{I, z-},
-        #   x_{I,x+}, y_{I, x+}, z_{I, x+},
-        #   x_{I,y+}, y_{I, y+}, z_{I, y+},
-        #   x_{I,z+}, y_{I, z+}, z_{I, z+},
+        #   x_{I, x-}, y_{I, x-}, z_{I, x-},
+        #   x_{I, y-}, y_{I, y-}, z_{I, y-},
+        #   x_{I, z-}, y_{I, z-}, z_{I, z-},
+        #   x_{I, x+}, y_{I, x+}, z_{I, x+},
+        #   x_{I, y+}, y_{I, y+}, z_{I, y+},
+        #   x_{I, z+}, y_{I, z+}, z_{I, z+},
         # ]
 
-        intersection_mask = (intersections > voxel_lower_bounds.repeat(1, 6)) & (
-            intersections < voxel_upper_bounds.repeat(1, 6)
+        equal_bounds_mask = torch.tensor(
+            [False, True, True, True, False, True, True, True, False], device=device
+        ).repeat(occ.shape[0], 2)
+        intersection_mask = (
+            (intersections >= voxel_lower_bounds.repeat(1, 6))
+            & (intersections <= voxel_upper_bounds.repeat(1, 6))
+            & equal_bounds_mask
         )  # N * 18
+        # CAUTION: For the above mask, if use > and < without equal_bounds_mask, there
+        # is chance that lov passes the edge of the voxel, in which case the target
+        # points will be mistakenly checked as visible.
+
         obstacle_mask[index] = (
             (intersection_mask.view(-1, 6, 3).sum(dim=2) == 2)
             & (lambdas >= 0)
@@ -345,6 +354,6 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
         ).sum() == 0
 
         prog_bar.update()
-    print("\r\033[K\033[1A\033[K\033[1A")
+    print("\r\033[K\033[1A\033[K\033[1A\033[K\033[1A")
 
     return obstacle_mask
