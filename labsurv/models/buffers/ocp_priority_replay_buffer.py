@@ -5,6 +5,7 @@ import random
 from typing import Dict, List
 
 import torch
+import torch.nn.functional as F
 from labsurv.builders import REPLAY_BUFFERS
 from labsurv.models.buffers import BaseReplayBuffer
 from numpy import ndarray as array
@@ -128,7 +129,7 @@ class SumTree:
                 td_error = discounted_target_q - critic(cur_observation, cur_action)
             cache_td_error.append(td_error.item())
 
-        cache_prob = torch.sigmoid(torch.tensor(cache_td_error, dtype=torch.float32))
+        cache_prob = F.softmax(torch.tensor(cache_td_error, dtype=torch.float32), dim=0)
 
         for error_index in range(len(cache_td_error)):
             data_index = error_index + 1
