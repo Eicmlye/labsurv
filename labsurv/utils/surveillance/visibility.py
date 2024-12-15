@@ -22,6 +22,28 @@ def compute_single_cam_visibility(
     target: Tensor,
     voxel_length: float,
 ) -> Tensor:
+    if (
+        "clip_shape" in intrinsic.keys()
+        and "focal_length" in intrinsic.keys()
+        and "resolution" in intrinsic.keys()
+    ):
+        return compute_single_cam_visibility_with_raw_params(
+            cam_pos, direction, intrinsic, occupancy, target, voxel_length
+        )
+    else:
+        return compute_single_cam_visibility_with_explicit_params(
+            cam_pos, direction, intrinsic, occupancy, target, voxel_length
+        )
+
+
+def compute_single_cam_visibility_with_raw_params(
+    cam_pos: Tensor,
+    direction: Tensor,
+    intrinsic: Dict[str, float | List[float]],
+    occupancy: Tensor,
+    target: Tensor,
+    voxel_length: float,
+) -> Tensor:
     """
     ## Arguments:
 
@@ -87,9 +109,9 @@ def compute_single_cam_visibility(
     all_coords_cam_coord = (rot_mat.permute(1, 0) @ lov.permute(1, 0)).permute(
         1, 0
     )  # N * 3
-    all_coords_cam_coord_unit = normalize_coords_list(all_coords_cam_coord)  # N * 3
 
     # check aov
+    all_coords_cam_coord_unit = normalize_coords_list(all_coords_cam_coord)  # N * 3
     tan_horizontal = torch.abs(
         all_coords_cam_coord_unit[:, 1] / all_coords_cam_coord_unit[:, 0]
     )
@@ -119,6 +141,120 @@ def compute_single_cam_visibility(
     )
     dof_coord_mask = (all_coords_cam_coord[:, 0] * voxel_length <= dof[:, 0]) & (
         all_coords_cam_coord[:, 0] * voxel_length >= dof[:, 1]
+    )
+    # check obstacles
+    obstacle_mask = check_obstacle(cam_pos, lov, occupancy)
+
+    visibility_mask = aov_coord_mask & dof_coord_mask & obstacle_mask
+    visible_coords = all_coords[visibility_mask]
+
+    result = torch.zeros_like(occupancy, device=device)
+    result[visible_coords[:, 0], visible_coords[:, 1], visible_coords[:, 2]] = 1
+
+    return result
+
+
+def compute_single_cam_visibility_with_explicit_params(
+    cam_pos: Tensor,
+    direction: Tensor,
+    intrinsic: Dict[str, float | List[float]],
+    occupancy: Tensor,
+    target: Tensor,
+    voxel_length: float,
+) -> Tensor:
+    """
+    ## CAUTION:
+
+        Explicit params of intrinsics suggest that the resolution requirements are depending
+        on the cameras, not the target points. In this case, target resolution requirements
+        are ignored.
+
+    ## Arguments:
+
+        cam_pos (Tensor): [3], torch.int64, the position of the camera.
+
+        direction (Tensor): [2], torch.float16, the `pan` and `tilt` of the camera.
+
+        intrinsic (Dict[str, float | List[float]]): camera intrinsics.
+
+        occupancy (Tensor): [W, D, H], torch.int64, occupancy mask.
+
+        target (Tensor): [W, D, H, 4], torch.float16,
+        [need_monitor, h_res_req_min, h_res_req_max, v_res_req_min, v_res_req_max].
+
+        voxel_length (float): length of sides of voxels in meters.
+
+    ## Returns:
+
+        vis_mask (Tensor): [W, D, H], torch.int64, the visibility mask of the camera.
+    """
+    device = occupancy.device
+    INT = torch.int64
+    FLOAT = torch.float
+
+    assert cam_pos.dtype == occupancy.dtype == INT
+    assert cam_pos.device == direction.device == target.device == device
+
+    pan = direction[0]
+    tilt = direction[1]
+    aov = torch.tensor(
+        intrinsic["aov"], dtype=FLOAT, device=device
+    )  # horizontal, vertical
+    dof = torch.tensor(intrinsic["dof"], dtype=FLOAT, device=device)  # far, near
+
+    assert aov[0] > 0 and aov[0] < torch.pi
+    assert aov[1] > 0 and aov[1] < torch.pi
+    assert dof[0] > dof[1]
+
+    rot_mat = torch.tensor(
+        [
+            [torch.cos(pan), -torch.sin(pan), 0],
+            [torch.sin(pan), torch.cos(pan), 0],
+            [0, 0, 1],
+        ],
+        dtype=FLOAT,
+        device=device,
+    ) @ torch.tensor(
+        [
+            [torch.cos(tilt), 0, -torch.sin(tilt)],
+            [0, 1, 0],
+            [torch.sin(tilt), 0, torch.cos(tilt)],
+        ],
+        dtype=FLOAT,
+        device=device,
+    )
+
+    # tangent values of half of angle of view, [horizontal, vertical]
+    tan_aov_half = torch.tan(aov / 2)
+
+    # change all lov from world coord to cam coord
+    target_mask = target[:, :, :, 0]
+    all_coords = target_mask.nonzero()  # N * 3
+    lov = (all_coords - cam_pos).type(FLOAT)  # N * 3
+    all_coords_cam_coord = (rot_mat.permute(1, 0) @ lov.permute(1, 0)).permute(
+        1, 0
+    )  # N * 3
+
+    # check aov
+    all_coords_cam_coord_unit = normalize_coords_list(all_coords_cam_coord)  # N * 3
+    tan_horizontal = torch.abs(
+        all_coords_cam_coord_unit[:, 1] / all_coords_cam_coord_unit[:, 0]
+    )
+    tan_vertical = torch.abs(
+        all_coords_cam_coord_unit[:, 2]
+        / torch.linalg.vector_norm(all_coords_cam_coord_unit[:, :2], dim=1)
+    )
+    aov_coord_mask = (
+        (all_coords_cam_coord_unit[:, 0] > 0)  # zero/neg means behind the camera.
+        & (tan_horizontal <= tan_aov_half[0])
+        & (tan_vertical <= tan_aov_half[1])
+    )
+
+    # check dof
+    # N * 2, [d_far, d_near]
+    all_dof = dof.repeat([lov.shape[0], 1])
+    dof_coord_mask = (all_coords_cam_coord[:, 0] * voxel_length <= all_dof[:, 0]) & (
+        all_coords_cam_coord[:, 0] * voxel_length >= all_dof[:, 1]
     )
     # check obstacles
     obstacle_mask = check_obstacle(cam_pos, lov, occupancy)
