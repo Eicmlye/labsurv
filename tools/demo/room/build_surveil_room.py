@@ -196,55 +196,86 @@ def main(size: str):
         room.visualize("output/surv_room")
         # room.visualize("output/surv_room", "camera")
     elif size == "standard":
-        full_shape = [30, 30, 30]
+        full_shape = [100, 100, 30]
         room = SurveillanceRoom(
             device=DEVICE,
             cfg_path=cfg_path,
             shape=full_shape,
         )
+
         print("Building occupancy blocks...")
         room.add_block(
-            [10, 1, 4],
-            displacement=np.array([5, 6, 2]),
+            [20, 20, 30],
+            displacement=np.array([20, 20, 0]),
+        )
+        room.add_block(
+            [20, 20, 30],
+            displacement=np.array([60, 60, 0]),
+        )
+        room.add_block(
+            [20, 20, 30],
+            displacement=np.array([20, 60, 0]),
+        )
+        room.add_block(
+            [20, 20, 30],
+            displacement=np.array([60, 20, 0]),
         )
 
         print("Building permission blocks...")
         room.add_block(
-            [10, 5, 5],
+            [100, 100, 10],
             point_type="install_permitted",
-            displacement=np.array([2, 7, 4]),
+            displacement=np.array([0, 0, 20]),
         )
 
         print("Building monitored blocks...")
         resol_requirement = dict(
-            h_res_req_min=500,
+            h_res_req_min=50,
             h_res_req_max=1000,
-            v_res_req_min=500,
+            v_res_req_min=50,
             v_res_req_max=1000,
         )
         room.add_block(
-            [5, 10, 3],
+            [20, 100, 20],
             point_type="must_monitor",
             displacement=np.array([0, 0, 0]),
             **resol_requirement,
         )
         room.add_block(
-            [10, 5, 7],
+            [20, 100, 20],
             point_type="must_monitor",
-            displacement=np.array([10, 1, 0]),
+            displacement=np.array([40, 0, 0]),
             **resol_requirement,
         )
         room.add_block(
-            [10, 8, 10],
+            [20, 100, 20],
             point_type="must_monitor",
-            displacement=np.array([2, 14, 2]),
+            displacement=np.array([80, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [100, 20, 20],
+            point_type="must_monitor",
+            displacement=np.array([0, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [100, 20, 20],
+            point_type="must_monitor",
+            displacement=np.array([0, 40, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [100, 20, 20],
+            point_type="must_monitor",
+            displacement=np.array([0, 80, 0]),
             **resol_requirement,
         )
 
         # print("Adding cameras...")
         # room.add_cam(
-        #     [5, 10, 7],
-        #     [torch.pi / 2, 0],
+        #     [50, 40, 25],
+        #     [PI / 4, -PI / 6],
         #     "std_cam",
         # )
 
