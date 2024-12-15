@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from labsurv.builders import REPLAY_BUFFERS
 from labsurv.models.buffers import BaseReplayBuffer
+from labsurv.utils.string import WARN
 from numpy import ndarray as array
 
 
@@ -28,6 +29,30 @@ class SumTree:
         self._write: int = 0  # the pred index of the last valid node
 
         self._random = random.Random(seed)
+
+    def load(self, tree):
+        if len(self) > 0:
+            print(
+                WARN(
+                    "The replay buffer will be covered by loaded SumTree. "
+                    "Current buffer will be lost. This operation is inreversible."
+                )
+            )
+
+        if tree.capacity < self.capacity:
+            self._write = len(tree)
+        else:
+            self._write = 0
+
+        self.device = tree.device
+        self._random = tree._random
+
+        if tree.capacity <= self.capacity:
+            self.tree[: len(tree) + self.capacity + 1] = tree.tree
+            self.data[: len(tree) + self.capacity + 1] = tree.data
+        else:
+            self.tree = tree.tree[: len(self) + self.capacity + 1]
+            self.data = tree.data[: len(self) + self.capacity + 1]
 
     def __len__(self):
         length = 0
@@ -189,9 +214,10 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
             )
 
         self.device = device
+        self.capacity = capacity
 
         if load_from is None:
-            self._buffer = SumTree(device, capacity)
+            self._buffer = SumTree(device, self.capacity)
         else:
             self.load(load_from)
 
@@ -238,7 +264,15 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
 
     def load(self, load_from: str):
         with open(load_from, "rb") as f:
-            self._buffer = pickle.load(f)
+            loaded_buffer = pickle.load(f)
+
+        if not isinstance(loaded_buffer, SumTree):
+            raise RuntimeError("No SumTree structure detected.")
+        if loaded_buffer.capacity == self.capacity:
+            self._buffer = loaded_buffer
+        else:
+            self._buffer.load(loaded_buffer)
+
         print("Replay buffer loaded.")
 
     def save(self, save_path: str):
