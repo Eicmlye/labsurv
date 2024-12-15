@@ -382,7 +382,9 @@ class SurveillanceRoom:
         assert direction[0] >= -torch.pi and direction[0] < torch.pi
         assert direction[1] >= -torch.pi / 2 and direction[1] <= torch.pi / 2
 
-        if isinstance(cam_type, (int, self.AINT, self.INT)):
+        if isinstance(cam_type, (int, self.AINT)) or (
+            isinstance(cam_type, torch.Tensor) and cam_type.dtype == self.INT
+        ):
             if cam_type >= len(self._CAM_TYPES):
                 raise ValueError(
                     f"SurveillanceRoom supports {len(self._CAM_TYPES)} "
