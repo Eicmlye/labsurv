@@ -67,20 +67,23 @@ class OCPEpsilonGreedyExplorer(BaseExplorer):
                 )
             else:
                 output = []
-                # import pdb; pdb.set_trace()
                 # action
                 add_act = None
-                if (observation[7] != 0).sum() == 0:
+                if self.samples[0] == 1:
                     add_act = 0
-                elif (observation[1] != 0).sum() == (observation[7] != 0).sum():
-                    add_act = 1
-                else:
-                    add_act = self._random.choice(2)
-
-                if add_act == 1:
-                    output.append(self._random.choice(2) + 1)
-                else:
                     output.append(0)
+                else:
+                    if (observation[7] != 0).sum() == 0:
+                        add_act = 0
+                    elif (observation[1] != 0).sum() == (observation[7] != 0).sum():
+                        add_act = 1
+                    else:
+                        add_act = self._random.choice(2)
+
+                    if add_act == 1:
+                        output.append(self._random.choice(2) + 1)
+                    else:
+                        output.append(0)
 
                 # pos_index, pan_index, tilt_index, cam_type
                 for index, sample in enumerate(self.samples[1:]):
