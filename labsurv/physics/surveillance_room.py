@@ -14,6 +14,7 @@ from labsurv.utils.surveillance import (
     build_block,
     compute_single_cam_visibility,
     concat_points_with_color,
+    if_need_obstacle_check,
     save_visualized_points,
     shift,
 )
@@ -352,7 +353,14 @@ class SurveillanceRoom:
         else:
             target_mask[points[:, 0], points[:, 1], points[:, 2]] = 1
 
-    def add_cam(self, pos: array, direction: array, cam_type: str | int) -> array:
+    def add_cam(
+        self,
+        pos: array,
+        direction: array,
+        cam_type: str | int,
+        lov_indices: Optional[List[int]] = None,
+        lov_check_list: Optional[List[List[int]]] = None,
+    ) -> array:
         """
         ## Arguments:
 
@@ -419,6 +427,8 @@ class SurveillanceRoom:
             self.occupancy,
             self.must_monitor,
             self.voxel_length,
+            lov_indices,
+            lov_check_list,
         )
 
         self.visible_points += vis_mask
@@ -777,10 +787,18 @@ def best_installation(
 
     print("\nComputing best installation params...")
     prog_bar = ProgressBar(len(pan_list) * len(tilt_list))
+
+    root_room_cache: SurveillanceRoom = deepcopy(room)
+    lov_indices, lov_check_list = if_need_obstacle_check(
+        pos, root_room_cache.must_monitor, root_room_cache.occupancy
+    )
+
     for pan in pan_list:
         for tilt in tilt_list:
             cache_room: SurveillanceRoom = deepcopy(room)
-            cache_room.add_cam(pos, np.array([pan, tilt]), cam_type)
+            cache_room.add_cam(
+                pos, np.array([pan, tilt]), cam_type, lov_indices, lov_check_list
+            )
             cur_coverage: float = (
                 cache_room.visible_points > 0
             ).sum().item() / total_target_point_num
@@ -794,7 +812,7 @@ def best_installation(
                 best_parameters.append([pan, tilt])
 
             prog_bar.update()
-    print("\r\033[K\033[1A\033[K\033[1A")
+    print("\r\033[K\033[1A\033[K\033[1A", end="")
 
     best_vecs_list = []
     for direction in best_parameters:
