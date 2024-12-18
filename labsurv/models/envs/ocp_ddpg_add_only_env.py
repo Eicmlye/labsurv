@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseSurveillanceEnv
+from labsurv.physics.surveillance_room import if_need_obstacle_check
 from numpy import ndarray as array
 
 
@@ -128,7 +129,12 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
                         pos, direction, section_nums, cam_type
                     )
                 )
-                self.info_room.add_cam(pos, direction, cam_type)
+                lov_indices, lov_check_list = if_need_obstacle_check(
+                    pos, self.info_room.must_monitor, self.info_room.occupancy
+                )
+                self.info_room.add_cam(
+                    pos, direction, cam_type, lov_indices, lov_check_list
+                )
 
                 # print("\r\033[K\033[1A\033[K\033[1A\033[K\033[3A", end="")
                 # self.history_cost[pos[0], pos[1], pos[2]] += 1
@@ -172,6 +178,7 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
 
         if terminated:
             self.lazy_count = 0
+        self.info_room.visualize("output/ocp/ddpg", "camera")
 
         return transition, cur_coverage, cam_count
 

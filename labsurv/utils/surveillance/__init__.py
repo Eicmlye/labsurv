@@ -5,7 +5,7 @@ from .error import (
     InstallAtExistingCameraError,
 )
 from .transform import rotate, shift
-from .visibility import compute_single_cam_visibility
+from .visibility import compute_single_cam_visibility, if_need_obstacle_check
 from .visualize import concat_points_with_color, save_visualized_points
 
 __all__ = [
@@ -14,6 +14,7 @@ __all__ = [
     "rotate",
     "shift",
     "compute_single_cam_visibility",
+    "if_need_obstacle_check",
     "concat_points_with_color",
     "save_visualized_points",
     "AdjustUninstalledCameraError",

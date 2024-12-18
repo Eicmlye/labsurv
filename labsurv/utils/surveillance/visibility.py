@@ -1,7 +1,8 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
 from mmcv.utils import ProgressBar
+from numpy import ndarray as array
 from torch import Tensor
 
 
@@ -21,6 +22,8 @@ def compute_single_cam_visibility(
     occupancy: Tensor,
     target: Tensor,
     voxel_length: float,
+    lov_indices: List[int] = None,
+    lov_check_list: List[List[int]] = None,
 ) -> Tensor:
     if (
         "clip_shape" in intrinsic.keys()
@@ -28,11 +31,25 @@ def compute_single_cam_visibility(
         and "resolution" in intrinsic.keys()
     ):
         return compute_single_cam_visibility_with_raw_params(
-            cam_pos, direction, intrinsic, occupancy, target, voxel_length
+            cam_pos,
+            direction,
+            intrinsic,
+            occupancy,
+            target,
+            voxel_length,
+            lov_indices,
+            lov_check_list,
         )
     else:
         return compute_single_cam_visibility_with_explicit_params(
-            cam_pos, direction, intrinsic, occupancy, target, voxel_length
+            cam_pos,
+            direction,
+            intrinsic,
+            occupancy,
+            target,
+            voxel_length,
+            lov_indices,
+            lov_check_list,
         )
 
 
@@ -43,6 +60,8 @@ def compute_single_cam_visibility_with_raw_params(
     occupancy: Tensor,
     target: Tensor,
     voxel_length: float,
+    lov_indices: List[int] = None,
+    lov_check_list: List[List[int]] = None,
 ) -> Tensor:
     """
     ## Arguments:
@@ -143,7 +162,7 @@ def compute_single_cam_visibility_with_raw_params(
         all_coords_cam_coord[:, 0] * voxel_length >= dof[:, 1]
     )
     # check obstacles
-    obstacle_mask = check_obstacle(cam_pos, lov, occupancy)
+    obstacle_mask = check_obstacle(cam_pos, lov, occupancy, lov_indices, lov_check_list)
 
     visibility_mask = aov_coord_mask & dof_coord_mask & obstacle_mask
     visible_coords = all_coords[visibility_mask]
@@ -161,6 +180,8 @@ def compute_single_cam_visibility_with_explicit_params(
     occupancy: Tensor,
     target: Tensor,
     voxel_length: float,
+    lov_indices: List[int] = None,
+    lov_check_list: List[List[int]] = None,
 ) -> Tensor:
     """
     ## CAUTION:
@@ -257,7 +278,7 @@ def compute_single_cam_visibility_with_explicit_params(
         all_coords_cam_coord[:, 0] * voxel_length >= all_dof[:, 1]
     )
     # check obstacles
-    obstacle_mask = check_obstacle(cam_pos, lov, occupancy)
+    obstacle_mask = check_obstacle(cam_pos, lov, occupancy, lov_indices, lov_check_list)
 
     visibility_mask = aov_coord_mask & dof_coord_mask & obstacle_mask
     visible_coords = all_coords[visibility_mask]
@@ -268,7 +289,13 @@ def compute_single_cam_visibility_with_explicit_params(
     return result
 
 
-def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
+def check_obstacle(
+    cam_pos: Tensor,
+    lov: Tensor,
+    occupancy: Tensor,
+    lov_indices: List[int] = None,
+    lov_check_list: List[List[int]] = None,
+):
     r"""
     ## Description:
 
@@ -315,15 +342,20 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
 
     obstacle_mask = torch.zeros([len(lov)], dtype=torch.bool, device=device)
 
+    if lov_indices is None and lov_check_list is None:
+        lov_indices, lov_check_list = _if_need_obstacle_check(cam_pos, lov, occ)
+
     print("\nChecking if camera's light of view passes any obstacles...")
-    prog_bar = ProgressBar(len(lov))
-    for index, target in enumerate(lov):
+    prog_bar = ProgressBar(len(lov_check_list))
+    for index, target in enumerate(lov_check_list):
+        target_vec = torch.tensor(target, dtype=torch.int64, device=device)
+        lov_index = lov_indices[index]
         lambdas = (voxel_bounds - torch.cat((cam_pos, cam_pos))) / torch.cat(
-            (target, target)
+            (target_vec, target_vec)
         )  # N * 6, [x-, y-, z-, x+, y+, z+]
         intersections = cam_pos.repeat(6) + lambdas.repeat_interleave(
             3, 1
-        ) * target.repeat(
+        ) * target_vec.repeat(
             6
         )  # N * 18
         # [
@@ -347,7 +379,7 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
         # is chance that lov passes the edge of the voxel, in which case the target
         # points will be mistakenly checked as visible.
 
-        obstacle_mask[index] = (
+        obstacle_mask[lov_index] = (
             (intersection_mask.view(-1, 6, 3).sum(dim=2) == 2)
             & (lambdas >= 0)
             & (lambdas <= 1)
@@ -357,3 +389,211 @@ def check_obstacle(cam_pos: Tensor, lov: Tensor, occupancy: Tensor):
     print("\r\033[K\033[1A\033[K\033[1A\033[K\033[1A")
 
     return obstacle_mask
+
+
+def if_need_obstacle_check(
+    cam_pos: array,
+    must_monitor: Tensor,
+    occupancy: Tensor,
+    step: int = 500,
+) -> Tensor:
+    """
+    ## Description:
+
+        Check if the occ points are too far away from the lov segment.
+
+    ## Arguments:
+
+        cam_pos (array): [3], np.int64, the position of the camera.
+
+        must_monitor (Tensor): [W, D, H, 4]
+
+        occupancy (Tensor): [W, D, H, 1]
+
+    ## Returns:
+
+        lov_indices (List): [LAMBDA], the indices of the lov that need further check in
+        the original lov tensor.
+
+        lov_check_list (List): [LAMBDA, 3], coords of the lov that need further check.
+    """
+
+    device = must_monitor.device
+
+    cam_pos_vec = torch.tensor(cam_pos, dtype=torch.int64, device=device)  # [3]
+
+    target_mask = must_monitor.clone().detach()[:, :, :, 0]
+    all_coords = target_mask.nonzero()  # N * 3
+    # the vector from camera pos to target pos
+    lov = (all_coords - cam_pos_vec).type(torch.float32)  # N * 3
+
+    occ = occupancy.clone().detach().nonzero().type(torch.float)  # M * 3
+
+    return _if_need_obstacle_check(cam_pos_vec, lov, occ, step)
+
+
+def _if_need_obstacle_check(
+    cam_pos: Tensor,
+    lov: Tensor,
+    occ: Tensor,
+    step: int = 500,
+) -> Tensor:
+    """
+    ## Description:
+
+        Check if the occ points are too far away from the lov segment.
+
+    ## Arguments:
+
+        cam_pos (Tensor): [3], torch.int64, the position of the camera.
+
+        lov (Tensor): [N, 3], torch.int64, the vector from camera pos to target pos.
+
+        occ (Tensor): [M, 3], torch.int64, the coords of the occupancy points.
+
+    ## Returns:
+
+        lov_indices (List): [LAMBDA], the indices of the lov that need further check in
+        the original lov tensor.
+
+        lov_check_list (List): [LAMBDA, 3], coords of the lov that need further check.
+    """
+
+    lov_indices = []
+    lov_check_list = []
+
+    print("\nBuilding speed up indices...")
+    prog_bar = ProgressBar(len(lov) // step + (1 if (len(lov) % step > 0) else 0))
+    for index in range(len(lov) // step):
+        lov_section = lov[step * index : step * (index + 1)]
+
+        # ignore check if occ is too far away from the lov line
+        lov_needs_check_dist_mask, dist_occ2lov = _check_dist_occ2lov(
+            lov_section, cam_pos, occ
+        )
+        # Ignore check if occ is not `between` the cam_pos and target.
+        #
+        # --------occ------------
+        # cam--------------target    NEED CHECK
+        #
+        # occ-------------
+        # -------------cam-------------target    NO CHECK
+        #
+        # If occ is inside the vertex voxels, check is still necessary.
+        lov_needs_check_between_mask = _check_occ_between_lov(
+            lov_section, cam_pos, occ, dist_occ2lov
+        )
+        lov_needs_check_mask = lov_needs_check_dist_mask & lov_needs_check_between_mask
+
+        lov_needs_check_indices = (lov_needs_check_mask > 0).nonzero().view(-1)
+        lov_indices += lov_needs_check_indices.tolist()
+        lov_check_list += lov[lov_needs_check_indices].tolist()
+
+        prog_bar.update()
+
+    if len(lov) % step > 0:
+        lov_section = lov[len(lov) // step * step :]
+
+        lov_needs_check_mask, dist_occ2lov = _check_dist_occ2lov(
+            lov_section, cam_pos, occ
+        )
+        lov_needs_check_between_mask = _check_occ_between_lov(
+            lov_section, cam_pos, occ, dist_occ2lov
+        )
+        lov_needs_check_mask = lov_needs_check_dist_mask & lov_needs_check_between_mask
+
+        lov_needs_check_indices = (lov_needs_check_mask > 0).nonzero().view(-1)
+        lov_indices += lov_needs_check_indices.tolist()
+        lov_check_list += lov[lov_needs_check_indices].tolist()
+
+        prog_bar.update()
+
+    print("\r\033[K\033[1A\033[K\033[1A", end="")
+
+    return lov_indices, lov_check_list
+
+
+def _check_dist_occ2lov(
+    lov_section: Tensor, cam_pos: Tensor, occ: Tensor
+) -> Tuple[Tensor]:
+    """
+    ## Arguments:
+
+        lov_section (Tensor): [K, 3], torch.int64, the vector from camera pos to target
+        pos.
+
+        cam_pos (Tensor): [3], torch.int64, the position of the camera.
+
+        occ (Tensor): [M, 3], torch.int64, the coords of the occupancy points.
+    """
+
+    cross_products = torch.sum(
+        torch.cross(
+            lov_section.unsqueeze(1),
+            (cam_pos.repeat([len(occ), 1]) - occ).unsqueeze(0),
+            dim=2,
+        )
+        ** 2,
+        dim=2,
+    )  # K * M
+    dist_occ2lov = cross_products / torch.sum(lov_section**2, dim=1).unsqueeze(
+        1
+    ).repeat(
+        [1, len(occ)]
+    )  # K * M
+
+    # check occ only if distance <= sqrt(3)
+    lov_needs_check_mask = (dist_occ2lov < 3).sum(dim=1) > 1
+
+    return lov_needs_check_mask, dist_occ2lov  # [K], [K, M]
+
+
+def _check_occ_between_lov(
+    lov_section: Tensor, cam_pos: Tensor, occ: Tensor, dist_occ2lov: Tensor
+) -> Tensor:
+    """
+    ## Arguments:
+
+        lov_section (Tensor): [K, 3], torch.int64, the vector from camera pos to target
+        pos.
+
+        cam_pos (Tensor): [3], torch.int64, the position of the camera.
+
+        occ (Tensor): [M, 3], torch.int64, the coords of the occupancy points.
+
+        dist_occ2lov (Tensor): [K * M], torch.float32, the distance from occ to lov
+        line.
+    """
+
+    targets = lov_section + cam_pos  # [K, 3]
+
+    targets_expanded = targets.repeat([1, len(occ)]).view(-1, len(occ), 3)  # [K, M, 3]
+    occ_expanded = occ.repeat([len(targets), 1]).view(len(targets), -1, 3)  # [K, M, 3]
+    occ_to_target = occ_expanded - targets_expanded  # [K, M, 3]
+
+    near_vertices_mask = (occ_to_target == 0).sum(dim=2) > 0  # [K, M]
+
+    target_side_squared = (occ_to_target**2).sum(dim=2) - dist_occ2lov**2  # [K, M]
+    target_side_inner_mask = (
+        target_side_squared
+        - (lov_section.repeat([1, len(occ)]).view(-1, len(occ), 3) ** 2).sum(dim=2)
+    ) <= 0  # [K, M]
+
+    cam_expanded = cam_pos.repeat([len(occ) * len(lov_section)]).view(
+        len(targets), len(occ), 3
+    )  # [K, M, 3]
+    occ_to_cam = occ_expanded - cam_expanded  # [K, M, 3]
+
+    cam_side_squared = (occ_to_cam**2).sum(dim=2) - dist_occ2lov**2  # [K, M]
+    cam_side_inner_mask = (
+        cam_side_squared
+        - (lov_section.repeat([1, len(occ)]).view(-1, len(occ), 3) ** 2).sum(dim=2)
+    ) <= 0  # [K, M]
+
+    lov_needs_check_between_mask = (
+        near_vertices_mask | (target_side_inner_mask & cam_side_inner_mask)
+    ).sum(
+        dim=1
+    )  # [K]
+
+    return lov_needs_check_between_mask
