@@ -121,7 +121,7 @@ def main(size: str):
         room.save("output/surv_room_copy/SurveillanceRoom.pkl")
         room.visualize("output/surv_room_copy/SurveillanceRoom_occ.ply")
     elif size == "tiny":
-        full_shape = [10, 10, 10]
+        full_shape = [50, 50, 30]
         room = SurveillanceRoom(
             device=DEVICE,
             cfg_path=cfg_path,
@@ -129,41 +129,31 @@ def main(size: str):
         )
         print("Building occupancy blocks...")
         room.add_block(
-            [3, 3, 3],
-            displacement=np.array([3, 3, 3]),
+            [20, 20, 30],
+            displacement=np.array([15, 15, 0]),
         )
 
         print("Building permission blocks...")
         room.add_block(
-            [1, 10, 6],
+            [15, 50, 10],
             point_type="install_permitted",
-            displacement=np.array([0, 0, 4]),
+            displacement=np.array([0, 0, 20]),
         )
         room.add_block(
-            [10, 1, 6],
+            [50, 15, 10],
             point_type="install_permitted",
-            displacement=np.array([0, 0, 4]),
-        )
-        # room.add_block(
-        #     [10, 10, 1],
-        #     point_type="install_permitted",
-        #     displacement=np.array([0, 0, 0]),
-        # )
-        room.add_block(
-            [1, 10, 6],
-            point_type="install_permitted",
-            displacement=np.array([9, 0, 4]),
+            displacement=np.array([0, 0, 20]),
         )
         room.add_block(
-            [10, 1, 6],
+            [15, 50, 10],
             point_type="install_permitted",
-            displacement=np.array([0, 9, 4]),
+            displacement=np.array([35, 0, 20]),
         )
-        # room.add_block(
-        #     [10, 10, 1],
-        #     point_type="install_permitted",
-        #     displacement=np.array([0, 0, 9]),
-        # )
+        room.add_block(
+            [50, 15, 10],
+            point_type="install_permitted",
+            displacement=np.array([0, 35, 20]),
+        )
 
         print("Building monitored blocks...")
         resol_requirement = dict(
@@ -173,15 +163,27 @@ def main(size: str):
             v_res_req_max=1000,
         )
         room.add_block(
-            [2, 6, 6],
+            [15, 50, 20],
             point_type="must_monitor",
-            displacement=np.array([1, 2, 0]),
+            displacement=np.array([0, 0, 0]),
             **resol_requirement,
         )
         room.add_block(
-            [2, 6, 2],
+            [50, 15, 20],
             point_type="must_monitor",
-            displacement=np.array([7, 1, 3]),
+            displacement=np.array([0, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [15, 50, 20],
+            point_type="must_monitor",
+            displacement=np.array([35, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [50, 15, 20],
+            point_type="must_monitor",
+            displacement=np.array([0, 35, 0]),
             **resol_requirement,
         )
 
