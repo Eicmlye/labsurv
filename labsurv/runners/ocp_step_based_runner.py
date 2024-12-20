@@ -8,6 +8,7 @@ from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
 from mmcv import Config
 from mmcv.utils import ProgressBar
+from numpy import pi as PI
 
 
 @RUNNERS.register_module()
@@ -128,6 +129,32 @@ class OCPStepBasedRunner:
 
                 if self.replay_buffer is not None:
                     self.replay_buffer.add(transition)
+
+                    if transition["reward"] == -100:
+                        pan_list = [
+                            -PI + 2 * PI / section_nums[0] * k
+                            for k in range(section_nums[0])
+                        ]
+                        tilt_list = [
+                            -PI / 2 + PI / section_nums[1] * k
+                            for k in range(section_nums[1])
+                        ]
+
+                        for pan in pan_list:
+                            for tilt in tilt_list:
+                                if (
+                                    pan == transition["cur_action"][4]
+                                    and tilt == transition["cur_action"][5]
+                                ):
+                                    continue
+
+                                similar_transition = {
+                                    key: transition[key] for key in transition.keys()
+                                }
+                                similar_transition["cur_action"][4] = pan
+                                similar_transition["cur_action"][5] = tilt
+
+                                self.replay_buffer.add(similar_transition)
 
                 cur_observation = transition["next_observation"]
                 # add intrinsic reward
