@@ -1,11 +1,10 @@
 import os
 import os.path as osp
 import pickle
-import random
 from typing import Dict, List
 
+import numpy as np
 import torch
-import torch.nn.functional as F
 from labsurv.builders import REPLAY_BUFFERS
 from labsurv.models.buffers import BaseReplayBuffer
 from labsurv.utils.string import WARN
@@ -17,18 +16,15 @@ class SumTree:
     Data structure for O(log n) priority experience replay.
     """
 
-    def __init__(
-        self, device: torch.cuda.device, capacity: int = 1, seed: int | None = None
-    ):
+    def __init__(self, device: torch.cuda.device, capacity: int = 1, weight: float = 2):
         assert capacity > 0
         self.device = device
 
         self.capacity: int = capacity
         self.tree: List[float] = [0] * (2 * capacity)  # start index from 1
         self.data: List[Dict] = [None] * (capacity + 1)  # start index from 1
+        self.weight = weight
         self._write: int = 0  # the pred index of the last valid node
-
-        self._random = random.Random(seed)
 
     def load(self, tree):
         if len(self) > 0:
@@ -45,7 +41,6 @@ class SumTree:
             self._write = 0
 
         self.device = tree.device
-        self._random = tree._random
 
         if tree.capacity <= self.capacity:
             self.tree[: len(tree) + self.capacity + 1] = tree.tree
@@ -154,7 +149,10 @@ class SumTree:
                 td_error = discounted_target_q - critic(cur_observation, cur_action)
             cache_td_error.append(td_error.item())
 
-        cache_prob = F.softmax(torch.tensor(cache_td_error, dtype=torch.float32), dim=0)
+        weighted_td_errors = (
+            torch.tensor(cache_td_error, dtype=torch.float32) ** self.weight
+        )
+        cache_prob = weighted_td_errors / weighted_td_errors.sum()
 
         for error_index in range(len(cache_td_error)):
             data_index = error_index + 1
@@ -166,10 +164,21 @@ class SumTree:
         """
         Get `batch_size` samples according to the priority distribution.
         """
-        batch = []
 
-        for batch_index in range(batch_size):
-            batch.append(self.get(self._random.uniform(0, 1))[-1])
+        # fix precision errors
+        probs = [self.tree[self.capacity + i] for i in range(len(self))]
+        extra = sum(probs) - 1
+        if extra < 0:
+            probs[-1] += -extra
+        elif extra > 0:
+            probs[probs.index(max(probs))] -= extra
+
+        batch = np.random.choice(
+            self.data[: len(self)],
+            size=batch_size,
+            replace=False,
+            p=probs,
+        )
 
         return batch
 
@@ -199,7 +208,6 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         batch_size: int,
         capacity: int,
         activate_size: int,
-        seed: int | None = None,
         load_from: str | None = None,
     ):
         if activate_size > capacity:
@@ -223,8 +231,6 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
 
         self.activate_size = activate_size
         self.batch_size = batch_size
-
-        self._random = random.Random(seed)
 
     def add(self, transition: Dict[str, bool | float | array]):
         self._buffer.add(0, transition)
