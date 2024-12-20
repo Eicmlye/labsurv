@@ -6,7 +6,7 @@ from labsurv.physics import SurveillanceRoom
 from torch import pi as PI
 
 
-def demo():
+def demo(size: str):
     load_from = None
     # load_from = "output/demo/surv_room/SurveillanceRoom.pkl"
 
@@ -19,7 +19,84 @@ def demo():
         room.save("output/demo/surv_room_copy/SurveillanceRoom.pkl")
         room.visualize("output/demo/surv_room_copy/SurveillanceRoom_occ.ply")
         room.visualize("output/demo/surv_room_copy/SurveillanceRoom_cam.ply", "camera")
-    else:
+    elif size == "tiny":
+        full_shape = [50, 50, 30]
+        room = SurveillanceRoom(
+            device=DEVICE,
+            cfg_path=cfg_path,
+            shape=full_shape,
+        )
+        print("Building occupancy blocks...")
+        room.add_block(
+            [20, 20, 30],
+            displacement=np.array([15, 15, 0]),
+        )
+
+        print("Building permission blocks...")
+        room.add_block(
+            [15, 50, 10],
+            point_type="install_permitted",
+            displacement=np.array([0, 0, 20]),
+        )
+        room.add_block(
+            [50, 15, 10],
+            point_type="install_permitted",
+            displacement=np.array([0, 0, 20]),
+        )
+        room.add_block(
+            [15, 50, 10],
+            point_type="install_permitted",
+            displacement=np.array([35, 0, 20]),
+        )
+        room.add_block(
+            [50, 15, 10],
+            point_type="install_permitted",
+            displacement=np.array([0, 35, 20]),
+        )
+
+        print("Building monitored blocks...")
+        resol_requirement = dict(
+            h_res_req_min=500,
+            h_res_req_max=1000,
+            v_res_req_min=500,
+            v_res_req_max=1000,
+        )
+        room.add_block(
+            [15, 50, 20],
+            point_type="must_monitor",
+            displacement=np.array([0, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [50, 15, 20],
+            point_type="must_monitor",
+            displacement=np.array([0, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [15, 50, 20],
+            point_type="must_monitor",
+            displacement=np.array([35, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [50, 15, 20],
+            point_type="must_monitor",
+            displacement=np.array([0, 35, 0]),
+            **resol_requirement,
+        )
+
+        print("Adding cameras...")
+        room.add_cam(
+            [10, 15, 25],
+            [PI / 4, -PI / 6],
+            "std_cam",
+        )
+
+        room.save("output/demo/surv_room")
+        room.visualize("output/demo/surv_room")
+        room.visualize("output/demo/surv_room", "camera")
+    elif size == "standard":
         full_shape = [100, 100, 30]
         room = SurveillanceRoom(
             device=DEVICE,
@@ -306,6 +383,6 @@ if __name__ == "__main__":
     args = parse_args()
 
     if args.demo:
-        demo()
+        demo(args.size)
     else:
         main(args.size)
