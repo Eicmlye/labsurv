@@ -174,7 +174,7 @@ class SumTree:
             probs[probs.index(max(probs))] -= extra
 
         batch = np.random.choice(
-            self.data[: len(self)],
+            self.data[1 : 1 + len(self)],
             size=batch_size,
             replace=False,
             p=probs,
