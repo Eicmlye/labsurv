@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import torch
 from mmcv.utils import ProgressBar
@@ -340,7 +340,7 @@ def check_obstacle(
     voxel_upper_bounds = occ + 0.5  # N * 3
     voxel_bounds = torch.cat((voxel_lower_bounds, voxel_upper_bounds), dim=1)  # N * 6
 
-    obstacle_mask = torch.zeros([len(lov)], dtype=torch.bool, device=device)
+    obstacle_mask = torch.ones([len(lov)], dtype=torch.bool, device=device)
 
     if lov_indices is None and lov_check_list is None:
         lov_indices, lov_check_list = _if_need_obstacle_check(cam_pos, lov, occ)
@@ -468,9 +468,7 @@ def _if_need_obstacle_check(
         lov_section = lov[step * index : step * (index + 1)]
 
         # ignore check if occ is too far away from the lov line
-        lov_needs_check_dist_mask, dist_occ2lov = _check_dist_occ2lov(
-            lov_section, cam_pos, occ
-        )
+        lov_needs_check_dist_mask = _check_dist_occ2lov(lov_section, cam_pos, occ)
         # Ignore check if occ is not `between` the cam_pos and target.
         #
         # --------occ------------
@@ -480,12 +478,16 @@ def _if_need_obstacle_check(
         # -------------cam-------------target    NO CHECK
         #
         # If occ is inside the vertex voxels, check is still necessary.
-        lov_needs_check_between_mask = _check_occ_between_lov(
-            lov_section, cam_pos, occ, dist_occ2lov
+        # lov_needs_check_between_mask = _check_occ_between_lov(
+        #     lov_section, cam_pos, occ, dist_occ2lov
+        # )
+        lov_needs_check_mask = (
+            lov_needs_check_dist_mask  # & lov_needs_check_between_mask
         )
-        lov_needs_check_mask = lov_needs_check_dist_mask & lov_needs_check_between_mask
 
-        lov_needs_check_indices = (lov_needs_check_mask > 0).nonzero().view(-1)
+        lov_needs_check_indices = (lov_needs_check_mask > 0).nonzero().view(
+            -1
+        ) + index * step
         lov_indices += lov_needs_check_indices.tolist()
         lov_check_list += lov[lov_needs_check_indices].tolist()
 
@@ -494,15 +496,17 @@ def _if_need_obstacle_check(
     if len(lov) % step > 0:
         lov_section = lov[len(lov) // step * step :]
 
-        lov_needs_check_mask, dist_occ2lov = _check_dist_occ2lov(
-            lov_section, cam_pos, occ
+        lov_needs_check_dist_mask = _check_dist_occ2lov(lov_section, cam_pos, occ)
+        # lov_needs_check_between_mask = _check_occ_between_lov(
+        #     lov_section, cam_pos, occ, dist_occ2lov
+        # )
+        lov_needs_check_mask = (
+            lov_needs_check_dist_mask  # & lov_needs_check_between_mask
         )
-        lov_needs_check_between_mask = _check_occ_between_lov(
-            lov_section, cam_pos, occ, dist_occ2lov
-        )
-        lov_needs_check_mask = lov_needs_check_dist_mask & lov_needs_check_between_mask
 
-        lov_needs_check_indices = (lov_needs_check_mask > 0).nonzero().view(-1)
+        lov_needs_check_indices = (lov_needs_check_mask > 0).nonzero().view(-1) + len(
+            lov
+        ) // step * step
         lov_indices += lov_needs_check_indices.tolist()
         lov_check_list += lov[lov_needs_check_indices].tolist()
 
@@ -510,12 +514,13 @@ def _if_need_obstacle_check(
 
     print("\r\033[K\033[1A\033[K\033[1A", end="")
 
+    # lov_indices = [i for i in range(len(lov))]
+    # lov_check_list = lov.tolist()
+
     return lov_indices, lov_check_list
 
 
-def _check_dist_occ2lov(
-    lov_section: Tensor, cam_pos: Tensor, occ: Tensor
-) -> Tuple[Tensor]:
+def _check_dist_occ2lov(lov_section: Tensor, cam_pos: Tensor, occ: Tensor) -> Tensor:
     """
     ## Arguments:
 
@@ -536,16 +541,16 @@ def _check_dist_occ2lov(
         ** 2,
         dim=2,
     )  # K * M
-    dist_occ2lov = cross_products / torch.sum(lov_section**2, dim=1).unsqueeze(
-        1
-    ).repeat(
+    dist_occ2lov_squared_sum = cross_products / torch.sum(
+        lov_section**2, dim=1
+    ).unsqueeze(1).repeat(
         [1, len(occ)]
     )  # K * M
 
     # check occ only if distance <= sqrt(3)
-    lov_needs_check_mask = (dist_occ2lov < 3).sum(dim=1) > 1
+    lov_needs_check_mask = (dist_occ2lov_squared_sum < 3).sum(dim=1) > 1
 
-    return lov_needs_check_mask, dist_occ2lov  # [K], [K, M]
+    return lov_needs_check_mask  # , torch.sqrt(dist_occ2lov_squared_sum)  # [K], [K, M]
 
 
 def _check_occ_between_lov(
@@ -569,9 +574,10 @@ def _check_occ_between_lov(
 
     targets_expanded = targets.repeat([1, len(occ)]).view(-1, len(occ), 3)  # [K, M, 3]
     occ_expanded = occ.repeat([len(targets), 1]).view(len(targets), -1, 3)  # [K, M, 3]
-    occ_to_target = occ_expanded - targets_expanded  # [K, M, 3]
+    occ_to_target = targets_expanded - occ_expanded  # [K, M, 3]
 
-    near_vertices_mask = (occ_to_target == 0).sum(dim=2) > 0  # [K, M]
+    # For 3D meshgrids, `near` is equivalent to being the same voxel.
+    near_vertices_mask = (occ_to_target == 0).sum(dim=2) == 3  # [K, M]
 
     target_side_squared = (occ_to_target**2).sum(dim=2) - dist_occ2lov**2  # [K, M]
     target_side_inner_mask = (
@@ -582,7 +588,7 @@ def _check_occ_between_lov(
     cam_expanded = cam_pos.repeat([len(occ) * len(lov_section)]).view(
         len(targets), len(occ), 3
     )  # [K, M, 3]
-    occ_to_cam = occ_expanded - cam_expanded  # [K, M, 3]
+    occ_to_cam = cam_expanded - occ_expanded  # [K, M, 3]
 
     cam_side_squared = (occ_to_cam**2).sum(dim=2) - dist_occ2lov**2  # [K, M]
     cam_side_inner_mask = (
@@ -594,6 +600,6 @@ def _check_occ_between_lov(
         near_vertices_mask | (target_side_inner_mask & cam_side_inner_mask)
     ).sum(
         dim=1
-    )  # [K]
+    ) > 0  # [K]
 
     return lov_needs_check_between_mask
