@@ -92,9 +92,9 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
         total_target_point_num: float = (
             self.info_room.must_monitor[:, :, :, 0].sum().item()
         )
-        # pred_coverage: float = (
-        #     self.info_room.visible_points > 0
-        # ).sum().item() / total_target_point_num
+        pred_coverage: float = (
+            self.info_room.visible_points > 0
+        ).sum().item() / total_target_point_num
 
         # pred_cam_count = (
         #     self.info_room.cam_extrinsics[:, :, :, 0].sum().type(self.INT).item()
@@ -117,13 +117,6 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
                 .copy()
             )
             if _is_in(pos, candidates):
-                # print(
-                #     f"\n\n\nCurrent coverage {pred_coverage:.2%} with {pred_cam_count:d} cameras."
-                #     f"\nAdd camera at [{pos[0]}, {pos[1]}, {pos[2]}], "
-                #     f"with pan={direction[0]:.4f}, tilt={direction[1]:.4f}, "
-                #     f"type {cam_type} cam..."
-                # )
-
                 direction_similarity, max_delta_cov = (
                     self.info_room.direction_similarity(
                         pos, direction, section_nums, cam_type
@@ -135,9 +128,6 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
                 self.info_room.add_cam(
                     pos, direction, cam_type, lov_indices, lov_check_list
                 )
-
-                # print("\r\033[K\033[1A\033[K\033[1A\033[K\033[3A", end="")
-                # self.history_cost[pos[0], pos[1], pos[2]] += 1
             else:
                 # import pdb; pdb.set_trace()
                 action = ILLEGAL
@@ -161,11 +151,28 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
             raise RuntimeError("ILLEGAL action operated.")
 
         reward = 0
+        cov_incre = cur_coverage - pred_coverage
 
+        # ==== 1 ====
+        # if max_delta_cov == 0:
+        #     reward += -100
+        # elif cov_incre == 0:
+        #     reward += max_delta_cov * direction_similarity * 100
+        # else:  # cov_incre > 0
+        #     reward += (1 + cov_incre) * 100
+
+        # ==== 2 ====
         if max_delta_cov == 0:
-            reward += -100
-        else:
-            reward += max_delta_cov * direction_similarity * 100
+            reward += -200
+        elif cov_incre == 0:
+            reward += (max_delta_cov * direction_similarity - 1) * 100
+        else:  # cov_incre > 0
+            reward += cov_incre * 100
+
+        if cur_coverage == 1:
+            reward += 200
+        if cov_incre > 0.05:
+            reward += cov_incre // 0.05 * 10
 
         terminated = (
             action == STOP or self.action_count == total_steps or cur_coverage == 1

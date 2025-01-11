@@ -139,7 +139,7 @@ class OCPStepBasedRunner:
                 if self.replay_buffer is not None:
                     self.replay_buffer.add(transition)
 
-                    if transition["reward"] == -100:
+                    if transition["reward"] == -200:
                         pan_list = [
                             -PI + 2 * PI / section_nums[0] * k
                             for k in range(section_nums[0])
