@@ -39,7 +39,7 @@ class OCPStepBasedRunner:
 
             self.start_episode = self.agent.start_episode
             if "resume_from" in cfg.agent.keys() and cfg.agent.resume_from is not None:
-                self.logger.set_cur_episode_index(self.start_episode)
+                self.logger.set_cur_episode_index(self.start_episode - 1)
 
     def generate_replay_buffer(self):
         cur_observation = None
@@ -121,11 +121,20 @@ class OCPStepBasedRunner:
                 transition, cur_coverage, cam_count = self.env.step(
                     cur_observation, cur_action_with_params, self.steps, section_nums
                 )
+
                 transition["cur_observation"] = cur_observation
                 transition["cur_action"] = cur_action_with_params
 
                 terminated = transition["terminated"]
                 # truncated = step == self.steps - 1
+
+                if terminated or step + 1 == self.steps:
+                    point_cloud_path = osp.join(
+                        self.logger.save_dir,
+                        "pointcloud",
+                        f"epi{episode + 1}_step{step + 1}_SurveillanceRoom_cam.ply",
+                    )
+                    self.env.info_room.visualize(point_cloud_path, "camera")
 
                 if self.replay_buffer is not None:
                     self.replay_buffer.add(transition)
@@ -181,7 +190,7 @@ class OCPStepBasedRunner:
                 else:
                     raise NotImplementedError()
 
-                print(
+                self.logger.show_log(
                     f"[Episode {episode + 1:>4} Step {step + 1:>3}]\t{cur_coverage * 100:.2f}% "
                     f"| {cam_count:>3} cams | reward {transition["reward"]:.4f}"
                 )
@@ -189,7 +198,14 @@ class OCPStepBasedRunner:
                 if terminated:
                     break
 
-            log_dict = dict(lr=self.agent.lr)
+            log_dict = (
+                dict(
+                    actor_lr=self.agent.lr[0],
+                    critic_lr=self.agent.lr[1],
+                )
+                if isinstance(self.agent.lr, list)
+                else dict(lr=self.agent.lr)
+            )
 
             self.logger.update(episode_return)
             self.logger(self.episodes, **log_dict)

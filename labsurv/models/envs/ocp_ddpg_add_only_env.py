@@ -178,7 +178,6 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
 
         if terminated:
             self.lazy_count = 0
-        self.info_room.visualize("output/ocp/ddpg", "camera")
 
         return transition, cur_coverage, cam_count
 

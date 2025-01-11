@@ -28,6 +28,7 @@ class LoggerHook:
         )
         self.return_list: deque = deque(maxlen=2 * log_interval)
         self.cur_episode_index = -1
+        self.save_dir = save_dir
 
         os.makedirs(save_dir, exist_ok=True)
 
