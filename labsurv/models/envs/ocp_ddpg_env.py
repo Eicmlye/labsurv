@@ -21,7 +21,7 @@ class OCPDDPGEnv(BaseSurveillanceEnv):
         """
         ## Description:
 
-            This environment is the basic surveillance room environment class.
+            This environment is the DDPG surveillance room environment class.
 
         ## Action space:
 
@@ -195,30 +195,81 @@ class OCPDDPGEnv(BaseSurveillanceEnv):
 
         reward = 0
         camera_threshold = 5
+        history_threshold = 5
         if action != ILLEGAL:
             if action != STOP:
-                reward += (
-                    # camera reward
-                    vis_mask.sum()
-                    / total_target_point_num
-                    # coverage reward, the difference that vis_mask brings
-                    * (cur_coverage - pred_coverage)
-                )
-
-            if action == STOP or self.action_count == total_steps:
+                if self.history_cost[pos[0], pos[1], pos[2]].item() > history_threshold:
+                    reward += -1
+                elif cur_coverage - pred_coverage == 0:
+                    reward += (
+                        (
+                            cur_coverage
+                            / max(
+                                self.history_cost[pos[0], pos[1], pos[2]].item(),
+                                (
+                                    cam_count
+                                    if cam_count < camera_threshold
+                                    else (2 * cam_count)
+                                ),
+                            )
+                        )
+                        if action == DEL
+                        else -1
+                    )
+                elif cur_coverage - pred_coverage > 0:
+                    reward += (
+                        # camera reward
+                        vis_mask.sum() / total_target_point_num
+                        # coverage reward, the difference that vis_mask brings
+                        + (cur_coverage - pred_coverage)
+                    )
+                elif cur_coverage - pred_coverage < 0:
+                    reward += (
+                        # coverage reward, the difference that vis_mask brings
+                        1
+                        - (pred_coverage - cur_coverage) / pred_coverage
+                        # / max(
+                        #     self.history_cost[pos[0], pos[1], pos[2]].item(),
+                        #     (cam_count if cam_count < camera_threshold else (2 * cam_count))
+                        # )
+                    )
+                else:
+                    raise NotImplementedError()
+            # if action == ADD or action == ADJUST:
+            #     if cur_coverage - pred_coverage > 0:
+            #         reward += (
+            #             # camera reward
+            #             vis_mask.sum()
+            #             / total_target_point_num
+            #             # coverage reward, the difference that vis_mask brings
+            #             * (cur_coverage - pred_coverage)
+            #         )
+            #     else:
+            #         reward -= 1
+            # elif action == DEL:
+            #     if pred_coverage - cur_coverage > 0:
+            #         reward += (
+            #             # coverage reward, the difference that vis_mask brings
+            #             (1 - (pred_coverage - cur_coverage) / pred_coverage)
+            #         )
+            #     else:
+            #         reward -= 1
+            elif action == STOP or self.action_count == total_steps:
                 reward += (
                     # mission completion
                     (cur_coverage - 1)
                     # steps taken
                     * self.action_count
-                    / total_steps
+                    # / total_steps
                     # camera used
-                    * (1 if cam_count < camera_threshold else cam_count)
+                    * (cam_count if cam_count < camera_threshold else (2 * cam_count))
                     / total_steps
                 )
+            else:
+                raise NotImplementedError()
         else:
-            print("ILLEGAL action operated.")
             # import pdb; pdb.set_trace()
+            print("ILLEGAL action operated.")
             reward -= 0.1
 
         transition = dict(
