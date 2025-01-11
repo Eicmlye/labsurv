@@ -25,7 +25,8 @@ class OCPDDPG(BaseAgent):
         explorer_cfg: Dict,
         device: Optional[torch.cuda.device] = None,
         gamma: float = 0.9,
-        lr: float = 1e-4,
+        actor_lr: float = 1e-4,
+        critic_lr: float = 1e-2,
         tau: float = 5e-2,
         load_from: Optional[str] = None,
         resume_from: Optional[str] = None,
@@ -62,9 +63,9 @@ class OCPDDPG(BaseAgent):
             self.actor_target.load_state_dict(self.actor.state_dict())
             self.critic_target.load_state_dict(self.critic.state_dict())
 
-            self.lr = lr
-            self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
-            self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
+            self.lr = [actor_lr, critic_lr]
+            self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr[0])
+            self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr[1])
 
             self.start_episode = 0
             self.tau = tau
