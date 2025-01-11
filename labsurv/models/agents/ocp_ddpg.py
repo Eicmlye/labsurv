@@ -98,7 +98,7 @@ class OCPDDPG(BaseAgent):
         self.critic.load_state_dict(checkpoint["critic"]["model_state_dict"])
         self.actor_opt.load_state_dict(checkpoint["actor"]["optimizer_state_dict"])
         self.critic_opt.load_state_dict(checkpoint["critic"]["optimizer_state_dict"])
-        self.start_episode = checkpoint["episode"]
+        self.start_episode = checkpoint["episode"] + 1
 
     def take_action(self, observation: array, all_explore: bool = False) -> array:
         """
