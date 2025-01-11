@@ -54,7 +54,7 @@ cam_intrinsics = dict(
     # `std_cam`
     std_cam=dict(
         aov=[PI / 3, PI / 3],
-        dof=[4, 0.5],
+        dof=[3, 0.5],
     ),
 )
 

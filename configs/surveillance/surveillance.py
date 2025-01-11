@@ -47,6 +47,6 @@ logger_cfg = dict(
     save_filename=exp_name,
 )
 
-save_checkpoint_interval = 100
+save_checkpoint_interval = 10
 
 eval_interval = 20

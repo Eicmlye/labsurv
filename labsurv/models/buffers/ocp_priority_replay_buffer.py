@@ -9,6 +9,7 @@ from labsurv.builders import REPLAY_BUFFERS
 from labsurv.models.buffers import BaseReplayBuffer
 from labsurv.utils.string import WARN
 from numpy import ndarray as array
+from torch.nn import Module
 
 
 class SumTree:
@@ -26,7 +27,7 @@ class SumTree:
         self.weight = weight
         self._write: int = 0  # the pred index of the last valid node
 
-    def load(self, tree):
+    def load(self, tree, weight):
         if len(self) > 0:
             print(
                 WARN(
@@ -48,6 +49,8 @@ class SumTree:
         else:
             self.tree = tree.tree[: len(self) + self.capacity + 1]
             self.data = tree.data[: len(self) + self.capacity + 1]
+
+        self.weight = weight
 
     def __len__(self):
         length = 0
@@ -108,7 +111,7 @@ class SumTree:
         else:
             return self._retrieve(rchild, val - self.tree[lchild])
 
-    def refresh(self, actor: torch.nn.Module, critic: torch.nn.Module, gamma: float):
+    def refresh(self, actor: Module, critic: Module, gamma: float):
         """
         Update the priority of all the nodes.
         """
@@ -208,6 +211,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         batch_size: int,
         capacity: int,
         activate_size: int,
+        weight: float = 2,
         load_from: str | None = None,
     ):
         if activate_size > capacity:
@@ -225,7 +229,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         self.capacity = capacity
 
         if load_from is None:
-            self._buffer = SumTree(device, self.capacity)
+            self._buffer = SumTree(device, self.capacity, weight)
         else:
             self.load(load_from)
 
@@ -235,7 +239,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
     def add(self, transition: Dict[str, bool | float | array]):
         self._buffer.add(0, transition)
 
-    def update(self, actor: torch.nn.Module, critic: torch.nn.Module, gamma):
+    def update(self, actor: Module, critic: Module, gamma):
         """
         Update the priority of all the nodes.
         """
@@ -268,7 +272,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
     def is_active(self) -> bool:
         return len(self) >= self.activate_size
 
-    def load(self, load_from: str):
+    def load(self, load_from: str, weight: float):
         with open(load_from, "rb") as f:
             loaded_buffer = pickle.load(f)
 
@@ -277,7 +281,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         if loaded_buffer.capacity == self.capacity:
             self._buffer = loaded_buffer
         else:
-            self._buffer.load(loaded_buffer)
+            self._buffer.load(loaded_buffer, weight)
 
         print("Replay buffer loaded.")
 
