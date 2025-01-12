@@ -15,7 +15,7 @@ class REINFORCE(BaseAgent):
     def __init__(
         self,
         policy_net_cfg: Dict,
-        device: Optional[torch.cuda.device] = None,
+        device: Optional[str] = None,
         gamma: float = 0.9,
         lr: float = 0.1,
         load_from: Optional[str] = None,

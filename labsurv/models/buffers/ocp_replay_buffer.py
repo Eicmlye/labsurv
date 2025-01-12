@@ -31,7 +31,7 @@ class OCPReplayBuffer:
 
     def __init__(
         self,
-        device: torch.cuda.device,
+        device: str,
         batch_size: int,
         capacity: int,
         activate_size: int,
@@ -49,7 +49,7 @@ class OCPReplayBuffer:
                 f"buffer capacity {capacity}."
             )
 
-        self.device = device
+        self.device = torch.device(device)
 
         if load_from is None:
             self._buffer = collections.deque(maxlen=capacity)

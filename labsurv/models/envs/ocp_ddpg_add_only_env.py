@@ -16,7 +16,7 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
     def __init__(
         self,
         room_data_path: str,
-        device: Optional[torch.cuda.device],
+        device: Optional[str],
         save_path: str,
     ):
         """

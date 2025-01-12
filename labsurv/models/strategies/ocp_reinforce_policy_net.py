@@ -23,14 +23,14 @@ class OCPREINFORCEPolicyNet(Module):
 
     def __init__(
         self,
-        device: torch.cuda.device,
+        device: str,
         state_dim: int,
         hidden_dim: int,
         action_dim: int,
         params_dim: int,
     ):
         super().__init__()
-        self.device = device
+        self.device = torch.device(device)
 
         neck_layers = 2
         self.neck = Sequential()

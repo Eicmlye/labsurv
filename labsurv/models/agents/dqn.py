@@ -15,7 +15,7 @@ class DQN(BaseAgent):
     def __init__(
         self,
         qnet_cfg: Dict,
-        device: torch.cuda.device = None,
+        device: str = None,
         gamma: float = 0.9,
         explorer_cfg: Dict = None,
         lr: float = 0.1,
@@ -43,7 +43,7 @@ class DQN(BaseAgent):
                 "`load_from` and `resume_from` should not be both specified."
             )
 
-        self.device = device
+        self.device = torch.device(device)
         self.gamma = gamma
 
         self.test_mode = test_mode
