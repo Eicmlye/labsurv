@@ -236,9 +236,8 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         self.device = torch.device(device)
         self.capacity = capacity
 
-        if load_from is None:
-            self._buffer = SumTree(device, self.capacity, weight)
-        else:
+        self._buffer = SumTree(device, self.capacity, weight)
+        if load_from is not None:
             self.load(load_from, weight)
 
         self.activate_size = activate_size
