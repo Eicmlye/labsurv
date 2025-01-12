@@ -3,17 +3,16 @@ from configs.surveillance._base_.envs.loaded_info import SHAPE
 from configs.surveillance._base_.envs.std_surveil import cam_intrinsics as CAM_TYPES
 
 pan_section_num = 4
-tilt_section_num = 3
+tilt_section_num = 6
 action_num = 1
 
 agent_cfg = dict(
     episode_based=False,
     agent=dict(
-        type="OCPDDPG",
+        type="OCPDDPGAddOnlyClean",
         actor_cfg=dict(
-            type="OCPDDPGAddOnlyPolicyNet",
+            type="OCPDDPGAddOnlyCleanPolicyNet",
             device=DEVICE,
-            state_dim=12,
             hidden_dim=64,
             action_dim=action_num,  # add # , del, adjust, stop
             cam_types=1,
@@ -22,14 +21,11 @@ agent_cfg = dict(
             tilt_section_num=tilt_section_num,
         ),
         critic_cfg=dict(
-            type="OCPDDPGValueNet",
+            type="OCPDDPGCleanValueNet",
             device=DEVICE,
-            state_dim=12,
             neck_hidden_dim=64,
             adaptive_pooling_dim=10,
-            hidden_dim=16,
             neck_layers=1,
-            linear_layers=1,
         ),
         explorer_cfg=dict(
             type="OCPEpsilonGreedyExplorer",
@@ -59,7 +55,7 @@ agent_cfg = dict(
         capacity=5000,
         activate_size=100,
         batch_size=80,
-        weight=5,
+        weight=4,
         # load_from="output/ocp/ddpg/trail/replay_buffer.pkl",
     ),
 )

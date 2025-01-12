@@ -1,7 +1,7 @@
 import os
 import os.path as osp
 import pickle
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
@@ -9,6 +9,7 @@ from labsurv.builders import REPLAY_BUFFERS
 from labsurv.models.buffers import BaseReplayBuffer
 from labsurv.utils.string import WARN
 from numpy import ndarray as array
+from torch import Tensor
 from torch.nn import Module
 
 
@@ -147,9 +148,14 @@ class SumTree:
                     device=self.device,
                 ).unsqueeze(0)
 
-                target_q = critic(next_observation, actor(next_observation))
+                x, pos_mask = _observation2input(next_observation)
+                target_q = critic(
+                    x.clone().detach(), actor(x.clone().detach(), pos_mask)
+                )
                 discounted_target_q = reward + gamma * target_q * (1 - terminated)
-                td_error = discounted_target_q - critic(cur_observation, cur_action)
+                td_error = discounted_target_q - critic(
+                    _observation2input(cur_observation)[0], cur_action
+                )
             cache_td_error.append(td_error.item())
 
         weighted_td_errors = (
@@ -211,7 +217,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         batch_size: int,
         capacity: int,
         activate_size: int,
-        weight: float = 2,
+        weight: int = 2,
         load_from: str | None = None,
     ):
         if activate_size > capacity:
@@ -224,6 +230,8 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
                 f"Batch size {batch_size} should be no greater than "
                 f"buffer capacity {capacity}."
             )
+        if not isinstance(weight, int) or weight < 0 or weight % 2 != 0:
+            raise ValueError(f"`weight` must be a positive even number, not {weight}.")
 
         self.device = device
         self.capacity = capacity
@@ -231,7 +239,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         if load_from is None:
             self._buffer = SumTree(device, self.capacity, weight)
         else:
-            self.load(load_from)
+            self.load(load_from, weight)
 
         self.activate_size = activate_size
         self.batch_size = batch_size
@@ -278,10 +286,8 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
 
         if not isinstance(loaded_buffer, SumTree):
             raise RuntimeError("No SumTree structure detected.")
-        if loaded_buffer.capacity == self.capacity:
-            self._buffer = loaded_buffer
-        else:
-            self._buffer.load(loaded_buffer, weight)
+
+        self._buffer.load(loaded_buffer, weight)
 
         print("Replay buffer loaded.")
 
@@ -294,3 +300,16 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
 
         with open(save_path, "wb") as f:
             pickle.dump(self._buffer, f)
+
+
+def _observation2input(observation: Tensor) -> Tuple[Tensor, Tensor]:
+    x: Tensor = observation.clone().detach()
+
+    # 1 for blocked, 2 for visible, 0 for invisible
+    x = (x[:, 0] + x[:, -1] * 2).unsqueeze(1)  # [B, 1, W, H ,D]
+
+    cache_observ: Tensor = observation.clone().detach()
+    # pos that allows installation and yet haven't been installed at
+    pos_mask: Tensor = torch.logical_xor(cache_observ[:, [1]], cache_observ[:, [7]])
+
+    return x, pos_mask
