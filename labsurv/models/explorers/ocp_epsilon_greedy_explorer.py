@@ -66,47 +66,38 @@ class OCPEpsilonGreedyExplorer(BaseExplorer):
                     else self._random.uniform(0, self.samples)
                 )
             else:
-                output = []
                 # action
-                add_act = None
-                if self.samples[0] == 1:
-                    add_act = 0
-                    output.append(0)
+                output = [0]
+
+                # pos_index
+                permitted_zone = (
+                    np.logical_xor(observation[1], observation[7])
+                    .flatten()
+                    .nonzero()[0]
+                )
+                output.append(permitted_zone[self._random.choice(len(permitted_zone))])
+
+                # NOTE(eric): When `tilt_index` == 0, `direction` will always
+                # pointing to the inversed direction of z axis (the polar point).
+                # The polar point will be sampled many times more than other
+                # points, which results in unbalanced sampling for direction.
+                # So we set `pan_index` to 0 when `tilt_index` is 0.
+
+                if_point_to_polar = (
+                    self._random.choice(self.samples[2] * (self.samples[3] - 1) + 1)
+                    == 0
+                )
+                # pan_index, tilt_index
+                if if_point_to_polar:
+                    pan_index = 0
+                    tilt_index = 0
                 else:
-                    if (observation[7] != 0).sum() == 0:
-                        add_act = 0
-                    elif (observation[1] != 0).sum() == (observation[7] != 0).sum():
-                        add_act = 1
-                    else:
-                        add_act = self._random.choice(2)
+                    pan_index = self._random.choice(self.samples[2])
+                    tilt_index = self._random.choice(self.samples[3] - 1) + 1
+                output += [pan_index, tilt_index]
 
-                    if add_act == 1:
-                        output.append(self._random.choice(2) + 1)
-                    else:
-                        output.append(0)
-
-                # pos_index, pan_index, tilt_index, cam_type
-                for index, sample in enumerate(self.samples[1:]):
-                    if index == 0:
-                        # only choose pos in permitted area
-                        permitted_zone = None
-                        if add_act == 1:
-                            permitted_zone = observation[7].flatten().nonzero()[0]
-                        else:
-                            permitted_zone = (
-                                np.logical_xor(observation[1], observation[7])
-                                .flatten()
-                                .nonzero()[0]
-                            )
-                        output.append(
-                            permitted_zone[self._random.choice(len(permitted_zone))]
-                        )
-                    elif isinstance(sample, int):
-                        output.append(self._random.choice(sample))
-                    elif isinstance(sample, float):
-                        output.append(self._random.uniform(0, sample))
-                    else:
-                        output.append(self._random.choice(sample))
+                # cam_type
+                output.append(self._random.choice(self.samples[4]))
 
                 # the outer bracket unsqueezes the batch dimension
                 return self._reformat_ocp_params(np.array([output], dtype=np.float32))
