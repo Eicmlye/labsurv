@@ -13,7 +13,7 @@ class OCPDDPGPolicyNet(Module):
 
     def __init__(
         self,
-        device: torch.cuda.device,
+        device: str,
         state_dim: int,
         hidden_dim: int,
         action_dim: int,
@@ -23,7 +23,7 @@ class OCPDDPGPolicyNet(Module):
         tilt_section_num: int = 180,
     ):
         super().__init__()
-        self.device = device
+        self.device = torch.device(device)
         self.cam_types = cam_types
         self.action_dim = action_dim
         self.pan_section_num = pan_section_num

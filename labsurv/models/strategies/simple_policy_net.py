@@ -11,14 +11,14 @@ from torch.nn import Linear, Module, Sequential
 class SimplePolicyNet(Module):
     def __init__(
         self,
-        device: torch.cuda.device,
+        device: str,
         state_dim: int,
         hidden_dim: int,
         action_dim: int,
         extra_params: Optional[List[List[float]]] = None,
     ):
         super().__init__()
-        self.device = device
+        self.device = torch.device(device)
 
         self.conv1 = Linear(state_dim, hidden_dim).to(self.device)
 

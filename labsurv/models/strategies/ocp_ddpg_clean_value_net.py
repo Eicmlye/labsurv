@@ -21,13 +21,13 @@ class OCPDDPGCleanValueNet(Module):
 
     def __init__(
         self,
-        device: torch.cuda.device,
+        device: str,
         neck_hidden_dim: int,
         adaptive_pooling_dim: int,
         neck_layers: int = 3,
     ):
         super().__init__()
-        self.device = device
+        self.device = torch.device(device)
 
         self.neck = Sequential()
         for layer in range(neck_layers):

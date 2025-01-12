@@ -23,7 +23,7 @@ class OCPDDPG(BaseAgent):
         actor_cfg: Dict,
         critic_cfg: Dict,
         explorer_cfg: Dict,
-        device: Optional[torch.cuda.device] = None,
+        device: Optional[str] = None,
         gamma: float = 0.9,
         actor_lr: float = 1e-4,
         critic_lr: float = 1e-2,

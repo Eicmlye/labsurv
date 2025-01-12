@@ -1,15 +1,15 @@
 from typing import Optional
 
+import torch
 from labsurv.builders import AGENTS, EXPLORERS
 from labsurv.models.explorers import BaseExplorer
-from torch import device
 
 
 @AGENTS.register_module()
 class BaseAgent:
     def __init__(
         self,
-        device: device = None,
+        device: str = None,
         gamma: float = 0.9,
         explorer_cfg: dict = None,
         load_from: Optional[str] = None,
@@ -23,7 +23,7 @@ class BaseAgent:
 
         ## Arguments:
 
-            device (torch.device): the device the agent will work on.
+            device (str): the device the agent will work on.
 
             gamma (float): the discount factor of the agent.
 
@@ -50,7 +50,7 @@ class BaseAgent:
                 "`load_from` and `resume_from` should not be both specified."
             )
 
-        self.device = device
+        self.device = torch.device(device)
         self.gamma = gamma
 
         self.test_mode = test_mode

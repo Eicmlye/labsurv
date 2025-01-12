@@ -1,7 +1,7 @@
 import os
 import os.path as osp
 from copy import deepcopy
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import torch
 from labsurv.builders import ENVIRONMENTS
@@ -19,7 +19,7 @@ class BaseSurveillanceEnv(BaseEnv):
     def __init__(
         self,
         room_data_path: str,
-        device: Optional[torch.cuda.device],
+        device: Optional[str],
         save_path: str,
     ):
         """
@@ -61,7 +61,7 @@ class BaseSurveillanceEnv(BaseEnv):
 
         super().__init__()
 
-        self.device = device
+        self.device = torch.device(device)
         self.save_path = save_path
         self.action_count = 0
         self.lazy_count = 0
@@ -71,9 +71,7 @@ class BaseSurveillanceEnv(BaseEnv):
             self._surv_room.occupancy, dtype=self.INT, device=self.device
         )
 
-    def step(
-        self, observation: array, action: int, params: array, total_steps: int
-    ):
+    def step(self, observation: array, action: int, params: array, total_steps: int):
         """
         ## Description:
 

@@ -213,7 +213,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
 
     def __init__(
         self,
-        device: torch.cuda.device,
+        device: str,
         batch_size: int,
         capacity: int,
         activate_size: int,
@@ -233,7 +233,7 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         if not isinstance(weight, int) or weight < 0 or weight % 2 != 0:
             raise ValueError(f"`weight` must be a positive even number, not {weight}.")
 
-        self.device = device
+        self.device = torch.device(device)
         self.capacity = capacity
 
         if load_from is None:

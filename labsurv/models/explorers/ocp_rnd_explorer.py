@@ -15,7 +15,7 @@ from .base_explorer import BaseExplorer
 class OCPRNDExplorer(BaseExplorer):
     def __init__(
         self,
-        device: Optional[torch.cuda.device] = None,
+        device: Optional[str] = None,
         seed: Optional[int] = None,
         lr: float = 0.1,
         net_cfg: Dict = None,
@@ -27,7 +27,7 @@ class OCPRNDExplorer(BaseExplorer):
         """
         super().__init__(seed)
 
-        self.device: torch.device = device
+        self.device = torch.device(device)
         self.lr: float = lr
 
         self.teacher: Module = STRATEGIES.build(net_cfg).to(self.device)

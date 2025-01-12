@@ -1,9 +1,12 @@
 import argparse
 
 import numpy as np
-from configs.runtime import DEVICE
+import torch
+from configs.runtime import DEVICE as DEVICE_STR
 from labsurv.physics import SurveillanceRoom
 from torch import pi as PI
+
+DEVICE = torch.device(DEVICE_STR)
 
 
 def demo(size: str):
