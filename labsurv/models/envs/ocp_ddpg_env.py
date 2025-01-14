@@ -273,6 +273,8 @@ class OCPDDPGEnv(BaseSurveillanceEnv):
             reward -= 0.1
 
         transition = dict(
+            cur_observation=observation,
+            cur_action=action_with_params,
             next_observation=self.info_room.get_info(),
             reward=reward,
             terminated=(action == STOP),

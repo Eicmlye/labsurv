@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS, RUNNERS
 from labsurv.models.agents import BaseAgent
-from labsurv.models.buffers import BaseReplayBuffer, OCPPriorityReplayBuffer
+from labsurv.models.buffers import OCPPriorityReplayBuffer
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
 from mmcv import Config
@@ -26,7 +26,7 @@ class OCPStepBasedRunner:
         self.steps: int = cfg.steps
 
         if not self.test_mode:
-            self.replay_buffer: Optional[BaseReplayBuffer] = None
+            self.replay_buffer: Optional[OCPPriorityReplayBuffer] = None
             if cfg.use_replay_buffer:
                 self.replay_buffer = REPLAY_BUFFERS.build(cfg.replay_buffer)
                 if not self.replay_buffer.is_active():
@@ -64,25 +64,19 @@ class OCPStepBasedRunner:
                         self.agent.actor.pan_section_num,
                         self.agent.actor.tilt_section_num,
                     ]
-                    transition, _, _ = self.env.step(
+                    transitions, _, cur_transition = self.env.step(
                         cur_observation,
                         cur_action_with_params,
                         self.steps,
                         section_nums,
                     )
-                    transition["cur_observation"] = cur_observation
-                    transition["cur_action"] = cur_action_with_params
 
-                    terminated = transition["terminated"]
+                    terminated = cur_transition["terminated"]
 
-                    if (
-                        self.replay_buffer is not None
-                        and not self.replay_buffer.is_active()
-                    ):
-                        self.replay_buffer.add(transition)
-                        prog_bar.update()
+                    self.replay_buffer.add(transitions)
+                    prog_bar.update(len(transitions))
 
-                    cur_observation = transition["next_observation"]
+                    cur_observation = cur_transition["next_observation"]
             print("\nReplay buffer generated.")
         else:
             raise RuntimeError("No replay buffer detected.")
@@ -107,7 +101,6 @@ class OCPStepBasedRunner:
                 actor_loss=0,
                 reward=0,
                 coverage=0,
-                cam_num=0,
             )
             terminated = False
 
@@ -118,14 +111,11 @@ class OCPStepBasedRunner:
                     self.agent.actor.pan_section_num,
                     self.agent.actor.tilt_section_num,
                 ]
-                transition, cur_coverage, cam_count = self.env.step(
+                transitions, cur_coverage, cur_transition = self.env.step(
                     cur_observation, cur_action_with_params, self.steps, section_nums
                 )
+                terminated = cur_transition["terminated"]
 
-                transition["cur_observation"] = cur_observation
-                transition["cur_action"] = cur_action_with_params
-
-                terminated = transition["terminated"]
                 # truncated = step == self.steps - 1
 
                 if terminated or step + 1 == self.steps:
@@ -137,62 +127,45 @@ class OCPStepBasedRunner:
                     self.env.info_room.visualize(point_cloud_path, "camera")
 
                 if self.replay_buffer is not None:
-                    self.replay_buffer.add(transition)
+                    self.replay_buffer.add(transitions)
 
-                    if transition["reward"] == -200:
-                        pan_list = [
-                            -PI + 2 * PI / section_nums[0] * k
-                            for k in range(section_nums[0])
-                        ]
-                        tilt_list = [
-                            -PI / 2 + PI / section_nums[1] * k
-                            for k in range(section_nums[1])
-                        ]
+                cur_observation = cur_transition["next_observation"]
 
-                        for pan in pan_list:
-                            for tilt in tilt_list:
-                                if (
-                                    pan == transition["cur_action"][4]
-                                    and tilt == transition["cur_action"][5]
-                                ):
-                                    continue
-
-                                similar_transition = {
-                                    key: transition[key] for key in transition.keys()
-                                }
-                                similar_transition["cur_action"][4] = pan
-                                similar_transition["cur_action"][5] = tilt
-
-                                self.replay_buffer.add(similar_transition)
-
-                cur_observation = transition["next_observation"]
-                # add intrinsic reward
-                transition["reward"] += self.agent.explorer.reward
-
-                episode_return["reward"] += transition["reward"]
+                episode_return["reward"] += cur_transition["reward"]
                 episode_return["coverage"] = cur_coverage
-                episode_return["cam_num"] = cam_count
 
                 if self.replay_buffer is not None:
-                    if self.replay_buffer.is_active():
-                        if isinstance(self.replay_buffer, OCPPriorityReplayBuffer):
-                            self.replay_buffer.update(
-                                self.agent.actor_target,
-                                self.agent.critic_target,
-                                self.agent.gamma,
-                            )
+                    if not self.replay_buffer.is_active():
+                        raise RuntimeError(
+                            "Replay buffer is not active, generate experiences first."
+                        )
+                    if isinstance(self.replay_buffer, OCPPriorityReplayBuffer):
+                        self.replay_buffer.update(
+                            self.agent.actor_target,
+                            self.agent.critic_target,
+                            self.agent.gamma,
+                        )
 
-                        samples = self.replay_buffer.sample()
-                        (
-                            episode_return["critic_loss"],
-                            episode_return["actor_loss"],
-                        ) = self.agent.update(samples)
+                    samples = self.replay_buffer.sample()
+                    (
+                        episode_return["critic_loss"],
+                        episode_return["actor_loss"],
+                    ) = self.agent.update(samples)
                 else:
                     raise NotImplementedError()
 
                 self.logger.show_log(
-                    f"[Episode {episode + 1:>4} Step {step + 1:>3}]\t{cur_coverage * 100:.2f}% "
-                    f"| {cam_count:>3} cams | reward {transition["reward"]:.4f}"
+                    f"[Episode {episode + 1:>4} Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
+                    f"| reward {cur_transition["reward"]:.4f} "
+                    f"| loss: C {episode_return["critic_loss"]:.4f} A {episode_return["actor_loss"]: .4f} "
+                    f"\n\taction {int(cur_transition["cur_action"][0]):d} "
+                    f"| pos [{int(cur_transition["cur_action"][1]):d}, "
+                    f"{int(cur_transition["cur_action"][2]):d}, "
+                    f"{int(cur_transition["cur_action"][3]):d}] "
+                    f"| direction [{cur_transition["cur_action"][4] / 2 / PI * 360:.2f}, "
+                    f"{cur_transition["cur_action"][5] / 2 / PI * 360:.2f}] "
+                    f"| cam_type {int(cur_transition["cur_action"][6]):d}",
+                    with_time=True,
                 )
 
                 if terminated:

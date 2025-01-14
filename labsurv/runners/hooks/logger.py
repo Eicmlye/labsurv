@@ -13,7 +13,7 @@ from labsurv.runners.hooks.utils import (
     get_time_eta_strs,
     merge_log_str,
 )
-from labsurv.utils import get_time_stamp
+from labsurv.utils import INDENT, get_time_stamp
 
 
 @HOOKS.register_module()
@@ -35,7 +35,8 @@ class LoggerHook:
     def set_cur_episode_index(self, episode_index: int):
         self.cur_episode_index = episode_index
 
-    def show_log(self, log_str: str):
+    def show_log(self, log_str: str, with_time: bool = False):
+        log_str = (get_cur_time_str()[0] + INDENT + log_str) if with_time else log_str
         print(log_str)
         with open(self.log_file, "a+") as f:
             f.write(log_str + "\n")
