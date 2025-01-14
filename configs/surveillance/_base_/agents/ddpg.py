@@ -65,7 +65,7 @@ agent_cfg = dict(
     ),
     replay_buffer=dict(
         # type="OCPReplayBuffer",
-        type="OCPPriorityReplayBuffer",
+        type="OCPPrioritizedReplayBuffer",
         device=DEVICE,
         capacity=2000,
         activate_size=500,

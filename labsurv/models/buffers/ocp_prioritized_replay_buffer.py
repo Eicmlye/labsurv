@@ -29,7 +29,7 @@ class SumTree:
         self.weight = weight
         self._write: int = 0  # the pred index of the last valid node
 
-    def load(self, tree, weight):
+    def load(self, tree, weight: int):
         if len(self) > 0:
             print(
                 WARN(
@@ -37,6 +37,7 @@ class SumTree:
                     "Current buffer will be lost. This operation is inreversible."
                 )
             )
+        assert isinstance(weight, int) and weight > 0 and weight % 2 == 0
 
         self._write = len(tree) if len(tree) < self.capacity else 0
 
@@ -48,8 +49,8 @@ class SumTree:
             ]
             self.data[: len(tree) + 1] = tree.data[: len(tree) + 1]
         else:
-            self.tree = tree.tree[: 2 * self.capacity + 1]
-            self.data = tree.data[: self.capacity + 1]
+            self.tree = tree.tree[: len(self.tree) + 1]
+            self.data = tree.data[: len(self.data) + 1]
 
         self.weight = weight
 
@@ -203,7 +204,7 @@ class SumTree:
 
 
 @REPLAY_BUFFERS.register_module()
-class OCPPriorityReplayBuffer(BaseReplayBuffer):
+class OCPPrioritizedReplayBuffer(BaseReplayBuffer):
     """
     ## Description:
 
