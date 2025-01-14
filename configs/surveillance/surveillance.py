@@ -51,11 +51,11 @@ if "replay_buffer" in agent_cfg.keys():
 
 logger_cfg = dict(
     type="LoggerHook",
-    log_interval=10,
+    log_interval=5,
     save_dir=work_dir,
     save_filename=exp_name,
 )
 
-save_checkpoint_interval = 10
+save_checkpoint_interval = 5
 
 eval_interval = 20

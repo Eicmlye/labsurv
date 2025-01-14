@@ -2,8 +2,8 @@ from configs.runtime import DEVICE
 from configs.surveillance._base_.envs.loaded_info import SHAPE
 from configs.surveillance._base_.envs.std_surveil import cam_intrinsics as CAM_TYPES
 
-pan_section_num = 4
-tilt_section_num = 6
+pan_section_num = 8
+tilt_section_num = 8
 action_num = 1
 
 agent_cfg = dict(
@@ -46,16 +46,17 @@ agent_cfg = dict(
         critic_lr=1e-2,
         tau=2e-1,
         # load_from=None,
-        # resume_from="output/ocp/ddpg/trail/episode_20.pth",
+        # resume_from="output/ocp/ddpg/trail/episode_5.pth",
     ),
     replay_buffer=dict(
         # type="OCPReplayBuffer",
         type="OCPPriorityReplayBuffer",
         device=DEVICE,
         capacity=5000,
-        activate_size=100,
-        batch_size=80,
+        activate_size=200,
+        batch_size=100,
         weight=4,
+        # load_from="output/ocp/ddpg/trail/episode_5.pkl",
         # load_from="output/ocp/ddpg/trail/replay_buffer.pkl",
     ),
 )
