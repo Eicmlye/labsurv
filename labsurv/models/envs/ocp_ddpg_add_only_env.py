@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseSurveillanceEnv
-from labsurv.physics.surveillance_room import if_need_obstacle_check
+from labsurv.utils.surveillance import if_need_obstacle_check
 from numpy import ndarray as array
 
 
