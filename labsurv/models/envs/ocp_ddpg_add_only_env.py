@@ -178,6 +178,8 @@ class OCPDDPGAddOnlyEnv(BaseSurveillanceEnv):
             action == STOP or self.action_count == total_steps or cur_coverage == 1
         )
         transition = dict(
+            cur_observation=observation,
+            cur_action=action_with_params,
             next_observation=self.info_room.get_info(),
             reward=reward,
             terminated=terminated,

@@ -8,6 +8,7 @@ import torch
 from labsurv.builders import REPLAY_BUFFERS
 from labsurv.models.buffers import BaseReplayBuffer
 from labsurv.utils.string import WARN
+from mmcv.utils import ProgressBar
 from numpy import ndarray as array
 from torch import Tensor
 from torch.nn import Module
@@ -37,27 +38,28 @@ class SumTree:
                 )
             )
 
-        if tree.capacity < self.capacity:
-            self._write = len(tree)
-        else:
-            self._write = 0
+        self._write = len(tree) if len(tree) < self.capacity else 0
 
         self.device = tree.device
 
-        if tree.capacity <= self.capacity:
-            self.tree[: len(tree) + self.capacity + 1] = tree.tree
-            self.data[: len(tree) + self.capacity + 1] = tree.data
+        if len(tree) <= self.capacity:
+            self.tree[: len(tree) + self.capacity + 1] = tree.tree[
+                : len(tree) + self.capacity + 1
+            ]
+            self.data[: len(tree) + 1] = tree.data[: len(tree) + 1]
         else:
-            self.tree = tree.tree[: len(self) + self.capacity + 1]
-            self.data = tree.data[: len(self) + self.capacity + 1]
+            self.tree = tree.tree[: 2 * self.capacity + 1]
+            self.data = tree.data[: self.capacity + 1]
 
         self.weight = weight
 
     def __len__(self):
         length = 0
-        for index in range(1, self.capacity + 1):
-            if self.data[index] is not None:
-                length += 1
+        index = 1
+
+        while index <= self.capacity and self.data[index] is not None:
+            length += 1
+            index += 1
 
         return length
 
@@ -117,7 +119,10 @@ class SumTree:
         Update the priority of all the nodes.
         """
         cache_td_error = []
-        for data_index in range(1, self.capacity + 1):
+
+        print("\nComputing priorities of the replay buffer...")
+        prog_bar = ProgressBar(len(self))
+        for data_index in range(1, 1 + len(self)):
             if self.data[data_index] is None:
                 break
 
@@ -157,17 +162,22 @@ class SumTree:
                     _observation2input(cur_observation)[0], cur_action
                 )
             cache_td_error.append(td_error.item())
+            prog_bar.update()
+        print("\r\033[K\033[1A\033[K\033[1A\033[K\033[1A")
 
         weighted_td_errors = (
             torch.tensor(cache_td_error, dtype=torch.float32) ** self.weight
         )
         cache_prob = weighted_td_errors / weighted_td_errors.sum()
 
+        print("\nUpdating priorities of the replay buffer...")
+        prog_bar = ProgressBar(len(self))
         for error_index in range(len(cache_td_error)):
-            data_index = error_index + 1
             index = error_index + self.capacity
 
             self._update(index, cache_prob[error_index].item())
+            prog_bar.update()
+        print("\r\033[K\033[1A\033[K\033[1A\033[K\033[1A")
 
     def sample(self, batch_size: int) -> Dict[str, List[bool | float | array]]:
         """
@@ -243,8 +253,28 @@ class OCPPriorityReplayBuffer(BaseReplayBuffer):
         self.activate_size = activate_size
         self.batch_size = batch_size
 
-    def add(self, transition: Dict[str, bool | float | array]):
-        self._buffer.add(0, transition)
+    def add(
+        self,
+        transitions: (
+            List[Dict[str, bool | float | array]] | Dict[str, bool | float | array]
+        ),
+    ):
+        if isinstance(transitions, Dict):
+            transitions = [transitions]
+        if not isinstance(transitions, List):
+            raise TypeError("`transitions` should be a List of transitions.")
+
+        if len(transitions) > self.capacity / 5:
+            print(
+                WARN(
+                    "The incoming transition list is longer than 20% of the replay "
+                    "buffer's capacity. The buffer content may be frequently changing "
+                    "and could lead to unstable training results."
+                )
+            )
+
+        for transition in transitions:
+            self._buffer.add(0, transition)
 
     def update(self, actor: Module, critic: Module, gamma):
         """

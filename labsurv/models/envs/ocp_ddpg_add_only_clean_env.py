@@ -96,11 +96,6 @@ class OCPDDPGAddOnlyCleanEnv(BaseSurveillanceEnv):
             self.info_room.visible_points > 0
         ).sum().item() / total_target_point_num
 
-        # pred_cam_count = (
-        #     self.info_room.cam_extrinsics[:, :, :, 0].sum().type(self.INT).item()
-        # )
-        # vis_mask = None
-
         if action == ADD:  # add cam
             # choose from uninstalled permitted pos
             candidates: array = (
@@ -117,13 +112,22 @@ class OCPDDPGAddOnlyCleanEnv(BaseSurveillanceEnv):
                 .copy()
             )
             if _is_in(pos, candidates):
-                direction_similarity, max_delta_cov = (
-                    self.info_room.direction_similarity(
-                        pos, direction, section_nums, cam_type
-                    )
-                )
                 lov_indices, lov_check_list = if_need_obstacle_check(
                     pos, self.info_room.must_monitor, self.info_room.occupancy
+                )
+                (
+                    input_direction_index,
+                    best_coverage_increment,
+                    pan_tilt_list,
+                    room_info_list,
+                    similarity_list,
+                ) = self.info_room.best_installation(
+                    pos,
+                    direction,
+                    section_nums,
+                    cam_type,
+                    lov_indices,
+                    lov_check_list,
                 )
                 self.info_room.add_cam(
                     pos, direction, cam_type, lov_indices, lov_check_list
@@ -134,62 +138,70 @@ class OCPDDPGAddOnlyCleanEnv(BaseSurveillanceEnv):
         else:
             raise ValueError(f"Unknown action {action}.")
 
-        cur_coverage: float = (
-            self.info_room.visible_points > 0
-        ).sum().item() / total_target_point_num
-
-        # if abs(cur_coverage - pred_coverage) <= 0.01:
-        #     self.lazy_count += 1
-        # else:
-        #     self.lazy_count = 0
-
-        cam_count = (
-            self.info_room.cam_extrinsics[:, :, :, 0].sum().type(self.INT).item()
-        )
+        cur_coverage: float = -1
 
         if action == ILLEGAL:
             # import pdb; pdb.set_trace()
             raise RuntimeError("ILLEGAL action operated.")
 
-        reward = 0
-        cov_incre = cur_coverage - pred_coverage
+        transitions = []
+        for index in range(len(pan_tilt_list)):
+            transition_coverage = (
+                np.sum(room_info_list[index][-1] > 0) / total_target_point_num
+            )
+            if index == input_direction_index:
+                cur_coverage = transition_coverage
 
-        # ==== 1 ====
-        # if max_delta_cov == 0:
-        #     reward += -100
-        # elif cov_incre == 0:
-        #     reward += max_delta_cov * direction_similarity * 100
-        # else:  # cov_incre > 0
-        #     reward += (1 + cov_incre) * 100
+            transition = dict(
+                cur_observation=observation,
+                cur_action=np.array(
+                    action_with_params[0:4].tolist()
+                    + pan_tilt_list[index]
+                    + action_with_params[6:].tolist()
+                ),
+                next_observation=room_info_list[index],
+                reward=_compute_reward(
+                    transition_coverage,
+                    pred_coverage,
+                    best_coverage_increment,
+                    similarity_list[index],
+                ),
+                terminated=(
+                    action == STOP
+                    or self.action_count == total_steps
+                    or transition_coverage == 1
+                ),
+            )
 
-        # ==== 2 ====
-        if max_delta_cov == 0:
-            reward += -200
-        elif cov_incre == 0:
-            reward += (max_delta_cov * direction_similarity - 1) * 100
-        else:  # cov_incre > 0
-            reward += cov_incre * 100
+            transitions.append(transition)
 
-        if cur_coverage == 1:
-            reward += 200
-        if cov_incre > 0.05:
-            reward += cov_incre // 0.05 * 10
-
-        terminated = (
-            action == STOP or self.action_count == total_steps or cur_coverage == 1
-        )
-        transition = dict(
-            next_observation=self.info_room.get_info(),
-            reward=reward,
-            terminated=terminated,
-        )
-
-        if terminated:
-            self.lazy_count = 0
-
-        return transition, cur_coverage, cam_count
+        return transitions, cur_coverage, transitions[input_direction_index]
 
 
 def _is_in(pos: array, candidates: array):
     extend_pos = np.tile(pos, [len(candidates), 1])
     return np.any(np.all(extend_pos == candidates, axis=1), axis=0)
+
+
+def _compute_reward(
+    cur_coverage: float,
+    pred_coverage: float,
+    best_coverage_increment: float,
+    direction_similarity: float,
+) -> float:
+    reward: float = 0
+    cov_incre = cur_coverage - pred_coverage
+
+    if best_coverage_increment == 0:
+        reward += -200
+    elif cov_incre == 0:
+        reward += (best_coverage_increment * direction_similarity - 1) * 100
+    else:  # cov_incre > 0
+        reward += cov_incre * 100
+
+    if cur_coverage == 1:
+        reward += 200
+    if cov_incre > 0.05:
+        reward += cov_incre // 0.05 * 10
+
+    return reward
