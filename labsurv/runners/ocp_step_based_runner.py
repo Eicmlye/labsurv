@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS, RUNNERS
 from labsurv.models.agents import BaseAgent
-from labsurv.models.buffers import OCPPriorityReplayBuffer
+from labsurv.models.buffers import OCPPrioritizedReplayBuffer
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
 from mmcv import Config
@@ -26,7 +26,7 @@ class OCPStepBasedRunner:
         self.steps: int = cfg.steps
 
         if not self.test_mode:
-            self.replay_buffer: Optional[OCPPriorityReplayBuffer] = None
+            self.replay_buffer: Optional[OCPPrioritizedReplayBuffer] = None
             if cfg.use_replay_buffer:
                 self.replay_buffer = REPLAY_BUFFERS.build(cfg.replay_buffer)
                 if not self.replay_buffer.is_active():
@@ -139,7 +139,7 @@ class OCPStepBasedRunner:
                         raise RuntimeError(
                             "Replay buffer is not active, generate experiences first."
                         )
-                    if isinstance(self.replay_buffer, OCPPriorityReplayBuffer):
+                    if isinstance(self.replay_buffer, OCPPrioritizedReplayBuffer):
                         self.replay_buffer.update(
                             self.agent.actor_target,
                             self.agent.critic_target,
