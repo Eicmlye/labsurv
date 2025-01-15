@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -64,7 +65,9 @@ class OCPDDPGAddOnlyCleanEnv(BaseSurveillanceEnv):
         action_with_params: array,
         total_steps: int,
         section_nums: List[int],
-    ) -> Tuple[Dict[str, bool | float | array], float, float]:
+    ) -> Tuple[
+        List[Dict[str, bool | float | array]], float, Dict[str, bool | float | array]
+    ]:
         """
         ## Description:
 
@@ -79,7 +82,6 @@ class OCPDDPGAddOnlyCleanEnv(BaseSurveillanceEnv):
             params (Tensor): [4], torch.float16,
             [pos_index_lambda, pan, tilt, cam_type_lambda]
         """
-        ILLEGAL = -1
         ADD = 0
         STOP = 3
         self.action_count += 1
@@ -95,6 +97,7 @@ class OCPDDPGAddOnlyCleanEnv(BaseSurveillanceEnv):
         pred_coverage: float = (
             self.info_room.visible_points > 0
         ).sum().item() / total_target_point_num
+        cur_coverage: float = -1
 
         if action == ADD:  # add cam
             # choose from uninstalled permitted pos
@@ -115,67 +118,82 @@ class OCPDDPGAddOnlyCleanEnv(BaseSurveillanceEnv):
                 lov_indices, lov_check_list = if_need_obstacle_check(
                     pos, self.info_room.must_monitor, self.info_room.occupancy
                 )
-                (
-                    input_direction_index,
-                    best_coverage_increment,
-                    pan_tilt_list,
-                    room_info_list,
-                    similarity_list,
-                ) = self.info_room.best_installation(
-                    pos,
-                    direction,
-                    section_nums,
-                    cam_type,
-                    lov_indices,
-                    lov_check_list,
-                )
+                cache_room = deepcopy(self.info_room)
                 self.info_room.add_cam(
                     pos, direction, cam_type, lov_indices, lov_check_list
                 )
+                cur_coverage: float = (
+                    self.info_room.visible_points > 0
+                ).sum().item() / total_target_point_num
+
+                if cur_coverage == pred_coverage:
+                    (
+                        input_direction_index,
+                        best_coverage_increment,
+                        pan_tilt_list,
+                        room_info_list,
+                        similarity_list,
+                    ) = cache_room.best_installation(
+                        pos,
+                        direction,
+                        section_nums,
+                        cam_type,
+                        lov_indices,
+                        lov_check_list,
+                    )
             else:
                 # import pdb; pdb.set_trace()
-                action = ILLEGAL
+                raise RuntimeError("ILLEGAL action operated.")
         else:
             raise ValueError(f"Unknown action {action}.")
 
-        cur_coverage: float = -1
-
-        if action == ILLEGAL:
-            # import pdb; pdb.set_trace()
-            raise RuntimeError("ILLEGAL action operated.")
-
         transitions = []
-        for index in range(len(pan_tilt_list)):
-            transition_coverage = (
-                np.sum(room_info_list[index][-1] > 0) / total_target_point_num
-            )
-            if index == input_direction_index:
-                cur_coverage = transition_coverage
+        output_transition = None
+        if cur_coverage == pred_coverage:
+            for index in range(len(pan_tilt_list)):
+                transition_coverage = (
+                    np.sum(room_info_list[index][-1] > 0) / total_target_point_num
+                )
 
-            transition = dict(
+                transition = dict(
+                    cur_observation=observation,
+                    cur_action=np.array(
+                        action_with_params[0:4].tolist()
+                        + pan_tilt_list[index]
+                        + action_with_params[6:].tolist()
+                    ),
+                    next_observation=room_info_list[index],
+                    reward=_compute_reward(
+                        transition_coverage,
+                        pred_coverage,
+                        best_coverage_increment,
+                        similarity_list[index],
+                    ),
+                    terminated=(
+                        action == STOP
+                        or self.action_count == total_steps
+                        or transition_coverage == 1
+                    ),
+                )
+
+                transitions.append(transition)
+
+            output_transition = transitions[input_direction_index]
+        else:  # cur_coverage > pred_coverage
+            output_transition = dict(
                 cur_observation=observation,
-                cur_action=np.array(
-                    action_with_params[0:4].tolist()
-                    + pan_tilt_list[index]
-                    + action_with_params[6:].tolist()
-                ),
-                next_observation=room_info_list[index],
-                reward=_compute_reward(
-                    transition_coverage,
-                    pred_coverage,
-                    best_coverage_increment,
-                    similarity_list[index],
-                ),
+                cur_action=action_with_params,
+                next_observation=self.info_room.get_info(),
+                reward=_compute_reward(cur_coverage, pred_coverage),
                 terminated=(
                     action == STOP
                     or self.action_count == total_steps
-                    or transition_coverage == 1
+                    or cur_coverage == 1
                 ),
             )
+            transitions = [output_transition]
 
-            transitions.append(transition)
-
-        return transitions, cur_coverage, transitions[input_direction_index]
+        return transitions, cur_coverage, output_transition
 
 
 def _is_in(pos: array, candidates: array):
@@ -186,16 +204,20 @@ def _is_in(pos: array, candidates: array):
 def _compute_reward(
     cur_coverage: float,
     pred_coverage: float,
-    best_coverage_increment: float,
-    direction_similarity: float,
+    best_coverage_increment: Optional[float] = None,
+    direction_similarity: Optional[float] = None,
 ) -> float:
     reward: float = 0
     cov_incre = cur_coverage - pred_coverage
 
-    if best_coverage_increment == 0:
-        reward += -200
-    elif cov_incre == 0:
-        reward += (best_coverage_increment * direction_similarity - 1) * 100
+    if cov_incre == 0:
+        assert best_coverage_increment is not None
+        assert direction_similarity is not None
+
+        if best_coverage_increment == 0:
+            reward += -200
+        else:
+            reward += (best_coverage_increment * direction_similarity - 1) * 100
     else:  # cov_incre > 0
         reward += cov_incre * 100
 
