@@ -28,8 +28,6 @@ def main():
     args = parse_args()
     cfg = Config.fromfile(args.config)
 
-    cfg.use_replay_buffer = "replay_buffer" in cfg.keys()
-
     os.makedirs(cfg.work_dir, exist_ok=True)
     save_cfg_name = osp.join(cfg.work_dir, cfg.exp_name + ".py")
     cfg.dump(save_cfg_name)

@@ -2,6 +2,7 @@ from typing import List, Optional
 
 import numpy as np
 from labsurv.builders import EXPLORERS
+from labsurv.utils.surveillance import direction_index2pan_tilt, pos_index2coord
 from numpy import ndarray as array
 
 from .base_explorer import BaseExplorer
@@ -11,8 +12,9 @@ from .base_explorer import BaseExplorer
 class OCPEpsilonGreedyExplorer(BaseExplorer):
     def __init__(
         self,
-        samples: int | float | List[int | float] = 2,
-        samples_from: List[int | float | List[int | float]] = None,
+        action_num: int,
+        room_shape: List[int],
+        cam_types: int,
         epsilon: float = 0.2,
         seed: Optional[int] = None,
         pan_section_num: int = 360,
@@ -38,15 +40,11 @@ class OCPEpsilonGreedyExplorer(BaseExplorer):
         super().__init__(seed)
         self.epsilon = epsilon
         self._reward = 0
+        self.action_num = action_num
+        self.room_shape = room_shape
         self.pan_section_num = pan_section_num
         self.tilt_section_num = tilt_section_num
-
-        self.samples = samples
-        if samples is not None:
-            if not isinstance(samples, (int, float, List)):
-                raise ValueError(f"{type(samples)} is not allowed.")
-        else:
-            raise NotImplementedError()
+        self.cam_types = cam_types
 
     def decide(self, observation: array) -> bool:
         return self._random.uniform(0, 1) < self.epsilon
@@ -55,67 +53,31 @@ class OCPEpsilonGreedyExplorer(BaseExplorer):
         """
         ## Returns:
 
-            action_with_params (np.ndarray): B * 5, pos_index, not pos_coord
-        """
-        if self.samples is not None:
-            if not isinstance(self.samples, List):
-                print("This is not the usual case that an OCP problem uses.")
-                return (
-                    self._random.choice(self.samples)
-                    if isinstance(self.samples, int)
-                    else self._random.uniform(0, self.samples)
-                )
-            else:
-                # action
-                output = [0]
-
-                # pos_index
-                permitted_zone = (
-                    np.logical_xor(observation[1], observation[7])
-                    .flatten()
-                    .nonzero()[0]
-                )
-                output.append(permitted_zone[self._random.choice(len(permitted_zone))])
-
-                # NOTE(eric): When `tilt_index` == 0, `direction` will always
-                # pointing to the inversed direction of z axis (the polar point).
-                # The polar point will be sampled many times more than other
-                # points, which results in unbalanced sampling for direction.
-                # So we set `pan_index` to 0 when `tilt_index` is 0.
-
-                if_point_to_polar = (
-                    self._random.choice(self.samples[2] * (self.samples[3] - 1) + 1)
-                    == 0
-                )
-                # pan_index, tilt_index
-                if if_point_to_polar:
-                    pan_index = 0
-                    tilt_index = 0
-                else:
-                    pan_index = self._random.choice(self.samples[2])
-                    tilt_index = self._random.choice(self.samples[3] - 1) + 1
-                output += [pan_index, tilt_index]
-
-                # cam_type
-                output.append(self._random.choice(self.samples[4]))
-
-                # the outer bracket unsqueezes the batch dimension
-                return self._reformat_ocp_params(np.array([output], dtype=np.float32))
-        else:
-            raise NotImplementedError()
-
-    def _reformat_ocp_params(self, params: array) -> array:
-        """
-        ## Returns:
-
-            (action, pos_index, pan, tilt, cam_type) shaped and ranged array.
+            action_with_params (np.ndarray): [9].
         """
 
-        params[0, 2] = (
-            (params[0, 2] - self.pan_section_num / 2) * 2 * np.pi / self.pan_section_num
+        # action
+        output = [self._random.choice(self.action_num)]
+
+        # pos_index
+        permitted_zone = (
+            np.logical_xor(observation[1], observation[7]).flatten().nonzero()[0]
         )
-        params[0, 3] = (
-            (params[0, 3] - self.tilt_section_num / 2) * np.pi / self.tilt_section_num
-        )
+        pos_index = permitted_zone[self._random.choice(len(permitted_zone))]
+        output += pos_index2coord(self.room_shape, pos_index).tolist()
 
-        return params
+        direction_index = self._random.choice(
+            self.pan_section_num * (self.tilt_section_num - 1) + 1
+        )
+        output += direction_index2pan_tilt(
+            self.pan_section_num,
+            self.tilt_section_num,
+            direction_index,
+        ).tolist()
+
+        # cam_type
+        output.append(self._random.choice(self.cam_types))
+
+        output += [pos_index, direction_index]
+
+        return np.array(output, dtype=np.float32)  # [9]

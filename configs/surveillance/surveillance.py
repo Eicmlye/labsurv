@@ -3,19 +3,21 @@ from configs.surveillance._base_.agents import (
     ddpg_add_only_agent,
     ddpg_add_only_clean_agent,
     ddpg_agent,
+    ppo_agent,
     reinforce_agent,
 )
 from labsurv.utils import get_time_stamp
 
-agent_type = "DDPG"
+agent_type = "PPO"
+action_type = None
 # action_type = "AddOnly"
-action_type = "AddOnlyClean"
+# action_type = "AddOnlyClean"
 
 work_dir = f"./output/ocp/{agent_type.lower()}/trail"
 exp_name = get_time_stamp()
 
 episodes = 1000
-steps = 10
+steps = 75
 
 env = dict(
     type=None,
@@ -38,24 +40,25 @@ elif agent_type == "DDPG":
         agent_cfg = ddpg_add_only_clean_agent
     else:
         raise NotImplementedError(f"Unknown action strategy \"{action_type}\"")
+elif agent_type == "PPO":
+    env["type"] = "OCPPPOEnv"
+    agent_cfg = ppo_agent
 agent = agent_cfg["agent"]
 
 runner = dict(
-    type=(
-        "OCPEpisodeBasedRunner" if agent_cfg["episode_based"] else "OCPStepBasedRunner"
-    ),
+    type=("OCPOffPolicyRunner" if agent_cfg["is_off_policy"] else "OCPOnPolicyRunner"),
 )
 
 if "replay_buffer" in agent_cfg.keys():
     replay_buffer = agent_cfg["replay_buffer"]
 
+save_checkpoint_interval = 5
+
 logger_cfg = dict(
     type="LoggerHook",
-    log_interval=5,
+    log_interval=save_checkpoint_interval,
     save_dir=work_dir,
     save_filename=exp_name,
 )
-
-save_checkpoint_interval = 5
 
 eval_interval = 20
