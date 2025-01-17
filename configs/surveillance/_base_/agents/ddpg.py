@@ -6,7 +6,7 @@ pan_section_num = 8
 tilt_section_num = 4
 
 agent_cfg = dict(
-    episode_based=False,
+    is_off_policy=True,
     agent=dict(
         type="OCPDDPG",
         actor_cfg=dict(

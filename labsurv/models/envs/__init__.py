@@ -6,6 +6,7 @@ from .cliff_walk_model_free_env import CliffWalkModelFreeEnv
 from .ocp_ddpg_add_only_clean_env import OCPDDPGAddOnlyCleanEnv
 from .ocp_ddpg_add_only_env import OCPDDPGAddOnlyEnv
 from .ocp_ddpg_env import OCPDDPGEnv
+from .ocp_ppo_env import OCPPPOEnv
 from .ocp_reinforce_env import OCPREINFORCEEnv
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "OCPREINFORCEEnv",
     "OCPDDPGAddOnlyEnv",
     "OCPDDPGAddOnlyCleanEnv",
+    "OCPPPOEnv",
 ]

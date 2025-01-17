@@ -1,7 +1,7 @@
 from configs.runtime import DEVICE
 
 agent_cfg = dict(
-    episode_based=True,
+    is_off_policy=False,
     agent=dict(
         type="OCPREINFORCE",
         device=DEVICE,

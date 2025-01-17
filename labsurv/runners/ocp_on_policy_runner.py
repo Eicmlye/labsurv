@@ -1,9 +1,8 @@
 import os.path as osp
-from typing import Dict, Optional
+from typing import Dict
 
-from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, REPLAY_BUFFERS, RUNNERS
+from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, RUNNERS
 from labsurv.models.agents import BaseAgent
-from labsurv.models.buffers import OCPPrioritizedReplayBuffer
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
 from mmcv import Config
@@ -12,7 +11,7 @@ from numpy import pi as PI
 
 
 @RUNNERS.register_module()
-class OCPStepBasedRunner:
+class OCPOnPolicyRunner:
     def __init__(self, cfg: Config):
         self.work_dir: str = cfg.work_dir
         self.logger: LoggerHook = HOOKS.build(cfg.logger_cfg)
@@ -26,12 +25,6 @@ class OCPStepBasedRunner:
         self.steps: int = cfg.steps
 
         if not self.test_mode:
-            self.replay_buffer: Optional[OCPPrioritizedReplayBuffer] = None
-            if cfg.use_replay_buffer:
-                self.replay_buffer = REPLAY_BUFFERS.build(cfg.replay_buffer)
-                if not self.replay_buffer.is_active():
-                    self.generate_replay_buffer()
-
             self.save_checkpoint_interval: int = cfg.save_checkpoint_interval
 
             # max episode number
@@ -40,49 +33,6 @@ class OCPStepBasedRunner:
             self.start_episode = self.agent.start_episode
             if "resume_from" in cfg.agent.keys() and cfg.agent.resume_from is not None:
                 self.logger.set_cur_episode_index(self.start_episode - 1)
-
-    def generate_replay_buffer(self):
-        cur_observation = None
-
-        # generate replay buffer
-        if self.replay_buffer is not None:
-            print("Replay buffer generating...")
-            prog_bar = ProgressBar(self.replay_buffer.activate_size)
-            while not self.replay_buffer.is_active():
-                cur_observation = self.env.reset()
-                terminated = False
-
-                for step in range(self.steps):
-                    if terminated or self.replay_buffer.is_active():
-                        break
-
-                    cur_action_with_params = self.agent.take_action(
-                        cur_observation, all_explore=True
-                    )
-
-                    section_nums = [
-                        self.agent.actor.pan_section_num,
-                        self.agent.actor.tilt_section_num,
-                    ]
-                    transitions, _, cur_transition = self.env.step(
-                        cur_observation,
-                        cur_action_with_params,
-                        self.steps,
-                        section_nums,
-                    )
-
-                    terminated = cur_transition["terminated"]
-
-                    self.replay_buffer.add(transitions)
-                    prog_bar.update(len(transitions))
-
-                    cur_observation = cur_transition["next_observation"]
-            print("\nReplay buffer generated.")
-        else:
-            raise RuntimeError("No replay buffer detected.")
-
-        # save buffer cache
-        self.replay_buffer.save(self.work_dir)
 
     def run(self):
         if self.test_mode:
@@ -104,60 +54,40 @@ class OCPStepBasedRunner:
             )
             terminated = False
 
+            transitions = dict(
+                cur_observation=[],
+                cur_action=[],
+                next_observation=[],
+                reward=[],
+                terminated=[],
+            )
+
             for step in range(self.steps):
                 cur_action_with_params = self.agent.take_action(cur_observation)
 
                 section_nums = [
-                    self.agent.actor.pan_section_num,
-                    self.agent.actor.tilt_section_num,
+                    self.agent.pan_section_num,
+                    self.agent.tilt_section_num,
                 ]
-                transitions, cur_coverage, cur_transition = self.env.step(
+                cur_coverage, cur_transition = self.env.step(
                     cur_observation, cur_action_with_params, self.steps, section_nums
                 )
+
                 terminated = cur_transition["terminated"]
-
-                # truncated = step == self.steps - 1
-
-                if terminated or step + 1 == self.steps:
-                    point_cloud_path = osp.join(
-                        self.logger.save_dir,
-                        "pointcloud",
-                        f"epi{episode + 1}_step{step + 1}_SurveillanceRoom_cam.ply",
-                    )
-                    self.env.info_room.visualize(point_cloud_path, "camera")
-
-                if self.replay_buffer is not None:
-                    self.replay_buffer.add(transitions)
+                truncated = step == self.steps - 1
 
                 cur_observation = cur_transition["next_observation"]
 
                 episode_return["reward"] += cur_transition["reward"]
                 episode_return["coverage"] = cur_coverage
 
-                if self.replay_buffer is not None:
-                    if not self.replay_buffer.is_active():
-                        raise RuntimeError(
-                            "Replay buffer is not active, generate experiences first."
-                        )
-                    if isinstance(self.replay_buffer, OCPPrioritizedReplayBuffer):
-                        self.replay_buffer.update(
-                            self.agent.actor_target,
-                            self.agent.critic_target,
-                            self.agent.gamma,
-                        )
-
-                    samples = self.replay_buffer.sample()
-                    (
-                        episode_return["critic_loss"],
-                        episode_return["actor_loss"],
-                    ) = self.agent.update(samples)
-                else:
-                    raise NotImplementedError()
+                for key, item in transitions.items():
+                    item.append(cur_transition[key])
 
                 self.logger.show_log(
                     f"[Episode {episode + 1:>4} Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
-                    f"| reward {cur_transition["reward"]:.4f} "
-                    f"| loss: C {episode_return["critic_loss"]:.4f} A {episode_return["actor_loss"]: .4f} "
+                    f"| step reward {cur_transition["reward"]:.4f} "
+                    f"| episode cur reward {episode_return["reward"]:.4f} "
                     f"\n\taction {int(cur_transition["cur_action"][0]):d} "
                     f"| pos [{int(cur_transition["cur_action"][1]):d}, "
                     f"{int(cur_transition["cur_action"][2]):d}, "
@@ -168,8 +98,25 @@ class OCPStepBasedRunner:
                     with_time=True,
                 )
 
-                if terminated:
+                if terminated or truncated:
+                    point_cloud_path = osp.join(
+                        self.logger.save_dir,
+                        "pointcloud",
+                        f"epi{episode + 1}_step{step + 1}_SurveillanceRoom_cam.ply",
+                    )
+                    self.env.info_room.visualize(point_cloud_path, "camera")
                     break
+
+            (
+                episode_return["critic_loss"],
+                episode_return["actor_loss"],
+            ) = self.agent.update(transitions, self.logger)
+            self.logger.show_log(
+                f"episode reward {episode_return["reward"]:.4f} "
+                f"| loss: C {episode_return["critic_loss"]:.4f} "
+                f"A {episode_return["actor_loss"]:.4f}",
+                with_time=True,
+            )
 
             log_dict = (
                 dict(
@@ -185,9 +132,6 @@ class OCPStepBasedRunner:
 
             if (episode + 1) % self.save_checkpoint_interval == 0:
                 self.agent.save(episode, self.work_dir)
-                self.replay_buffer.save(
-                    osp.join(self.work_dir, f"episode_{episode + 1}.pkl")
-                )
 
     def test(self):
         cur_observation = self.env.reset()
