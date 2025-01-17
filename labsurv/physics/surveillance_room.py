@@ -26,7 +26,7 @@ class SurveillanceRoom:
     """
     ## Description:
 
-        The `SurveillanceRoom` class stores the geometric data and camera settings of
+        The `SurveillanceRoom` class maintains geometric data and camera settings of
         the room interior. It is not necessary to be a SINGLE room. One may make it a
         large region of interest and add blocks to separate different rooms.
 
@@ -171,7 +171,9 @@ class SurveillanceRoom:
 
     def get_color(self, point_type: str) -> array:
         """
-        Get corresponding color RGB representation from a point type name string.
+        ## Description:
+
+            Get corresponding color RGB representation from a point type name string.
         """
         return COLOR_MAP[self._POINT_CONFIGS[point_type]["color"]]
 
@@ -182,7 +184,9 @@ class SurveillanceRoom:
         self, tensor: Tensor, dtype, device: Optional[torch.cuda.device] = None
     ):
         """
-        Go through assertions of dtype and device for a tensor.
+        ## Description:
+
+            Go through assertions of dtype and device for a tensor.
         """
         assert dtype in [self.INT, self.FLOAT]
         if device is None:
@@ -197,7 +201,9 @@ class SurveillanceRoom:
 
     def _check_point_type(self, point_type: str) -> bool:
         """
-        Check if the given point type is known.
+        ## Description:
+
+            Check if the given point type is known.
         """
         return point_type in self._POINT_CONFIGS.keys()
 
@@ -248,9 +254,13 @@ class SurveillanceRoom:
         self, point_type: str, **extra_params
     ) -> List[Set[str]] | Set[str]:
         """
-        Check if the keys of the given param dict matches that of the required one.
+        ## Description:
 
-        Returns a set if matches, a list otherwise.
+            Check if the keys of the given param dict matches that of the required one.
+
+        ## Returns:
+
+            a set if matches, a list otherwise.
         """
         provided = set(extra_params.keys())
         if "extra_params" not in self._POINT_CONFIGS[point_type].keys():
@@ -270,7 +280,7 @@ class SurveillanceRoom:
         self,
         shape: List[int],
         point_type: str = "occupancy",
-        displacement: Optional[array] = None,
+        displacement: Optional[List[int]] = None,
         **kwargs,
     ):
         """
@@ -280,9 +290,9 @@ class SurveillanceRoom:
 
             point_type (str): the type of the point, chosen from cfg file.
 
-            displacement (Optional[np.ndarray]): [3], np.int64, the displacement of the
+            displacement (Optional[List[int]]): [3], the displacement of the
             block, consider the block is geenrated from the origin. If None, set
-            default to tensor([0, 0, 0]).
+            default to [0, 0, 0].
 
             kwargs: extra_param dict, must match `point_type`.
         """
@@ -290,7 +300,7 @@ class SurveillanceRoom:
         # MADE. THIS METHOD WILL NOT CHECK VISIBILITY CHANGES.
         assert (
             self.cam_modify_num == 0
-        ), "Adding blocks after modifying cameras will result in visibility error."
+        ), "Adding blocks after modifying cameras could result in visibility error."
 
         if not self._check_point_type(point_type):
             raise ValueError(
@@ -298,11 +308,8 @@ class SurveillanceRoom:
             )
 
         if displacement is None:
-            displacement = torch.tensor([0, 0, 0], dtype=self.INT, device=self.device)
-        else:
-            displacement = torch.tensor(
-                displacement, dtype=self.INT, device=self.device
-            )
+            displacement = [0, 0, 0]
+        displacement = torch.tensor(displacement, dtype=self.INT, device=self.device)
 
         points = build_block(shape, self.device)
         if not self._check_inside_room(points):
@@ -369,6 +376,14 @@ class SurveillanceRoom:
             camera. `pan` in [-pi, pi), `tilt` in [-pi/2, pi/2].
 
             cam_type (str | int): the type (index) of camera.
+
+            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
+            speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
+
+            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
+            check speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
 
         ## Returns:
 
@@ -475,17 +490,17 @@ class SurveillanceRoom:
         return vis_mask.cpu().numpy().copy()
 
     def adjust_cam(
-        self, pos: array, direction: array, cam_type: str | int | None = None
+        self, pos: array, direction: array, cam_type: Optional[str | int] = None
     ) -> array:
         """
         ## Arguments:
 
             pos (np.ndarray): [3], np.int64, the position of the camera.
 
-            direction (np.ndarray): [2], np.float32, the `pan` and `tilt` angle
-            of the camera. `pan` in [-pi, pi), `tilt` in [-pi/2, pi/2].
+            direction (np.ndarray): [2], np.float32, the `pan` and `tilt` angle of the
+            camera. `pan` in [-pi, pi), `tilt` in [-pi/2, pi/2].
 
-            cam_type (str | int | None): the type (index) of camera. If is None,
+            cam_type (Optional[str | int]): the type (index) of camera. If is None,
             `cam_type` will not change.
 
         ## Returns:
@@ -566,7 +581,9 @@ class SurveillanceRoom:
 
     def save(self, save_path: str):
         """
-        Saves the `SurveillanceRoom` class data in a `pkl` file.
+        ## Description:
+
+            Saves the `SurveillanceRoom` class data in a `pkl` file.
         """
         save_pkl_path = to_filename(save_path, ".pkl", "SurveillanceRoom")
 
@@ -586,7 +603,9 @@ class SurveillanceRoom:
 
     def visualize(self, save_path: str, mode: str = "occupancy"):
         """
-        Saves the pointcloud in a `ply` file.
+        ## Description:
+
+            Saves the pointcloud in a `ply` file.
 
         ## Arguments:
 
@@ -701,7 +720,8 @@ class SurveillanceRoom:
         """
         ## Description:
 
-            Merge all the tensor attributes to a single array.
+            Merge all the tensor attributes to a single array. Usually used to avoid
+            gpu memory leaks.
 
         ## Returns:
 
@@ -738,8 +758,8 @@ class SurveillanceRoom:
         direction: List[float] | array,
         section_nums: List[int],
         cam_type: int,
-        lov_indices,
-        lov_check_list,
+        lov_indices: Optional[List[int]] = None,
+        lov_check_list: Optional[List[List[int]]] = None,
     ) -> Tuple[int, float, List[List[float]], List[array], List]:
         """
         ## Description:
@@ -747,12 +767,39 @@ class SurveillanceRoom:
             Find the installation directions that increases the most coverage at `pos`
             with `cam_type`.
 
+        ## Arguments:
+
+            pos (np.ndarray): [3], np.int64, the pos coord.
+
+            direction (List[float] | array): [2], float | np.float32, the pan and tilt
+            angle values. This entry is only used to locate `input_direction_index`.
+
+            section_nums (List[int]): [2], pan and tilt section nums.
+
+            cam_type (int): camera type index.
+
+            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
+            speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
+
+            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
+            check speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
+
         ## Returns:
 
-            normalized_avg_vec (np.ndarray): A normalized vector of the averaged best
-            direction [x, y, z].
+            input_direction_index (int): the index of the transition correspond to the
+            input direction.
 
             best_coverage_increment (float): The coverage increment when best installed.
+
+            pan_tilt_list (List[List[float]]): [N, 2], list of all pan-tilt combinations.
+
+            room_info_list (List[np.ndarray]): [N], list of room info array to all
+            pan-tilt combinations.
+
+            similarity_list (List[float]): [N], list of all similarity value to all
+            pan-tilt combinations.
         """
         pan_list = [
             -np.pi + 2 * np.pi / section_nums[0] * k for k in range(section_nums[0])
@@ -770,7 +817,7 @@ class SurveillanceRoom:
         best_parameters = []
 
         print("\nComputing best installation params...")
-        prog_bar = ProgressBar(len(pan_list) * len(tilt_list))
+        prog_bar = ProgressBar(len(pan_list) * (len(tilt_list) - 1) + 1)
 
         pan_tilt_list: List[List[float]] = []
         room_info_list: List[array] = []
@@ -840,6 +887,11 @@ def _pan_tilt_2_coord(
     direction: List[float] | array, array_out: bool = False
 ) -> array | List[float]:
     """
+    ## Description:
+
+        Transform a [pan, tilt] direction to the corresponding directional vector
+        [x, y, z].
+
     ## Arguments:
 
         direction (List[float] | np.ndarray): [2], pan and tilt angle in radian.

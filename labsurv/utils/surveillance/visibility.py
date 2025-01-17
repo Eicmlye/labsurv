@@ -8,6 +8,10 @@ from torch import Tensor
 
 def normalize_coords_list(tensor: Tensor) -> Tensor:
     """
+    ## Description:
+
+        Normalize a list of tensors.
+
     ## Arguments:
 
         tensor (Tensor): [N, 3].
@@ -25,12 +29,42 @@ def compute_single_cam_visibility(
     lov_indices: List[int] = None,
     lov_check_list: List[List[int]] = None,
 ) -> Tensor:
+    """
+    ## Description:
+
+        Compute the visible point coords of a single camera.
+
+    ## Arguments:
+
+        cam_pos (Tensor): [3], torch.int64, the position of the camera.
+
+        direction (Tensor): [2], torch.float16, the `pan` and `tilt` of the camera.
+
+        intrinsic (Dict[str, float | List[float]]): camera intrinsics.
+
+        occupancy (Tensor): [W, D, H], torch.int64, occupancy mask.
+
+        target (Tensor): [W, D, H, 4], torch.float16,
+        [need_monitor, h_res_req_min, h_res_req_max, v_res_req_min, v_res_req_max].
+
+        voxel_length (float): length of sides of voxels in meters.
+
+        lov_indices (Optional[List[int]]): auxiliary list for obstacle check
+        speedup. Generate this list by `if_need_obstacle_check()`.
+
+        lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
+        check speedup. Generate this list by `if_need_obstacle_check()`.
+
+    ## Returns:
+
+        vis_mask_3d (Tensor): [W, D, H], torch.int64, the visibility mask of the camera.
+    """
     if (
         "clip_shape" in intrinsic.keys()
         and "focal_length" in intrinsic.keys()
         and "resolution" in intrinsic.keys()
     ):
-        return compute_single_cam_visibility_with_raw_params(
+        return _compute_single_cam_visibility_with_raw_params(
             cam_pos,
             direction,
             intrinsic,
@@ -41,7 +75,7 @@ def compute_single_cam_visibility(
             lov_check_list,
         )
     else:
-        return compute_single_cam_visibility_with_explicit_params(
+        return _compute_single_cam_visibility_with_explicit_params(
             cam_pos,
             direction,
             intrinsic,
@@ -53,7 +87,7 @@ def compute_single_cam_visibility(
         )
 
 
-def compute_single_cam_visibility_with_raw_params(
+def _compute_single_cam_visibility_with_raw_params(
     cam_pos: Tensor,
     direction: Tensor,
     intrinsic: Dict[str, float | List[float]],
@@ -79,9 +113,15 @@ def compute_single_cam_visibility_with_raw_params(
 
         voxel_length (float): length of sides of voxels in meters.
 
+        lov_indices (Optional[List[int]]): auxiliary list for obstacle check
+        speedup. Generate this list by `if_need_obstacle_check()`.
+
+        lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
+        check speedup. Generate this list by `if_need_obstacle_check()`.
+
     ## Returns:
 
-        vis_mask (Tensor): [W, D, H], torch.int64, the visibility mask of the camera.
+        vis_mask_3d (Tensor): [W, D, H], torch.int64, the visibility mask of the camera.
     """
     device = occupancy.device
     INT = torch.int64
@@ -167,13 +207,13 @@ def compute_single_cam_visibility_with_raw_params(
     visibility_mask = aov_coord_mask & dof_coord_mask & obstacle_mask
     visible_coords = all_coords[visibility_mask]
 
-    result = torch.zeros_like(occupancy, device=device)
-    result[visible_coords[:, 0], visible_coords[:, 1], visible_coords[:, 2]] = 1
+    vis_mask_3d = torch.zeros_like(occupancy, device=device)
+    vis_mask_3d[visible_coords[:, 0], visible_coords[:, 1], visible_coords[:, 2]] = 1
 
-    return result
+    return vis_mask_3d
 
 
-def compute_single_cam_visibility_with_explicit_params(
+def _compute_single_cam_visibility_with_explicit_params(
     cam_pos: Tensor,
     direction: Tensor,
     intrinsic: Dict[str, float | List[float]],
@@ -410,6 +450,8 @@ def if_need_obstacle_check(
 
         occupancy (Tensor): [W, D, H, 1]
 
+        step (int): batch size for computation, in case of OOM for huge rooms.
+
     ## Returns:
 
         lov_indices (List): [LAMBDA], the indices of the lov that need further check in
@@ -450,6 +492,8 @@ def _if_need_obstacle_check(
         lov (Tensor): [N, 3], torch.int64, the vector from camera pos to target pos.
 
         occ (Tensor): [M, 3], torch.int64, the coords of the occupancy points.
+
+        step (int): batch size for computation, in case of OOM for huge rooms.
 
     ## Returns:
 
@@ -514,6 +558,7 @@ def _if_need_obstacle_check(
 
     print("\r\033[K\033[1A\033[K\033[1A", end="")
 
+    # DEBUG(eric)
     # lov_indices = [i for i in range(len(lov))]
     # lov_check_list = lov.tolist()
 
