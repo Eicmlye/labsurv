@@ -85,10 +85,9 @@ class OCPDDPGAddOnlyClean(BaseAgent):
         if not self.test_mode:
             self.actor.load_state_dict(checkpoint["actor"]["model_state_dict"])
             self.critic.load_state_dict(checkpoint["critic"]["model_state_dict"])
-            self.actor_opt.load_state_dict(checkpoint["actor"]["optimizer_state_dict"])
-            self.critic_opt.load_state_dict(
-                checkpoint["critic"]["optimizer_state_dict"]
-            )
+            # One shall not load params of the optimizers, because learning rate
+            # is contained in the state_dict of the optimizers, and loading
+            # optimizer params will ignore the new learning rate.
 
     def resume(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
