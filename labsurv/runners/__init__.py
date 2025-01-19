@@ -1,3 +1,4 @@
 from .hooks import *
+from .ocp_multi_agent_on_policy_runner import OCPMultiAgentOnPolicyRunner
 from .ocp_off_policy_runner import OCPOffPolicyRunner
 from .ocp_on_policy_runner import OCPOnPolicyRunner
