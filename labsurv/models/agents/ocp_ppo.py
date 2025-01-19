@@ -5,12 +5,14 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn.functional as F
-from labsurv.builders import AGENTS, EXPLORERS, STRATEGIES
+from labsurv.builders import AGENTS, STRATEGIES
 from labsurv.models.agents import BaseAgent
-from labsurv.models.explorers import BaseExplorer
 from labsurv.runners.hooks import LoggerHook
-from labsurv.utils.surveillance import direction_index2pan_tilt, pos_index2coord
-from mmcv.utils import ProgressBar
+from labsurv.utils.surveillance import (
+    direction_index2pan_tilt,
+    pos_index2coord,
+    visualize_distribution_heatmap,
+)
 from numpy import ndarray as array
 from torch import Tensor
 from torch.nn import Module
@@ -25,7 +27,6 @@ class OCPPPO(BaseAgent):
         self,
         actor_cfg: Dict,
         critic_cfg: Dict,
-        explorer_cfg: Dict,
         device: Optional[str] = None,
         gamma: float = 0.9,
         actor_lr: float = 1e-5,
@@ -65,11 +66,10 @@ class OCPPPO(BaseAgent):
         self.pan_section_num = pan_section_num
         self.tilt_section_num = tilt_section_num
 
-        if not self.test_mode:
-            self.explorer: BaseExplorer = EXPLORERS.build(explorer_cfg)
-            self.actor: Module = STRATEGIES.build(actor_cfg).to(self.device)
-            self.critic: Module = STRATEGIES.build(critic_cfg).to(self.device)
+        self.actor: Module = STRATEGIES.build(actor_cfg).to(self.device)
+        self.critic: Module = STRATEGIES.build(critic_cfg).to(self.device)
 
+        if not self.test_mode:
             self.lr = [actor_lr, critic_lr]
             self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr[0])
             self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr[1])
@@ -84,6 +84,14 @@ class OCPPPO(BaseAgent):
         elif load_from is not None:
             self.load(load_from)
 
+    def eval(self):
+        self.test_mode = True
+        self.actor.eval()
+
+    def train(self):
+        self.test_mode = False
+        self.actor.train()
+
     @property
     def direction_num(self):
         return self.pan_section_num * (self.tilt_section_num - 1) + 1
@@ -91,14 +99,11 @@ class OCPPPO(BaseAgent):
     def load(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        self.actor_target.load_state_dict(checkpoint["actor"]["model_state_dict"])
-        self.critic_target.load_state_dict(checkpoint["critic"]["model_state_dict"])
-        if not self.test_mode:
-            self.actor.load_state_dict(checkpoint["actor"]["model_state_dict"])
-            self.critic.load_state_dict(checkpoint["critic"]["model_state_dict"])
-            # One shall not load params of the optimizers, because learning rate
-            # is contained in the state_dict of the optimizers, and loading
-            # optimizer params will ignore the new learning rate.
+        self.actor.load_state_dict(checkpoint["actor"]["model_state_dict"])
+        self.critic.load_state_dict(checkpoint["critic"]["model_state_dict"])
+        # One shall not load params of the optimizers, because learning rate
+        # is contained in the state_dict of the optimizers, and loading
+        # optimizer params will ignore the new learning rate.
 
     def resume(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
@@ -109,40 +114,54 @@ class OCPPPO(BaseAgent):
         self.critic_opt.load_state_dict(checkpoint["critic"]["optimizer_state_dict"])
         self.start_episode = checkpoint["episode"] + 1
 
-    def take_action(self, observation: array, all_explore: bool = False) -> array:
+    def take_action(self, observation: array, **kwargs) -> array:
         """
         ## Arguments:
 
-            observation (np.ndarray): [12, W, D, H].
+            observation (np.ndarray): [1, 2, W, D, H].
 
         ## Returns:
 
             action_with_params (np.ndarray): [9].
         """
 
-        if all_explore or self.explorer.decide(observation):
-            return self.explorer.act(observation)
+        if self.test_mode:
+            return self.test_take_action(observation, **kwargs)
+        else:
+            return self.train_take_action(observation, **kwargs)
 
-        return self._take_action(observation)
-
-    def _take_action(self, observation: array) -> array:
+    def train_take_action(self, observation: array, **kwargs) -> array:
         """
         ## Arguments:
 
-            observation (np.ndarray): [12, W, D, H].
+            observation (np.ndarray): [1, 2, W, D, H].
 
         ## Returns:
 
             action_with_params (np.ndarray): [9].
         """
 
-        room_shape: torch.Size = observation.shape[1:]
-        observation: Tensor = torch.tensor(
-            observation, dtype=self.FLOAT, device=self.device
-        )
+        room_shape = observation.shape[2:]
         with torch.no_grad():  # if grad, memory leaks
-            x, pos_mask = _observation2input(observation.unsqueeze(0))
+            obs: Tensor = torch.tensor(  # [1, 2, W, D, H]
+                observation, dtype=self.FLOAT, device=self.device
+            )
+            # [1, 1, W, D, H]
+            x, pos_mask = obs[:, 0].unsqueeze(1), obs[:, 1].unsqueeze(1)
             pos_dist, param_dist = self.actor(x, pos_mask)
+
+            if "step_index" in kwargs.keys():
+                width, depth, height = x.shape[2:]
+
+                visualize_distribution_heatmap(
+                    pos_dist.squeeze(0).view(width, depth, height),
+                    osp.join(
+                        kwargs["save_dir"],
+                        "dist",
+                        "train",
+                    ),
+                    f"epi{kwargs["episode_index"] + 1}_step{kwargs["step_index"] + 1}",
+                )
 
             pos_index = (
                 torch.distributions.Categorical(pos_dist[0])
@@ -168,13 +187,66 @@ class OCPPPO(BaseAgent):
 
             cam_type = param_index // self.direction_num
 
-        return (
-            torch.tensor(
-                [0] + pos_coord + direction + [cam_type, pos_index, direction_index],
-                dtype=self.FLOAT,
+        return np.array(
+            [0] + pos_coord + direction + [cam_type, pos_index, direction_index],
+            dtype=np.float32,
+        )
+
+    def test_take_action(self, observation: array, **kwargs) -> array:
+        """
+        ## Arguments:
+
+            observation (np.ndarray): [1, 2, W, D, H].
+
+        ## Returns:
+
+            action_with_params (np.ndarray): [9].
+        """
+
+        room_shape = observation.shape[2:]
+        with torch.no_grad():  # if grad, memory leaks
+            obs: Tensor = torch.tensor(  # [1, 2, W, D, H]
+                observation, dtype=self.FLOAT, device=self.device
             )
-            .numpy()
-            .copy()
+            # [1, 1, W, D, H]
+            x, pos_mask = obs[:, 0].unsqueeze(1), obs[:, 1].unsqueeze(1)
+            pos_dist, param_dist = self.actor(x, pos_mask)
+
+            if "step_index" in kwargs.keys():
+                width, depth, height = x.shape[2:]
+                train_mode = (
+                    "episode_index" in kwargs.keys()
+                    and kwargs["episode_index"] is not None
+                )
+
+                visualize_distribution_heatmap(
+                    pos_dist.squeeze(0).view(width, depth, height),
+                    osp.join(
+                        kwargs["save_dir"],
+                        "dist",
+                        "eval" if train_mode else "test",
+                    ),
+                    (f"epi{kwargs["episode_index"] + 1}_" if train_mode else "")
+                    + f"step{kwargs["step_index"] + 1}",
+                )
+
+            pos_index = pos_dist[0].argmax().type(self.INT).item()
+            pos_coord = pos_index2coord(room_shape, pos_index, self.device).tolist()
+
+            param_index = param_dist[0].argmax().type(self.INT).item()
+            direction_index = param_index % self.direction_num
+            direction = direction_index2pan_tilt(
+                self.pan_section_num,
+                self.tilt_section_num,
+                direction_index,
+                self.device,
+            ).tolist()
+
+            cam_type = param_index // self.direction_num
+
+        return np.array(
+            [0] + pos_coord + direction + [cam_type, pos_index, direction_index],
+            dtype=np.float32,
         )
 
     def update(
@@ -190,7 +262,7 @@ class OCPPPO(BaseAgent):
 
         cur_observations: Tensor = torch.tensor(
             np.array(cur_observations), dtype=self.FLOAT, device=self.device
-        )  # [B, 12, W, D, H]
+        )  # [B, 2, W, D, H]
         cur_action_with_params: Tensor = torch.tensor(
             np.array(cur_action_with_params), dtype=self.FLOAT, device=self.device
         )  # [B, 9]
@@ -199,7 +271,7 @@ class OCPPPO(BaseAgent):
         )  # [B]
         next_observations: Tensor = torch.tensor(
             np.array(next_observations), dtype=self.FLOAT, device=self.device
-        )  # [B, 12, W, D, H]
+        )  # [B, 2, W, D, H]
         terminated: Tensor = torch.tensor(
             np.array(terminated), dtype=self.INT, device=self.device
         )  # [B]
@@ -211,10 +283,13 @@ class OCPPPO(BaseAgent):
         )  # [B, 1]
 
         # critic weights update
-        next_x, _ = _observation2input(next_observations)
+        next_x = next_observations[:, 0].unsqueeze(1)  # [B, 1, W, D, H]
         value_predict: Tensor = self.critic(next_x).squeeze(1)  # [B]
         td_target = rewards + self.gamma * value_predict * (1 - terminated)  # [B]
-        x, pos_mask = _observation2input(cur_observations)
+        # [B, 1, W, D, H]
+        x, pos_mask = cur_observations[:, 0].unsqueeze(1), cur_observations[
+            :, 1
+        ].unsqueeze(1)
         td_error = td_target - self.critic(x)  # [B]
         advantage = _compute_advantage(  # [B]
             self.gamma,
@@ -234,8 +309,6 @@ class OCPPPO(BaseAgent):
             .detach()
         )  # [B]
 
-        print("\nUpdating actor & critic params...")
-        prog_bar = ProgressBar(self.update_step)
         for step in range(self.update_step):
             # [B, W * D * H], [B, DIRECTION * CAM_TYPE]
             cur_pos_dist, cur_param_dist = self.actor(x, pos_mask)
@@ -271,14 +344,11 @@ class OCPPPO(BaseAgent):
             self.actor_opt.step()
             self.critic_opt.step()
 
-            print("\r\033[K", end="")
             logger.show_log(
                 f"[Update step {step + 1:>3}]  loss: C {critic_loss.item():.4f} "
                 f"A {actor_loss.item():.4f}",
                 with_time=True,
             )
-            prog_bar.update()
-        print("\r\033[K\033[1A\033[K\033[1A\033[K\033[1A")
 
         return critic_loss.item(), actor_loss.item()
 
@@ -304,21 +374,6 @@ class OCPPPO(BaseAgent):
             save_path = osp.join(save_path, f"episode_{episode}.pth")
 
         torch.save(checkpoint, save_path)
-
-
-def _observation2input(observation: Tensor) -> Tuple[Tensor, Tensor]:
-    x: Tensor = observation.clone().detach()
-
-    # 1 for blocked, 2 for visible, 0 for invisible
-    x = (x[:, 0] + x[:, -1] * 2).unsqueeze(1)  # [B, 1, W, D, H]
-
-    cache_observ: Tensor = observation.clone().detach()
-    # pos that allows installation and yet haven't been installed at
-    pos_mask: Tensor = torch.logical_xor(
-        cache_observ[:, [1]], cache_observ[:, [7]]
-    )  # [B, 1, W, D, H]
-
-    return x, pos_mask
 
 
 def _compute_advantage(

@@ -1,10 +1,12 @@
-from typing import Optional
+from functools import partial
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import torch
 from labsurv.utils.string import to_filename
 from labsurv.utils.surveillance import shift
+from matplotlib.colors import LinearSegmentedColormap
 from pyntcloud import PyntCloud
 from torch import Tensor
 
@@ -51,6 +53,57 @@ def concat_points_with_color(
     return torch.cat((points, colors), 1)
 
 
+def apply_colormap_to_3dtensor(
+    distribution: Tensor,
+    colormap: Optional[LinearSegmentedColormap] = None,
+) -> Tensor:
+    """
+    ## Description:
+
+        Only plot nonzero prob positions.
+
+    ## Arguments:
+
+        distribution (Tensor): [W, D, H], torch.float.
+
+        colormap (Optional[LinearSegmentedColormap])
+    """
+    if colormap is None:
+        colors = [
+            "#ff0000",  # red
+            "#00ff00",  # green
+            "#0000ff",  # blue
+        ]
+        colormap = LinearSegmentedColormap.from_list("custom", colors, N=256)
+
+    assert isinstance(colormap, LinearSegmentedColormap)
+
+    max_prob: float = distribution.max().item()
+    assert max_prob <= 1.0
+    distribution[distribution == 0] = 2
+    min_prob: float = distribution.min().item()
+    distribution[distribution == 2] = 0
+    assert min_prob >= 0.0
+
+    # 0 prob positions get negative values
+    color_normalized_dist = (distribution - min_prob) / (max_prob - min_prob)
+
+    color_list: List[float] = (
+        color_normalized_dist[color_normalized_dist >= 0].view(-1).tolist()
+    )
+    # now 0 prob positions are ignored
+    color_mapping = partial(colormap, bytes=True)
+    color_list = list(map(color_mapping, color_list))
+    color_list = list(map(lambda x: x[:3], color_list))
+    colored_dist = torch.tensor(  # [N, 3]
+        color_list, dtype=torch.float, device=distribution.device
+    )
+    coords = distribution.nonzero()  # [N, 3]
+    points_with_color = torch.cat((coords, colored_dist), dim=1)
+
+    return points_with_color  # [W * D * H, 6]
+
+
 def save_visualized_points(
     points_with_color: Tensor, save_path: str, default_filename: str = "pointcloud"
 ):
@@ -81,3 +134,24 @@ def save_visualized_points(
     save_ply_path = to_filename(save_path, ".ply", default_filename)
 
     pointcloud.to_file(save_ply_path)
+
+
+def visualize_distribution_heatmap(
+    distribution: Tensor,
+    save_path: str,
+    default_filename: str = "distribution_heatmap",
+    colormap: Optional[LinearSegmentedColormap] = None,
+):
+    """
+    ## Arguments:
+
+        distribution (Tensor): [W, D, H], torch.float.
+
+        save_path (str): path to save the ".ply" file.
+
+        default_filename (str)
+
+        colormap (Optional[LinearSegmentedColormap])
+    """
+    points_with_color = apply_colormap_to_3dtensor(distribution, colormap)
+    save_visualized_points(points_with_color, save_path, default_filename)

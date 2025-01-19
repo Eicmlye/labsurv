@@ -1,12 +1,13 @@
 import os.path as osp
-from typing import Dict
+from typing import Dict, Optional
 
+import numpy as np
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, RUNNERS
 from labsurv.models.agents import BaseAgent
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
+from labsurv.utils.surveillance import pack_observation2transition
 from mmcv import Config
-from mmcv.utils import ProgressBar
 from numpy import pi as PI
 
 
@@ -20,6 +21,7 @@ class OCPOnPolicyRunner:
         self.agent: BaseAgent = AGENTS.build(cfg.agent)
         self.test_mode: bool = self.agent.test_mode
         self.start_episode: int = 0
+        self.eval_interval: int = cfg.eval_interval
 
         # max step number for an episode, exceeding makes truncated True
         self.steps: int = cfg.steps
@@ -44,7 +46,9 @@ class OCPOnPolicyRunner:
         cur_observation = None
 
         for episode in range(self.start_episode, self.episodes):
-            cur_observation = self.env.reset()
+            self.logger.show_log(f"\n==== Episode {episode + 1} ====")
+            # [1, 2, W, D, H]
+            cur_observation = pack_observation2transition(self.env.reset())
 
             episode_return: Dict[str, float] = dict(
                 critic_loss=0,
@@ -63,20 +67,23 @@ class OCPOnPolicyRunner:
             )
 
             for step in range(self.steps):
-                cur_action_with_params = self.agent.take_action(cur_observation)
+                cur_action_with_params = self.agent.take_action(
+                    cur_observation,
+                    episode_index=episode,
+                    step_index=step,
+                    save_dir=self.logger.save_dir,
+                )
 
-                section_nums = [
-                    self.agent.pan_section_num,
-                    self.agent.tilt_section_num,
-                ]
                 cur_coverage, cur_transition = self.env.step(
-                    cur_observation, cur_action_with_params, self.steps, section_nums
+                    cur_observation, cur_action_with_params, self.steps
                 )
 
                 terminated = cur_transition["terminated"]
                 truncated = step == self.steps - 1
 
-                cur_observation = cur_transition["next_observation"]
+                cur_observation = np.expand_dims(
+                    cur_transition["next_observation"], axis=0
+                )
 
                 episode_return["reward"] += cur_transition["reward"]
                 episode_return["coverage"] = cur_coverage
@@ -102,6 +109,7 @@ class OCPOnPolicyRunner:
                     point_cloud_path = osp.join(
                         self.logger.save_dir,
                         "pointcloud",
+                        "train",
                         f"epi{episode + 1}_step{step + 1}_SurveillanceRoom_cam.ply",
                     )
                     self.env.info_room.visualize(point_cloud_path, "camera")
@@ -132,36 +140,73 @@ class OCPOnPolicyRunner:
 
             if (episode + 1) % self.save_checkpoint_interval == 0:
                 self.agent.save(episode, self.work_dir)
+            if (episode + 1) % self.eval_interval == 0:
+                self.agent.eval()
+                self.test(episode)
+                self.agent.train()
 
-    def test(self):
-        cur_observation = self.env.reset()
+    def test(self, episode_index: Optional[int] = None):
+        self.agent.eval()
+        
+        self.logger.show_log(
+            "\nEvaluating agent"
+            + ("" if episode_index is None else f" at episode {episode_index + 1} ")
+            + "..."
+        )
 
-        episode_return = []
-        terminated = False
+        cur_observation = pack_observation2transition(self.env.reset())
 
-        print("Rendering test results...")
-        prog_bar = ProgressBar(self.steps)
+        episode_return: Dict[str, float] = dict(
+            reward=0,
+            coverage=0,
+        )
+
         for step in range(self.steps):
-            self.env.render(cur_observation, step)
+            cur_action_with_params = self.agent.take_action(
+                cur_observation,
+                episode_index=episode_index,
+                step_index=step,
+                save_dir=self.logger.save_dir,
+            )
 
-            cur_action = self.agent.take_action(cur_observation)
+            cur_coverage, cur_transition = self.env.step(
+                cur_observation, cur_action_with_params, self.steps
+            )
 
-            transition = self.env.step(cur_observation, cur_action)
-            transition["cur_observation"] = cur_observation
-            transition["cur_action"] = cur_action
+            terminated = cur_transition["terminated"]
+            truncated = step == self.steps - 1
 
-            terminated = transition["terminated"]
+            cur_observation = np.expand_dims(cur_transition["next_observation"], axis=0)
 
-            cur_observation = transition["next_observation"]
-            episode_return.append(transition["reward"])
+            episode_return["reward"] += cur_transition["reward"]
+            episode_return["coverage"] = cur_coverage
 
-            prog_bar.update()
+            self.logger.show_log(
+                f"[Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
+                f"| step reward {cur_transition["reward"]:.4f} "
+                f"| episode cur reward {episode_return["reward"]:.4f} "
+                f"\n\taction {int(cur_transition["cur_action"][0]):d} "
+                f"| pos [{int(cur_transition["cur_action"][1]):d}, "
+                f"{int(cur_transition["cur_action"][2]):d}, "
+                f"{int(cur_transition["cur_action"][3]):d}] "
+                f"| direction [{cur_transition["cur_action"][4] / 2 / PI * 360:.2f}, "
+                f"{cur_transition["cur_action"][5] / 2 / PI * 360:.2f}] "
+                f"| cam_type {int(cur_transition["cur_action"][6]):d}",
+                with_time=True,
+            )
 
-            if terminated:
+            point_cloud_path = osp.join(
+                self.logger.save_dir,
+                "pointcloud",
+                "eval" if episode_index is not None else "test",
+                (f"epi{episode_index + 1}_" if episode_index is not None else "")
+                + f"step{step + 1}_SurveillanceRoom_cam.ply",
+            )
+            self.env.info_room.visualize(point_cloud_path, "camera")
+
+            if terminated or truncated:
+                self.logger.show_log(
+                    f"evaluation final reward {episode_return["reward"]:.4f}",
+                    with_time=True,
+                )
                 break
-
-        if hasattr(self.env, "save_gif"):
-            print("\nSaving gif...")
-            save_path = osp.join(self.work_dir, f"done_step_{prog_bar.completed}.gif")
-            self.env.save_gif(save_path)
-            print(f"GIF saved to {save_path}")

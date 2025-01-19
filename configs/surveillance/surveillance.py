@@ -1,48 +1,24 @@
-from configs.runtime import DEVICE
-from configs.surveillance._base_.agents import (
-    ddpg_add_only_agent,
-    ddpg_add_only_clean_agent,
-    ddpg_agent,
-    ppo_agent,
-    reinforce_agent,
-)
+from configs.surveillance._base_.agents import ddpg_add_only_clean_agent, ppo_agent
+from configs.surveillance._base_.envs import ddpg_add_only_clean_env, ppo_env
 from labsurv.utils import get_time_stamp
 
 agent_type = "PPO"
-action_type = None
-# action_type = "AddOnly"
-# action_type = "AddOnlyClean"
 
-work_dir = f"./output/ocp/{agent_type.lower()}/trail"
+work_dir = f"./output/ocp/{agent_type.lower()}/goal_100perc_downtilt"
 exp_name = get_time_stamp()
 
-episodes = 1000
-steps = 75
-
-env = dict(
-    type=None,
-    room_data_path="output/surv_room/SurveillanceRoom.pkl",
-    device=DEVICE,
-    save_path=work_dir,
-)
+episodes = 300
+steps = 30
 
 agent_cfg = None
-if agent_type == "REINFORCE":
-    env["type"] = "OCPREINFORCEEnv"
-    agent_cfg = reinforce_agent
-elif agent_type == "DDPG":
-    env["type"] = "OCPDDPG" + action_type + "Env"
-    if action_type == "":
-        agent_cfg = ddpg_agent
-    elif action_type == "AddOnly":
-        agent_cfg = ddpg_add_only_agent
-    elif action_type == "AddOnlyClean":
-        agent_cfg = ddpg_add_only_clean_agent
-    else:
-        raise NotImplementedError(f"Unknown action strategy \"{action_type}\"")
+if agent_type == "DDPG":
+    env = ddpg_add_only_clean_env
+    agent_cfg = ddpg_add_only_clean_agent
 elif agent_type == "PPO":
-    env["type"] = "OCPPPOEnv"
+    env = ppo_env
     agent_cfg = ppo_agent
+
+env["save_path"] = work_dir
 agent = agent_cfg["agent"]
 
 runner = dict(
@@ -61,4 +37,4 @@ logger_cfg = dict(
     save_filename=exp_name,
 )
 
-eval_interval = 20
+eval_interval = save_checkpoint_interval
