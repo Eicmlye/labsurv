@@ -4,7 +4,10 @@ import numpy as np
 import torch
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseSurveillanceEnv
-from labsurv.utils.surveillance import if_need_obstacle_check
+from labsurv.utils.surveillance import (
+    if_need_obstacle_check,
+    pack_observation2transition,
+)
 from numpy import ndarray as array
 
 
@@ -18,6 +21,9 @@ class OCPPPOEnv(BaseSurveillanceEnv):
         room_data_path: str,
         device: Optional[str],
         save_path: str,
+        reward_goals: List[float] = [1.0],
+        reward_bonus: List[List[float]] = [[0.0, 0.005]],
+        terminate_goal: float = 1.0,
     ):
         """
         ## Description:
@@ -43,9 +49,9 @@ class OCPPPOEnv(BaseSurveillanceEnv):
         ## Rewards:
 
             Rewards are simply represented by the coverage increment at current
-            timestep. When a camera is installed or uninstalled, the coverage will
-            increase or decrease accordingly, which gives the reward of the action at
-            current state.
+            timestep. When a camera is installed, the coverage will increase or
+            decrease accordingly, which gives the reward of the action at current
+            state.
 
         ## Start state:
 
@@ -53,20 +59,21 @@ class OCPPPOEnv(BaseSurveillanceEnv):
 
         ## Episode End
 
-            The episode truncates if the episode length is greater than 500.
+            The episode truncates if the episode length is greater than 50.
         """
 
         super().__init__(room_data_path, device, save_path)
+
+        self.reward_goals = reward_goals
+        self.reward_bonus = reward_bonus
+        self.terminate_goal = terminate_goal
 
     def step(
         self,
         observation: array,
         action_with_params: array,
         total_steps: int,
-        section_nums: List[int],
-    ) -> Tuple[
-        List[Dict[str, bool | float | array]], float, Dict[str, bool | float | array]
-    ]:
+    ) -> Tuple[float, Dict[str, bool | float | array]]:
         """
         ## Description:
 
@@ -74,13 +81,12 @@ class OCPPPOEnv(BaseSurveillanceEnv):
 
         ## Arguments:
 
-            observation (np.ndarray): [12, W, D, H], np.float32, the info tensor.
+            observation (np.ndarray): [1, 2, W, D, H], np.float32, the policy input array.
 
             action_with_params (np.ndarray): [9].
         """
         ADD = 0
         self.action_count += 1
-        # import pdb; pdb.set_trace()
 
         action = action_with_params[0].astype(np.int64)
         pos = action_with_params[1:4].astype(np.int64)
@@ -127,11 +133,23 @@ class OCPPPOEnv(BaseSurveillanceEnv):
             raise ValueError(f"Unknown action {action}.")
 
         output_transition = dict(
-            cur_observation=observation,
-            cur_action=action_with_params,
-            next_observation=self.info_room.get_info(),
-            reward=_compute_reward(cur_coverage, pred_coverage),
-            terminated=(self.action_count == total_steps or cur_coverage == 1),
+            cur_observation=observation.squeeze(0),  # [2, W, D, H]
+            cur_action=action_with_params,  # [9]
+            next_observation=pack_observation2transition(
+                self.info_room.get_info()
+            ).squeeze(
+                0
+            ),  # [2, W, D, H]
+            reward=_compute_reward(
+                cur_coverage,
+                pred_coverage,
+                self.reward_goals,
+                self.reward_bonus,
+                self.terminate_goal,
+            ),
+            terminated=(
+                self.action_count == total_steps or cur_coverage >= self.terminate_goal
+            ),
         )
 
         return cur_coverage, output_transition
@@ -145,18 +163,43 @@ def _is_in(pos: array, candidates: array):
 def _compute_reward(
     cur_coverage: float,
     pred_coverage: float,
+    goal_coverages: List[float] = [0.25, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0],
+    bonus_incres: List[List[float]] = [
+        [0.0, 0.05],
+        [0.6, 0.02],
+        [0.8, 0.005],
+        [0.9, 0.001],
+    ],
+    terminated_coverage: float = 1.0,
 ) -> float:
     reward: float = 0
     cov_incre = cur_coverage - pred_coverage
 
     if cov_incre == 0:
-        return 0
+        return -5
 
     reward += cov_incre * 100
 
-    if cur_coverage == 1:
-        reward += 200
-    if cov_incre > 0.05:
-        reward += cov_incre // 0.05 * 10
+    goal_coverages = sorted(goal_coverages)
+    for goal in goal_coverages:
+        if (cur_coverage >= goal and pred_coverage < goal) or (
+            cur_coverage > goal and pred_coverage <= goal
+        ):
+            reward += 50
+
+    bonus_incres.append([terminated_coverage, 1])
+    bonus_incres = sorted(bonus_incres, key=lambda x: x[0])
+    for index, item in enumerate(bonus_incres):
+        lower_bound, incre_step = item
+        if lower_bound == terminated_coverage:
+            break
+
+        next_lower_bound = bonus_incres[index + 1][0]
+        if cur_coverage > lower_bound and pred_coverage < next_lower_bound:
+            reward += (
+                (min(cur_coverage, next_lower_bound) - max(lower_bound, pred_coverage))
+                // incre_step
+                * 5
+            )
 
     return reward

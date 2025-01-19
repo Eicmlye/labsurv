@@ -1,4 +1,4 @@
-from typing import OrderedDict, Tuple
+from typing import List, OrderedDict, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -61,6 +61,19 @@ class OCPPPOProvidedPositionParamsPolicyNet(Module):
         super().__init__()
         self.device = device
 
+        self.conv = Conv3d(  # [B, 1, W, D, H]
+            in_channels=features_in_channels + 1,
+            out_channels=(features_in_channels + 1) // 2,
+            kernel_size=3,
+            padding=1,
+            dtype=self.FLOAT,
+            device=self.device,
+        )
+        torch.nn.init.kaiming_normal_(
+            self.conv.weight, mode="fan_out", nonlinearity="relu"
+        )
+        torch.nn.init.constant_(self.conv.bias, 0)
+
         self.adaptive_pooling = AdaptiveMaxPool3d(
             (
                 adaptive_pooling_dim,
@@ -70,7 +83,7 @@ class OCPPPOProvidedPositionParamsPolicyNet(Module):
         )
 
         self.out = Linear(
-            in_features=(features_in_channels + 1) * adaptive_pooling_dim**3,
+            in_features=(features_in_channels + 1) // 2 * adaptive_pooling_dim**3,
             out_features=out_features,
             dtype=self.FLOAT,
             device=self.device,
@@ -81,6 +94,8 @@ class OCPPPOProvidedPositionParamsPolicyNet(Module):
     def forward(self, x: Tensor, pos_dist: Tensor):
         # [B, features_in_channels + 1, W, D, H]
         x = torch.cat((x, pos_dist), dim=1)
+
+        x = self.conv(x)
 
         return F.sigmoid(self.out(self.adaptive_pooling(x).flatten(start_dim=1)))
 
@@ -97,19 +112,23 @@ class OCPPPOPolicyNet(Module):
         action_dim: int,
         cam_types: int,
         neck_layers: int,
+        neck_out_use_num: int,
         pan_section_num: int = 360,
         tilt_section_num: int = 180,
         adaptive_pooling_dim: int = 10,
     ):
+        assert neck_out_use_num <= neck_layers
+
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
         self.action_dim = action_dim
         self.pan_section_num = pan_section_num
         self.tilt_section_num = tilt_section_num
+        self.neck_out_use_num = neck_out_use_num
         self.adaptive_pooling_dim = adaptive_pooling_dim
 
-        self.neck = Sequential()
+        self.neck: List[Module] = []
         for layer in range(neck_layers):
             cur_layer = Sequential(
                 OrderedDict(
@@ -127,7 +146,7 @@ class OCPPPOPolicyNet(Module):
                                 device=self.device,
                             ),
                         ),
-                        ("bn", BatchNorm3d(hidden_dim // 2**layer)),
+                        ("bn", BatchNorm3d(hidden_dim // 2**layer, device=self.device)),
                         ("relu", ReLU(inplace=True)),
                     ]
                 )
@@ -142,14 +161,18 @@ class OCPPPOPolicyNet(Module):
 
             self.neck.append(cur_layer)
 
+        neck_output_cat_dim = (
+            hidden_dim * (2**self.neck_out_use_num - 1) // 2 ** (neck_layers - 1)
+        )
+
         self.pos_head = OCPPPOPositionPolicyNet(
             device=self.device,
-            in_channels=hidden_dim // 2 ** (neck_layers - 1),
+            in_channels=neck_output_cat_dim,
         )
 
         self.params_head = OCPPPOProvidedPositionParamsPolicyNet(
             device=self.device,
-            features_in_channels=hidden_dim // 2 ** (neck_layers - 1),
+            features_in_channels=neck_output_cat_dim,
             out_features=(self.pan_section_num * (self.tilt_section_num - 1) + 1)
             * self.cam_types,
             adaptive_pooling_dim=self.adaptive_pooling_dim,
@@ -183,13 +206,17 @@ class OCPPPOPolicyNet(Module):
         batch_size, _, width, depth, height = input.shape
         x: Tensor = torch.cat((input, pos_mask), dim=1)
 
-        x = self.neck(x)
+        neck_output = [x]
+        for neck_layer in self.neck:
+            neck_output.append(neck_layer(neck_output[-1]))
 
-        pos_output: Tensor = self.pos_head(x, pos_mask)  # [B, 1, W, D, H]
+        head_input = torch.cat(neck_output[-self.neck_out_use_num :], dim=1)
+
+        pos_output: Tensor = self.pos_head(head_input, pos_mask)  # [B, 1, W, D, H]
         pos_dist = _batchwise_softmax(pos_output)  # [B, W * D * H]
 
         param_output: Tensor = self.params_head(
-            x,
+            head_input,
             pos_dist.view(batch_size, -1, width, depth, height),
         )  # [B, DIRECTION * CAM_TYPE]
         param_dist = _batchwise_softmax(param_output)  # [B, DIRECTION * CAM_TYPE]

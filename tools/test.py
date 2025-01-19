@@ -3,8 +3,9 @@ import os
 import os.path as osp
 from copy import deepcopy
 
+import torch
 from labsurv.builders import RUNNERS
-from labsurv.runners import EpisodeBasedRunner, StepBasedRunner
+from labsurv.runners import OCPOffPolicyRunner, OCPOnPolicyRunner
 from mmcv import Config
 
 
@@ -13,11 +14,6 @@ def parse_args():
 
     parser.add_argument("--config", type=str, help="Path of the config file.")
     parser.add_argument("--debug", action="store_true", help="Debug mode.")
-    parser.add_argument(  # "--episode-based"
-        "--episode-based",
-        action="store_true",
-        help="Whether to use an episode based runner.",
-    )
 
     args = parser.parse_args()
 
@@ -30,6 +26,7 @@ def main():
 
     os.makedirs(cfg.work_dir, exist_ok=True)
     save_cfg_name = osp.join(cfg.work_dir, cfg.exp_name + ".py")
+
     cfg.dump(save_cfg_name)
 
     cfg.agent.test_mode = True
@@ -44,10 +41,13 @@ def main():
 
         runner = RUNNERS.build(runner_cfg)
     else:
-        episode_based = (
-            cfg.episode_based if hasattr(cfg, "episode_based") else args.episode_based
+        runner = (
+            OCPOffPolicyRunner(cfg) if cfg.is_off_policy else OCPOnPolicyRunner(cfg)
         )
-        runner = EpisodeBasedRunner(cfg) if episode_based else StepBasedRunner(cfg)
+
+    torch.backends.cudnn.enabled = True
+    torch.backends.cudnn.benchmark = True
+
     runner.run()
 
 

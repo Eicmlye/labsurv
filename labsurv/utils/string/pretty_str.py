@@ -68,7 +68,8 @@ def to_filename(path: str, expected_extension: str, default_filename: str) -> st
 
         expected_extension (str): the expected extension for the file.
 
-        default_filename (str): the default filename when `path` is a directory.
+        default_filename (str): the default filename WITHOUT EXTENSION when `path` is a
+        directory.
     """
     if not expected_extension.startswith("."):
         expected_extension = "." + expected_extension

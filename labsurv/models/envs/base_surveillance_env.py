@@ -97,7 +97,7 @@ class BaseSurveillanceEnv(BaseEnv):
 
         ## Returns:
 
-            A `Tensor` merged by all the tensor attributes of the room.
+            [12, W, D, H], a `Tensor` merged by all the tensor attributes of the room.
         """
 
         # do env init works
