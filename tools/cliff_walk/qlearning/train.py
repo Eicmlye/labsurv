@@ -2,7 +2,7 @@ import argparse
 
 import matplotlib.pyplot as plt
 from labsurv.builders import AGENTS, ENVIRONMENTS
-from mmengine.config import Config
+from mmcv import Config
 
 
 def parse_args():
