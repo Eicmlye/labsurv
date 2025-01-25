@@ -5,6 +5,8 @@ from .error import (
     InstallAtExistingCameraError,
 )
 from .format import (
+    action_index2movement,
+    apply_movement_on_agent,
     direction_index2pan_tilt,
     observation2input,
     pack_observation2transition,
@@ -37,4 +39,6 @@ __all__ = [
     "pos_index2coord",
     "observation2input",
     "pack_observation2transition",
+    "action_index2movement",
+    "apply_movement_on_agent",
 ]
