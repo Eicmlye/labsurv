@@ -23,7 +23,7 @@ def demo(size: str):
         room.visualize("output/demo/surv_room_copy/SurveillanceRoom_occ.ply")
         room.visualize("output/demo/surv_room_copy/SurveillanceRoom_cam.ply", "camera")
     elif size == "test":
-        full_shape = [50, 50, 30]
+        full_shape = [20, 20, 20]
         room = SurveillanceRoom(
             device=DEVICE,
             cfg_path=cfg_path,
@@ -31,15 +31,30 @@ def demo(size: str):
         )
         print("Building occupancy blocks...")
         room.add_block(
-            [2, 2, 2],
-            displacement=np.array([15, 15, 14]),
+            [8, 8, 20],
+            displacement=np.array([6, 6, 0]),
         )
 
         print("Building permission blocks...")
         room.add_block(
-            [1, 1, 1],
+            [20, 6, 5],
             point_type="install_permitted",
-            displacement=np.array([10, 10, 25]),
+            displacement=np.array([0, 0, 15]),
+        )
+        room.add_block(
+            [6, 20, 5],
+            point_type="install_permitted",
+            displacement=np.array([0, 0, 15]),
+        )
+        room.add_block(
+            [20, 6, 5],
+            point_type="install_permitted",
+            displacement=np.array([0, 14, 15]),
+        )
+        room.add_block(
+            [6, 20, 5],
+            point_type="install_permitted",
+            displacement=np.array([14, 0, 15]),
         )
 
         print("Building monitored blocks...")
@@ -50,22 +65,40 @@ def demo(size: str):
             v_res_req_max=1000,
         )
         room.add_block(
-            [1, 1, 1],
+            [20, 6, 15],
             point_type="must_monitor",
-            displacement=np.array([10, 10, 15]),
+            displacement=np.array([0, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [6, 20, 15],
+            point_type="must_monitor",
+            displacement=np.array([0, 0, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [20, 6, 15],
+            point_type="must_monitor",
+            displacement=np.array([0, 14, 0]),
+            **resol_requirement,
+        )
+        room.add_block(
+            [6, 20, 15],
+            point_type="must_monitor",
+            displacement=np.array([14, 0, 0]),
             **resol_requirement,
         )
 
         print("Adding cameras...")
         room.add_cam(
-            [10, 10, 25],
-            [0, -PI / 2],
+            [3, 3, 18],
+            [0, -PI / 4],
             "std_cam",
         )
 
-        room.save("output/demo/surv_room")
-        room.visualize("output/demo/surv_room")
-        room.visualize("output/demo/surv_room", "camera")
+        room.save("output/demo/surv_room_test")
+        room.visualize("output/demo/surv_room_test")
+        room.visualize("output/demo/surv_room_test", "camera")
     elif size == "tiny":
         full_shape = [50, 50, 30]
         room = SurveillanceRoom(
@@ -270,7 +303,7 @@ def main(size: str):
         room.save("output/surv_room_copy/SurveillanceRoom.pkl")
         room.visualize("output/surv_room_copy/SurveillanceRoom_occ.ply")
     elif size == "test":
-        full_shape = [50, 50, 30]
+        full_shape = [20, 20, 20]
         room = SurveillanceRoom(
             device=DEVICE,
             cfg_path=cfg_path,
@@ -278,30 +311,30 @@ def main(size: str):
         )
         print("Building occupancy blocks...")
         room.add_block(
-            [10, 10, 30],
-            displacement=np.array([20, 20, 0]),
+            [8, 8, 20],
+            displacement=np.array([6, 6, 0]),
         )
 
         print("Building permission blocks...")
         room.add_block(
-            [20, 50, 10],
+            [20, 6, 5],
             point_type="install_permitted",
-            displacement=np.array([0, 0, 20]),
+            displacement=np.array([0, 0, 15]),
         )
         room.add_block(
-            [50, 20, 10],
+            [6, 20, 5],
             point_type="install_permitted",
-            displacement=np.array([0, 0, 20]),
+            displacement=np.array([0, 0, 15]),
         )
         room.add_block(
-            [20, 50, 10],
+            [20, 6, 5],
             point_type="install_permitted",
-            displacement=np.array([30, 0, 20]),
+            displacement=np.array([0, 14, 15]),
         )
         room.add_block(
-            [50, 20, 10],
+            [6, 20, 5],
             point_type="install_permitted",
-            displacement=np.array([0, 30, 20]),
+            displacement=np.array([14, 0, 15]),
         )
 
         print("Building monitored blocks...")
@@ -312,27 +345,27 @@ def main(size: str):
             v_res_req_max=1000,
         )
         room.add_block(
-            [20, 50, 20],
+            [20, 6, 15],
             point_type="must_monitor",
             displacement=np.array([0, 0, 0]),
             **resol_requirement,
         )
         room.add_block(
-            [50, 20, 20],
+            [6, 20, 15],
             point_type="must_monitor",
             displacement=np.array([0, 0, 0]),
             **resol_requirement,
         )
         room.add_block(
-            [20, 50, 20],
+            [20, 6, 15],
             point_type="must_monitor",
-            displacement=np.array([30, 0, 0]),
+            displacement=np.array([0, 14, 0]),
             **resol_requirement,
         )
         room.add_block(
-            [50, 20, 20],
+            [6, 20, 15],
             point_type="must_monitor",
-            displacement=np.array([0, 30, 0]),
+            displacement=np.array([14, 0, 0]),
             **resol_requirement,
         )
 
@@ -343,9 +376,9 @@ def main(size: str):
         #     "std_cam",
         # )
 
-        room.save("output/surv_room")
-        room.visualize("output/surv_room")
-        # room.visualize("output/surv_room", "camera")
+        room.save("output/surv_room_test")
+        room.visualize("output/surv_room_test")
+        # room.visualize("output/surv_room_test", "camera")
     elif size == "tiny":
         full_shape = [50, 50, 30]
         room = SurveillanceRoom(
