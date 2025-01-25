@@ -3,12 +3,12 @@ FREE = 1
 START = 2
 DEST = 3
 
-# world = [
-#   [FREE,    FREE,     FREE,     FREE,     FREE,     FREE],
-#   [FREE,    FREE,     FREE,     FREE,     FREE,     FREE],
-#   [FREE,    FREE,     FREE,     FREE,     FREE,     FREE],
-#   [START,   DANGER,   DANGER,   DANGER,   DANGER,   DEST],
-# ]
+world = [
+    [FREE, FREE, FREE, FREE, FREE, FREE],
+    [FREE, FREE, FREE, FREE, FREE, FREE],
+    [FREE, FREE, FREE, FREE, FREE, FREE],
+    [START, DANGER, DANGER, DANGER, DANGER, DEST],
+]
 
 # world = [
 #   [FREE,    FREE,     FREE,     FREE,     FREE,     FREE],
@@ -24,14 +24,14 @@ DEST = 3
 #   [FREE,    DANGER,   FREE,     DANGER,   DANGER,   DEST],
 # ]
 
-world = [
-    [FREE, FREE, FREE, FREE, FREE, FREE],
-    [FREE, DANGER, FREE, DANGER, DANGER, DANGER],
-    [FREE, DANGER, FREE, FREE, FREE, FREE],
-    [START, DANGER, FREE, DANGER, DANGER, DEST],
-    [FREE, DANGER, FREE, FREE, FREE, DANGER],
-    [FREE, FREE, FREE, DANGER, FREE, FREE],
-]
+# world = [
+#     [FREE, FREE, FREE, FREE, FREE, FREE],
+#     [FREE, DANGER, FREE, DANGER, DANGER, DANGER],
+#     [FREE, DANGER, FREE, FREE, FREE, FREE],
+#     [START, DANGER, FREE, DANGER, DANGER, DEST],
+#     [FREE, DANGER, FREE, FREE, FREE, DANGER],
+#     [FREE, FREE, FREE, DANGER, FREE, FREE],
+# ]
 
 # world = [
 #   [FREE,    FREE,     FREE,     FREE,     FREE,     FREE],

@@ -35,11 +35,13 @@ class LoggerHook:
     def set_cur_episode_index(self, episode_index: int):
         self.cur_episode_index = episode_index
 
-    def show_log(self, log_str: str, with_time: bool = False):
+    def show_log(self, log_str: str, with_time: bool = False, end: str = None):
+        if end is None:
+            end = "\n"
         log_str = (get_cur_time_str()[0] + INDENT + log_str) if with_time else log_str
-        print(log_str)
+        print(log_str, end=end)
         with open(self.log_file, "a+") as f:
-            f.write(log_str + "\n")
+            f.write(log_str + end)
 
     def update(self, return_val: float | Dict[str, float]):
         self.return_list.append(return_val)
