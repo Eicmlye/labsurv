@@ -28,7 +28,7 @@ class OCPPPOEnv(BaseSurveillanceEnv):
         """
         ## Description:
 
-            This environment is the DDPG surveillance room environment class.
+            This environment is the PPO surveillance room environment class.
             Only ADD action is allowed.
 
         ## Action space:

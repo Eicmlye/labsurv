@@ -66,6 +66,12 @@ class BaseAgent:
         elif load_from is not None:
             self.load(load_from)
 
+    def train(self):
+        raise NotImplementedError()
+
+    def eval(self):
+        raise NotImplementedError()
+
     def load(self, checkpoint_path: str):
         # checkpoint = torch.load(checkpoint_path)
 

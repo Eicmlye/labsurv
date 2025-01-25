@@ -10,6 +10,7 @@ tilt_section_num = 4
 cam_type_num = len(CAM_TYPES)
 
 agent_cfg = dict(
+    multi_agent=False,
     is_off_policy=False,
     agent=dict(
         type="OCPPPO",
