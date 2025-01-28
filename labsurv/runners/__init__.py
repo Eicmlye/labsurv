@@ -1,3 +1,4 @@
+from .cliff_walk_actor_critic_runner import CliffWalkActorCriticRunner
 from .cliff_walk_dqn_runner import CliffWalkDQNRunner
 from .hooks import *
 from .ocp_multi_agent_on_policy_runner import OCPMultiAgentOnPolicyRunner
