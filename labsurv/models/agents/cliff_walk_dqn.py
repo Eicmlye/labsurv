@@ -174,8 +174,8 @@ class CliffWalkDQN(BaseAgent):
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
-            model_state_dict=self.qnet.state_dict(),
-            optimizer_state_dict=self.opt.state_dict(),
+            qnet=self.qnet.state_dict(),
+            opt=self.opt.state_dict(),
             episode=episode_index,
         )
 
