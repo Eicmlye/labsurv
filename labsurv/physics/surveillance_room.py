@@ -449,7 +449,12 @@ class SurveillanceRoom:
 
         return vis_mask.cpu().numpy().copy()
 
-    def del_cam(self, pos: array) -> array:
+    def del_cam(
+        self,
+        pos: array,
+        lov_indices: Optional[List[int]] = None,
+        lov_check_list: Optional[List[List[int]]] = None,
+    ) -> array:
         """
         ## Arguments:
 
@@ -483,6 +488,8 @@ class SurveillanceRoom:
             self.occupancy,
             self.must_monitor,
             self.voxel_length,
+            lov_indices,
+            lov_check_list,
         )
 
         self.visible_points -= vis_mask
@@ -490,7 +497,12 @@ class SurveillanceRoom:
         return vis_mask.cpu().numpy().copy()
 
     def adjust_cam(
-        self, pos: array, direction: array, cam_type: Optional[str | int] = None
+        self,
+        pos: array,
+        direction: array,
+        cam_type: Optional[str | int] = None,
+        lov_indices: Optional[List[int]] = None,
+        lov_check_list: Optional[List[List[int]]] = None,
     ) -> array:
         """
         ## Arguments:
@@ -555,6 +567,8 @@ class SurveillanceRoom:
             self.occupancy,
             self.must_monitor,
             self.voxel_length,
+            lov_indices,
+            lov_check_list,
         )
         self.visible_points -= pred_vis_mask
 
@@ -574,6 +588,8 @@ class SurveillanceRoom:
             self.occupancy,
             self.must_monitor,
             self.voxel_length,
+            lov_indices,
+            lov_check_list,
         )
         self.visible_points += vis_mask
 
@@ -651,14 +667,19 @@ class SurveillanceRoom:
             self.must_monitor, self.get_color("must_monitor")  # , -EPSILON
         )
 
-        points_with_color = torch.cat(
+        to_be_visualized = (
             (  # points rendered later will cover the earlier ones.
                 must_monitor_with_color,
                 occupancy_with_color,
                 install_permitted_with_color,
-            ),
-            0,
+            )
+            if occupancy_with_color is not None
+            else (
+                must_monitor_with_color,
+                install_permitted_with_color,
+            )
         )
+        points_with_color = torch.cat(to_be_visualized, 0)
 
         return points_with_color
 
@@ -694,25 +715,34 @@ class SurveillanceRoom:
         )
 
         if visible_with_color is not None:
-            points_with_color = torch.cat(
+            to_be_visualized = (
                 (  # points rendered later will cover the earlier ones.
-                    # must_monitor_with_color,
                     occupancy_with_color,
                     cameras_with_color,
                     visible_with_color,
-                ),
-                0,
+                )
+                if occupancy_with_color is not None
+                else (
+                    cameras_with_color,
+                    visible_with_color,
+                )
             )
+            points_with_color = torch.cat(to_be_visualized, 0)
         else:
             print(WARN("No visible point found."))
-            points_with_color = torch.cat(
+            to_be_visualized = (
                 (  # points rendered later will cover the earlier ones.
                     must_monitor_with_color,
                     occupancy_with_color,
                     cameras_with_color,
-                ),
-                0,
+                )
+                if occupancy_with_color is not None
+                else (
+                    must_monitor_with_color,
+                    cameras_with_color,
+                )
             )
+            points_with_color = torch.cat(to_be_visualized, 0)
 
         return points_with_color
 
