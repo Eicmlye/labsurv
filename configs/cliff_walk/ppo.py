@@ -3,7 +3,7 @@ from labsurv.utils import get_time_stamp
 
 agent_type = "PPO"
 
-work_dir = f"./output/cliff_walk/{agent_type.lower()}/4x6"
+work_dir = f"./output/cliff_walk/{agent_type.lower()}/10x11"
 exp_name = get_time_stamp()
 
 episodes = 10000
@@ -15,10 +15,21 @@ DEAD = 2
 DEST = 3
 
 cliff_env = [
-    [FREE, FREE, FREE, FREE, FREE, FREE],
-    [FREE, FREE, FREE, FREE, FREE, FREE],
-    [FREE, FREE, FREE, FREE, FREE, FREE],
-    [FROM, FREE, DEAD, DEAD, FREE, DEST],
+    [FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE],
+    [FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE, FREE],
+    [FREE, FREE, DEAD, FREE, DEAD, DEAD, DEAD, DEAD, DEAD, FREE, FREE],
+    [FREE, FREE, DEAD, FREE, DEAD, FREE, FREE, FREE, DEAD, FREE, FREE],
+    [FREE, FREE, DEAD, FREE, DEAD, FREE, DEAD, FREE, DEAD, FREE, FREE],
+    [FREE, FREE, DEAD, FREE, DEAD, DEST, FREE, FREE, DEAD, FREE, FREE],
+    [FREE, FREE, DEAD, FREE, DEAD, DEAD, DEAD, FREE, DEAD, FREE, FREE],
+    [FREE, FREE, DEAD, FREE, FREE, FREE, FREE, FREE, DEAD, FREE, FREE],
+    [FREE, FREE, DEAD, FREE, FREE, FREE, FREE, FREE, DEAD, FREE, FREE],
+    [FROM, FREE, DEAD, DEAD, DEAD, DEAD, DEAD, DEAD, DEAD, FREE, DEST],
+    # ========
+    # [FREE, FREE, FREE, FREE, FREE, FREE],
+    # [FREE, FREE, FREE, FREE, FREE, FREE],
+    # [FREE, FREE, FREE, FREE, FREE, FREE],
+    # [FROM, FREE, DEAD, DEAD, FREE, DEST],
     # ========
     # [FREE, FREE, FREE],
     # [FREE, FREE, FREE],
