@@ -16,6 +16,7 @@ from .transform import rotate, shift
 from .visibility import compute_single_cam_visibility, if_need_obstacle_check
 from .visualize import (
     apply_colormap_to_3dtensor,
+    apply_colormap_to_list,
     concat_points_with_color,
     save_visualized_points,
     visualize_distribution_heatmap,
@@ -41,4 +42,5 @@ __all__ = [
     "pack_observation2transition",
     "action_index2movement",
     "apply_movement_on_agent",
+    "apply_colormap_to_list",
 ]

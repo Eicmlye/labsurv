@@ -15,13 +15,7 @@ def parse_args():
 
     parser.add_argument("--log", type=str, help="Path of the logger file.")
     parser.add_argument("--save", type=str, default=None, help="Path to save figures.")
-    parser.add_argument(  # --single-fig
-        "--single-fig", action="store_true", help="Whether plot as subfigures."
-    )
     parser.add_argument("--step", type=int, default=20, help="The tick step number.")
-    parser.add_argument(  # --action-dist
-        "--action-dist", action="store_true", help="Only plot action distribution."
-    )
 
     return parser.parse_args()
 
@@ -272,44 +266,6 @@ def _plot_subfig(
     ax.set_xticks(generate_absolute_ticks(1, max(x), step=tick_step))
 
 
-def plot_fig(
-    reward: List[float],
-    loss: List[float],
-    eval_step: int,
-    save_dir_path: str,
-    tick_step: int = 20,
-):
-    fig = plt.figure()
-    for y, color, title in [
-        [reward, "r", "reward"],
-        [loss, "g", "loss"],
-    ]:
-        # figure settings
-        fig.clear()
-
-        log_scale = False
-        if np.abs(max(y) / min(y)) > 1000:
-            log_scale = True
-            y = np.array(np.log10(y)).tolist()
-
-        # plot graph
-        x = [(i + 1) * (eval_step if title == "reward" else 1) for i in range(len(y))]
-        plt.plot(x, y, "-", color=color)
-        plt.xticks(
-            generate_absolute_ticks(1, max(x), step=tick_step)
-            if title == "reward"
-            else generate_absolute_ticks(1, len(y), step=tick_step)
-        )
-        plt.title(title if not log_scale else ("log10 " + title))
-
-        # plt.show()
-        plt.savefig(osp.join(save_dir_path, title + ".png"), dpi=300, format="png")
-
-
-def plot_action_distribution():
-    pass
-
-
 def main():
     args = parse_args()
 
@@ -320,23 +276,16 @@ def main():
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    if args.action_dist:
-        plot_action_distribution()
-    else:
-        reward, loss, eval_step, is_ac = cliff_walk_get_y_axis(log_filename)
+    reward, loss, eval_step, is_ac = cliff_walk_get_y_axis(log_filename)
 
-        if args.single_fig:
-            plot_subfig(
-                is_ac,
-                reward,
-                loss,
-                eval_step,
-                to_filename(args.save, ".png", "reward_loss_fig"),
-                tick_step=args.step,
-            )
-        else:
-            assert osp.isdir(args.save)
-            plot_fig(is_ac, reward, loss, eval_step, args.save, tick_step=args.step)
+    plot_subfig(
+        is_ac,
+        reward,
+        loss,
+        eval_step,
+        to_filename(args.save, ".png", "reward_loss_fig"),
+        tick_step=args.step,
+    )
 
 
 if __name__ == "__main__":

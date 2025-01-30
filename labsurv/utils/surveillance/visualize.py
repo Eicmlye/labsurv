@@ -7,6 +7,7 @@ import torch
 from labsurv.utils.string import to_filename
 from labsurv.utils.surveillance import shift
 from matplotlib.colors import LinearSegmentedColormap
+from numpy import ndarray as array
 from pyntcloud import PyntCloud
 from torch import Tensor
 
@@ -54,7 +55,7 @@ def concat_points_with_color(
 
 
 def apply_colormap_to_3dtensor(
-    distribution: Tensor,
+    dist: Tensor,
     colormap: Optional[LinearSegmentedColormap] = None,
 ) -> Tensor:
     """
@@ -64,7 +65,7 @@ def apply_colormap_to_3dtensor(
 
     ## Arguments:
 
-        distribution (Tensor): [W, D, H], torch.float.
+        dist (Tensor): [W, D, H], torch.float, prob dist or count dist.
 
         colormap (Optional[LinearSegmentedColormap])
     """
@@ -77,6 +78,8 @@ def apply_colormap_to_3dtensor(
         colormap = LinearSegmentedColormap.from_list("custom", colors, N=256)
 
     assert isinstance(colormap, LinearSegmentedColormap)
+
+    distribution: Tensor = dist / dist.sum()
 
     max_prob: float = distribution.max().item()
     assert max_prob <= 1.0
@@ -92,16 +95,46 @@ def apply_colormap_to_3dtensor(
         color_normalized_dist[color_normalized_dist >= 0].view(-1).tolist()
     )
     # now 0 prob positions are ignored
-    color_mapping = partial(colormap, bytes=True)
-    color_list = list(map(color_mapping, color_list))
-    color_list = list(map(lambda x: x[:3], color_list))
-    colored_dist = torch.tensor(  # [N, 3]
-        color_list, dtype=torch.float, device=distribution.device
+    colored_dist = apply_colormap_to_list(  # [N, 3]
+        color_list, colormap, distribution.device
     )
+
     coords = distribution.nonzero()  # [N, 3]
     points_with_color = torch.cat((coords, colored_dist), dim=1)
 
     return points_with_color  # [W * D * H, 6]
+
+
+def apply_colormap_to_list(
+    dist: List[float | int] | array,
+    colormap: Optional[LinearSegmentedColormap] = None,
+    device: Optional[torch.cuda.device] = None,
+    divide_by_max: bool = False,
+):
+    """
+    ## Arguments:
+
+        dist (List[float | int]): [N], prob dist or count dist.
+
+        colormap (Optional[LinearSegmentedColormap])
+    """
+    if colormap is None:
+        colors = [
+            "#ff0000",  # red
+            "#00ff00",  # green
+            "#0000ff",  # blue
+        ]
+        colormap = LinearSegmentedColormap.from_list("custom", colors, N=256)
+
+    distribution: array = np.array(dist, dtype=np.float32)
+    distribution: Tensor = dist / (np.sum(dist) if not divide_by_max else np.max(dist))
+
+    color_mapping = partial(colormap, bytes=True)
+    color_list = list(map(color_mapping, distribution))
+    color_list = list(map(lambda x: x[:3], color_list))
+    colored_dist = torch.tensor(color_list, dtype=torch.float, device=device)  # [N, 3]
+
+    return colored_dist  # [N, 3]
 
 
 def save_visualized_points(
