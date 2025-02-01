@@ -1,6 +1,7 @@
 import argparse
 import os
 import os.path as osp
+from collections import deque
 from typing import List, Tuple
 
 import matplotlib.pyplot as plt
@@ -16,6 +17,7 @@ def parse_args():
     parser.add_argument("--log", type=str, help="Path of the logger file.")
     parser.add_argument("--save", type=str, default=None, help="Path to save figures.")
     parser.add_argument("--step", type=int, default=20, help="The tick step number.")
+    parser.add_argument("--sma", type=int, default=0, help="The SMA window length.")
 
     return parser.parse_args()
 
@@ -93,16 +95,24 @@ def ocp_get_y_axis(
             ):
                 if "A" in word_list:
                     is_ac = True
+                    actor_loss = (
+                        float(word_list[y_flag + 8])
+                        if word_list[y_flag + 7] == "A"
+                        else float(word_list[y_flag + 6])
+                    )
+                    critic_loss = (
+                        float(word_list[y_flag + 6])
+                        if word_list[y_flag + 7] == "A"
+                        else float(word_list[y_flag + 8])
+                    )
+                    entropy_loss = float(word_list[y_flag + 10])
+
                     if len(loss) == 0:
-                        loss = [
-                            [float(word_list[y_flag + 8])],
-                            [float(word_list[y_flag + 6])],
-                            [float(word_list[y_flag + 10])],
-                        ]
+                        loss = [[actor_loss], [critic_loss], [entropy_loss]]
                     else:
-                        loss[0].append(float(word_list[y_flag + 8]))
-                        loss[1].append(float(word_list[y_flag + 6]))
-                        loss[2].append(float(word_list[y_flag + 10]))
+                        loss[0].append(actor_loss)
+                        loss[1].append(critic_loss)
+                        loss[2].append(entropy_loss)
                 else:
                     loss.append(float(word_list[y_flag + 5]))
 
@@ -124,6 +134,7 @@ def plot_subfig(
     eval_step: int,
     save_path: str,
     tick_step: int = 20,
+    sma: int = 0,
 ):
     if is_ac:
         actor_loss, critic_loss, entropy_loss = loss
@@ -135,6 +146,7 @@ def plot_subfig(
             eval_step,
             save_path,
             tick_step,
+            sma,
         )
     else:
         _plot_non_ac_subfig(reward, loss, eval_step, save_path, tick_step)
@@ -148,13 +160,24 @@ def _plot_ac_subfig(
     eval_step: int,
     save_path: str,
     tick_step: int = 20,
+    sma: int = 0,
 ):
     # figure settings
-    fig = plt.figure(figsize=(20, 10))
-    ax1 = fig.add_subplot(2, 2, 1)
-    ax2 = fig.add_subplot(2, 2, 2)
-    ax3 = fig.add_subplot(2, 2, 3)
-    ax4 = fig.add_subplot(2, 2, 4)
+    if sma > 0:
+        fig = plt.figure(figsize=(30, 10))
+        ax1 = fig.add_subplot(2, 4, 1)
+        ax2 = fig.add_subplot(2, 4, 2)
+        ax3 = fig.add_subplot(2, 4, 3)
+        ax4 = fig.add_subplot(2, 4, 4)
+        ax6 = fig.add_subplot(2, 4, 6)
+        ax7 = fig.add_subplot(2, 4, 7)
+        ax8 = fig.add_subplot(2, 4, 8)
+    else:
+        fig = plt.figure(figsize=(20, 10))
+        ax1 = fig.add_subplot(2, 2, 1)
+        ax2 = fig.add_subplot(2, 2, 2)
+        ax3 = fig.add_subplot(2, 2, 3)
+        ax4 = fig.add_subplot(2, 2, 4)
 
     # plot graph
     valid_episode = min(len(actor_loss), len(critic_loss), len(entropy_loss))
@@ -199,9 +222,39 @@ def _plot_ac_subfig(
         title="actor loss",
         tick_step=tick_step,
     )
+    if sma > 0:
+        _plot_subfig(
+            ax6,
+            x_loss,
+            simple_moving_average(entropy_loss, window=sma),
+            line_style="-",
+            color="y",
+            title=f"SMA{sma} entropy loss",
+            tick_step=tick_step,
+            log_if_needed=True,
+        )
+        _plot_subfig(
+            ax7,
+            x_loss,
+            simple_moving_average(critic_loss, window=sma),
+            line_style="-",
+            color="g",
+            title=f"SMA{sma} critic loss",
+            tick_step=tick_step,
+            log_if_needed=True,
+        )
+        _plot_subfig(
+            ax8,
+            x_loss,
+            simple_moving_average(actor_loss, window=sma),
+            line_style="-",
+            color="b",
+            title=f"SMA{sma} actor loss",
+            tick_step=tick_step,
+        )
 
     # plt.show()
-    fig.subplots_adjust(wspace=0.4, hspace=0.5)
+    fig.subplots_adjust(left=0.05, right=0.95, wspace=0.4, hspace=0.5)
     fig.savefig(save_path, dpi=300, format="png")
 
 
@@ -243,7 +296,7 @@ def _plot_non_ac_subfig(
     )
 
     # plt.show()
-    fig.subplots_adjust(wspace=0.4, hspace=0.5)
+    fig.subplots_adjust(left=0.05, right=0.95, wspace=0.4, hspace=0.5)
     fig.savefig(save_path, dpi=300, format="png")
 
 
@@ -266,6 +319,19 @@ def _plot_subfig(
     ax.set_xticks(generate_absolute_ticks(1, max(x), step=tick_step))
 
 
+def simple_moving_average(vals: List[float], window: int = 10) -> List[float]:
+    assert len(vals) >= window
+
+    sma_vals: List[float] = []
+    cache: deque = deque(maxlen=window)
+
+    for val in vals:
+        cache.append(val)
+        sma_vals.append(sum(cache) / len(cache))
+
+    return sma_vals
+
+
 def main():
     args = parse_args()
 
@@ -285,6 +351,7 @@ def main():
         eval_step,
         to_filename(args.save, ".png", "reward_loss_fig"),
         tick_step=args.step,
+        sma=args.sma,
     )
 
 
