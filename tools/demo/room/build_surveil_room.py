@@ -106,8 +106,8 @@ def demo(size: str):
 
         print("Adding cameras...")
         room.add_cam(
-            [3, 3, 13],
-            [PI / 2, -PI / 4],
+            [0, 0, 13],
+            [PI / 3, -5 * PI / 18],
             "std_cam",
         )
 
@@ -343,6 +343,69 @@ def demo(size: str):
         room.save("output/demo/surv_room_empty")
         room.visualize("output/demo/surv_room_empty")
         room.visualize("output/demo/surv_room_empty", "camera")
+    elif size == "one":
+        full_shape = [10, 10, 10]
+        room = SurveillanceRoom(
+            device=DEVICE,
+            cfg_path=cfg_path,
+            shape=full_shape,
+        )
+
+        print("Building occupancy blocks...")
+        room.add_block(
+            [3, 3, 1],
+            displacement=np.array([2, 0, 2]),
+        )
+
+        print("Building permission blocks...")
+        room.add_block(
+            [1, 1, 1],
+            point_type="install_permitted",
+            displacement=np.array([3, 5, 5]),
+        )
+
+        print("Building monitored blocks...")
+        resol_requirement = dict(
+            h_res_req_min=500,
+            h_res_req_max=1000,
+            v_res_req_min=500,
+            v_res_req_max=1000,
+        )
+        room.add_block(
+            [1, 1, 1],
+            point_type="must_monitor",
+            displacement=np.array([0, 6, 0]),
+            **resol_requirement,
+        )
+        # room.add_block(
+        #     [10, 1, 1],
+        #     point_type="must_monitor",
+        #     # displacement=np.array([6, 3, 5]),
+        #     **resol_requirement,
+        # )
+        # room.add_block(
+        #     [1, 10, 1],
+        #     point_type="must_monitor",
+        #     # displacement=np.array([6, 3, 5]),
+        #     **resol_requirement,
+        # )
+        # room.add_block(
+        #     [1, 1, 1],
+        #     point_type="must_monitor",
+        #     displacement=np.array([5, 3, 5]),
+        #     **resol_requirement,
+        # )
+
+        print("Adding cameras...")
+        room.add_cam(
+            [3, 5, 5],
+            [0, 0],
+            "std_cam",
+        )
+
+        room.save("output/demo/surv_room_one")
+        room.visualize("output/demo/surv_room_one")
+        room.visualize("output/demo/surv_room_one", "camera")
 
     coverage: float = (room.visible_points > 0).sum().item() / room.must_monitor[
         :, :, :, 0
@@ -675,7 +738,7 @@ def parse_args():
     parser.add_argument("--demo", action="store_true", help="Build demo room.")
     parser.add_argument(  # --size
         "--size",
-        choices=["test", "tiny", "standard", "empty"],
+        choices=["test", "tiny", "standard", "empty", "one"],
         default="tiny",
         help="Size of the room.",
     )
