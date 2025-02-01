@@ -6,7 +6,6 @@ from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, RUNNERS
 from labsurv.models.agents import BaseAgent
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
-from labsurv.utils.surveillance import pack_observation2transition
 from mmcv import Config
 from numpy import pi as PI
 
@@ -46,13 +45,14 @@ class OCPMultiAgentOnPolicyRunner:
         cur_observation = None
 
         for episode in range(self.start_episode, self.episodes):
-            self.logger.show_log(f"\n==== Episode {episode + 1} ====")
-            # [1, 2, W, D, H]
-            cur_observation = pack_observation2transition(self.env.reset())
+            self.logger.show_log(f"\n==== Episode {episode + 1} ====\n")
+            # [1, 2, W, D, H], [AGENT_NUM, 6]
+            room_info, cur_observation = self.env.reset()
 
             episode_return: Dict[str, float] = dict(
                 critic_loss=0,
                 actor_loss=0,
+                entropy_loss=0,
                 reward=0,
                 coverage=0,
             )
@@ -67,7 +67,7 @@ class OCPMultiAgentOnPolicyRunner:
             )
 
             for step in range(self.steps):
-                cur_action_with_params = self.agent.take_action(
+                cur_action = self.agent.take_action(
                     cur_observation,
                     episode_index=episode,
                     step_index=step,
@@ -75,7 +75,7 @@ class OCPMultiAgentOnPolicyRunner:
                 )
 
                 cur_coverage, cur_transition = self.env.step(
-                    cur_observation, cur_action_with_params, self.steps
+                    cur_observation, cur_action, self.steps
                 )
 
                 terminated = cur_transition["terminated"]
@@ -94,35 +94,53 @@ class OCPMultiAgentOnPolicyRunner:
                 self.logger.show_log(
                     f"[Episode {episode + 1:>4} Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
                     f"| step reward {cur_transition["reward"]:.4f} "
-                    f"| episode cur reward {episode_return["reward"]:.4f} "
-                    f"\n\taction {int(cur_transition["cur_action"][0]):d} "
-                    f"| pos [{int(cur_transition["cur_action"][1]):d}, "
-                    f"{int(cur_transition["cur_action"][2]):d}, "
-                    f"{int(cur_transition["cur_action"][3]):d}] "
-                    f"| direction [{cur_transition["cur_action"][4] / 2 / PI * 360:.2f}, "
-                    f"{cur_transition["cur_action"][5] / 2 / PI * 360:.2f}] "
-                    f"| cam_type {int(cur_transition["cur_action"][6]):d}",
+                    f"| total reward {episode_return["reward"]:.4f} "
+                    # pred obs
+                    f"\n\tPREVIOUS pos [{int(cur_transition["cur_observation"][0]):d}, "
+                    f"{int(cur_transition["cur_observation"][1]):d}, "
+                    f"{int(cur_transition["cur_observation"][2]):d}] "
+                    f"| direction [{cur_transition["cur_observation"][3] / 2 / PI * 360:.2f}, "
+                    f"{cur_transition["cur_observation"][4] / 2 / PI * 360:.2f}] "
+                    f"| cam_type {int(cur_transition["next_observation"][5]):d}"
+                    # action
+                    f"\n\tACTION   pos [{int(cur_transition["cur_action"][0]):+d}, "
+                    f"{int(cur_transition["cur_action"][1]):+d}, "
+                    f"{int(cur_transition["cur_action"][2]):+d}] "
+                    f"| direction [{int(cur_transition["cur_action"][3]):+d}, "
+                    f"{int(cur_transition["cur_action"][4]):+d}] "
+                    f"| cam_type {int(cur_transition["cur_action"][5]):d}"
+                    # cur obs
+                    f"\n\tCURRENT  pos [{int(cur_transition["next_observation"][0]):d}, "
+                    f"{int(cur_transition["next_observation"][1]):d}, "
+                    f"{int(cur_transition["next_observation"][2]):d}] "
+                    f"| direction [{cur_transition["next_observation"][3] / 2 / PI * 360:.2f}, "
+                    f"{cur_transition["next_observation"][4] / 2 / PI * 360:.2f}] "
+                    f"| cam_type {int(cur_transition["next_observation"][5]):d}",
                     with_time=True,
                 )
 
+                # point_cloud_path = osp.join(
+                #     self.logger.save_dir,
+                #     "pointcloud",
+                #     "train",
+                #     f"epi{episode + 1}",
+                #     f"step{step + 1}_SurveillanceRoom_cam.ply",
+                # )
+                # self.env.info_room.visualize(point_cloud_path, "camera")
+
                 if terminated or truncated:
-                    point_cloud_path = osp.join(
-                        self.logger.save_dir,
-                        "pointcloud",
-                        "train",
-                        f"epi{episode + 1}_step{step + 1}_SurveillanceRoom_cam.ply",
-                    )
-                    self.env.info_room.visualize(point_cloud_path, "camera")
                     break
 
             (
                 episode_return["critic_loss"],
                 episode_return["actor_loss"],
+                episode_return["entropy_loss"],
             ) = self.agent.update(transitions, self.logger)
             self.logger.show_log(
                 f"episode reward {episode_return["reward"]:.4f} "
-                f"| loss: C {episode_return["critic_loss"]:.4f} "
-                f"A {episode_return["actor_loss"]:.4f}",
+                f"| loss: C {episode_return["critic_loss"]:.6f} "
+                f"A {episode_return["actor_loss"]:.6f} "
+                f"E {episode_return["entropy_loss"]:.6f} ",
                 with_time=True,
             )
 
@@ -139,7 +157,10 @@ class OCPMultiAgentOnPolicyRunner:
             self.logger(self.episodes, **log_dict)
 
             if (episode + 1) % self.save_checkpoint_interval == 0:
-                self.agent.save(episode, self.work_dir)
+                self.agent.save(episode, osp.join(self.work_dir, "models"))
+                self.logger.show_log(f"Checkpoint saved at episode {episode + 1}.")
+                self.env.save(episode, osp.join(self.work_dir, "envs"))
+                self.logger.show_log(f"Environment saved at episode {episode + 1}.")
             if (episode + 1) % self.eval_interval == 0:
                 self.agent.eval()
                 self.test(episode)
@@ -154,7 +175,8 @@ class OCPMultiAgentOnPolicyRunner:
             + "..."
         )
 
-        cur_observation = pack_observation2transition(self.env.reset())
+        # [1, 2, W, D, H], [AGENT_NUM, 6]
+        room_info, cur_observation = self.env.reset()
 
         episode_return: Dict[str, float] = dict(
             reward=0,
@@ -185,13 +207,27 @@ class OCPMultiAgentOnPolicyRunner:
                 f"[Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
                 f"| step reward {cur_transition["reward"]:.4f} "
                 f"| episode cur reward {episode_return["reward"]:.4f} "
-                f"\n\taction {int(cur_transition["cur_action"][0]):d} "
-                f"| pos [{int(cur_transition["cur_action"][1]):d}, "
-                f"{int(cur_transition["cur_action"][2]):d}, "
-                f"{int(cur_transition["cur_action"][3]):d}] "
-                f"| direction [{cur_transition["cur_action"][4] / 2 / PI * 360:.2f}, "
-                f"{cur_transition["cur_action"][5] / 2 / PI * 360:.2f}] "
-                f"| cam_type {int(cur_transition["cur_action"][6]):d}",
+                # pred obs
+                f"\n\tPREVIOUS pos [{int(cur_transition["cur_observation"][0]):d}, "
+                f"{int(cur_transition["cur_observation"][1]):d}, "
+                f"{int(cur_transition["cur_observation"][2]):d}] "
+                f"| direction [{cur_transition["cur_observation"][3] / 2 / PI * 360:.2f}, "
+                f"{cur_transition["cur_observation"][4] / 2 / PI * 360:.2f}] "
+                f"| cam_type {int(cur_transition["next_observation"][5]):d}"
+                # action
+                f"\n\tACTION   pos [{int(cur_transition["cur_action"][0]):+d}, "
+                f"{int(cur_transition["cur_action"][1]):+d}, "
+                f"{int(cur_transition["cur_action"][2]):+d}] "
+                f"| direction [{int(cur_transition["cur_action"][3]):+d}, "
+                f"{int(cur_transition["cur_action"][4]):+d}] "
+                f"| cam_type {int(cur_transition["cur_action"][5]):d}"
+                # cur obs
+                f"\n\tCURRENT  pos [{int(cur_transition["next_observation"][0]):d}, "
+                f"{int(cur_transition["next_observation"][1]):d}, "
+                f"{int(cur_transition["next_observation"][2]):d}] "
+                f"| direction [{cur_transition["next_observation"][3] / 2 / PI * 360:.2f}, "
+                f"{cur_transition["next_observation"][4] / 2 / PI * 360:.2f}] "
+                f"| cam_type {int(cur_transition["next_observation"][5]):d}",
                 with_time=True,
             )
 
@@ -199,7 +235,7 @@ class OCPMultiAgentOnPolicyRunner:
                 self.logger.save_dir,
                 "pointcloud",
                 "eval" if episode_index is not None else "test",
-                (f"epi{episode_index + 1}_" if episode_index is not None else "")
+                (f"epi{episode_index + 1}/" if episode_index is not None else "")
                 + f"step{step + 1}_SurveillanceRoom_cam.ply",
             )
             self.env.info_room.visualize(point_cloud_path, "camera")
