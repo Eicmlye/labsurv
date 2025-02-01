@@ -366,6 +366,7 @@ class SurveillanceRoom:
         cam_type: str | int,
         lov_indices: Optional[List[int]] = None,
         lov_check_list: Optional[List[List[int]]] = None,
+        provided_vismask: Optional[Tensor] = None,
     ) -> array:
         """
         ## Arguments:
@@ -434,16 +435,19 @@ class SurveillanceRoom:
         )
         self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
 
-        vis_mask = compute_single_cam_visibility(
-            pos,
-            direction,
-            self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
-            self.occupancy,
-            self.must_monitor,
-            self.voxel_length,
-            lov_indices,
-            lov_check_list,
-        )
+        if provided_vismask is None:
+            vis_mask = compute_single_cam_visibility(
+                pos,
+                direction,
+                self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
+                self.occupancy,
+                self.must_monitor,
+                self.voxel_length,
+                lov_indices,
+                lov_check_list,
+            )
+        else:
+            vis_mask = provided_vismask
 
         self.visible_points += vis_mask
 
@@ -454,6 +458,7 @@ class SurveillanceRoom:
         pos: array,
         lov_indices: Optional[List[int]] = None,
         lov_check_list: Optional[List[List[int]]] = None,
+        provided_vismask: Optional[Tensor] = None,
     ) -> array:
         """
         ## Arguments:
@@ -481,16 +486,27 @@ class SurveillanceRoom:
         )
         self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
 
-        vis_mask = compute_single_cam_visibility(
-            pos,
-            extrinsics[1:3],
-            self._CAM_INTRINSICS[self._CAM_TYPES[extrinsics[-1].type(self.INT)]],
-            self.occupancy,
-            self.must_monitor,
-            self.voxel_length,
-            lov_indices,
-            lov_check_list,
-        )
+        if provided_vismask is None:
+            extrinsics = torch.cat(
+                (
+                    torch.tensor([0], dtype=self.FLOAT, device=self.device),
+                    self.cam_extrinsics[pos[0], pos[1], pos[2]][1:],
+                )
+            )
+            self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
+
+            vis_mask = compute_single_cam_visibility(
+                pos,
+                extrinsics[1:3],
+                self._CAM_INTRINSICS[self._CAM_TYPES[extrinsics[-1].type(self.INT)]],
+                self.occupancy,
+                self.must_monitor,
+                self.voxel_length,
+                lov_indices,
+                lov_check_list,
+            )
+        else:
+            vis_mask = provided_vismask
 
         self.visible_points -= vis_mask
 
@@ -503,7 +519,10 @@ class SurveillanceRoom:
         cam_type: Optional[str | int] = None,
         lov_indices: Optional[List[int]] = None,
         lov_check_list: Optional[List[List[int]]] = None,
-    ) -> array:
+        provided_pred_vismask: Optional[Tensor] = None,
+        provided_vismask: Optional[Tensor] = None,
+        delta_vismask_out: bool = False,
+    ) -> array | Tuple[array, array]:
         """
         ## Arguments:
 
@@ -560,16 +579,19 @@ class SurveillanceRoom:
                 f"Unsupported cam_type {cam_type} in type {type(cam_type)}"
             )
 
-        pred_vis_mask = compute_single_cam_visibility(
-            pos,
-            pred_extrinsics[1:3],
-            self._CAM_INTRINSICS[self._CAM_TYPES[pred_cam_type]],
-            self.occupancy,
-            self.must_monitor,
-            self.voxel_length,
-            lov_indices,
-            lov_check_list,
-        )
+        if provided_pred_vismask is None:
+            pred_vis_mask = compute_single_cam_visibility(
+                pos,
+                pred_extrinsics[1:3],
+                self._CAM_INTRINSICS[self._CAM_TYPES[pred_cam_type]],
+                self.occupancy,
+                self.must_monitor,
+                self.voxel_length,
+                lov_indices,
+                lov_check_list,
+            )
+        else:
+            pred_vis_mask = provided_pred_vismask
         self.visible_points -= pred_vis_mask
 
         extrinsics = torch.cat(
@@ -581,19 +603,25 @@ class SurveillanceRoom:
         )
         self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
 
-        vis_mask = compute_single_cam_visibility(
-            pos,
-            direction,
-            self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
-            self.occupancy,
-            self.must_monitor,
-            self.voxel_length,
-            lov_indices,
-            lov_check_list,
-        )
+        if provided_vismask is None:
+            vis_mask = compute_single_cam_visibility(
+                pos,
+                direction,
+                self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
+                self.occupancy,
+                self.must_monitor,
+                self.voxel_length,
+                lov_indices,
+                lov_check_list,
+            )
+        else:
+            vis_mask = provided_vismask
         self.visible_points += vis_mask
 
-        return (vis_mask - pred_vis_mask).cpu().numpy().copy()
+        if delta_vismask_out:
+            return (vis_mask - pred_vis_mask).cpu().numpy().copy()
+        else:
+            return pred_vis_mask.cpu().numpy().copy(), vis_mask.cpu().numpy().copy()
 
     def save(self, save_path: str):
         """
