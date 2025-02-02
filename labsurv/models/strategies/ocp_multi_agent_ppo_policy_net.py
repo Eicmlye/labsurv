@@ -16,7 +16,6 @@ class OCPMultiAgentPPOPolicyNet(Module):
         hidden_dim: int,
         cam_types: int,
     ):
-
         super().__init__()
         self.device = torch.device(device)
         self.hidden_dim = hidden_dim

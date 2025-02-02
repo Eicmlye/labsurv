@@ -377,24 +377,6 @@ def demo(size: str):
             displacement=np.array([0, 6, 0]),
             **resol_requirement,
         )
-        # room.add_block(
-        #     [10, 1, 1],
-        #     point_type="must_monitor",
-        #     # displacement=np.array([6, 3, 5]),
-        #     **resol_requirement,
-        # )
-        # room.add_block(
-        #     [1, 10, 1],
-        #     point_type="must_monitor",
-        #     # displacement=np.array([6, 3, 5]),
-        #     **resol_requirement,
-        # )
-        # room.add_block(
-        #     [1, 1, 1],
-        #     point_type="must_monitor",
-        #     displacement=np.array([5, 3, 5]),
-        #     **resol_requirement,
-        # )
 
         print("Adding cameras...")
         room.add_cam(
