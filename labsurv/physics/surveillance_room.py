@@ -232,7 +232,7 @@ class SurveillanceRoom:
         """
         ## Arguments:
 
-            cam_pos (Tensor): [3] or [n, 3], torch.int64.
+            cam_pos (Tensor): [3] or [N, 3], torch.int64.
         """
         dim = cam_pos.ndim
         assert dim == 1 or dim == 2, f"Cannot deal with {dim}-dimensional tensors."
@@ -386,6 +386,10 @@ class SurveillanceRoom:
             check speedup. Generate this list by `if_need_obstacle_check()` in
             `labsurv/physics/surveillance/visibillity.py`
 
+            provided_vismask (Optional[Tensor]): if provided, the vismask will be used
+            directly to speedup computation, lov arguments will be ignored and the
+            correctness of this vismask should be promised.
+
         ## Returns:
 
             vis_mask (np.ndarray): the visibility mask of the added camera.
@@ -468,6 +472,18 @@ class SurveillanceRoom:
         ## Returns:
 
             vis_mask (np.ndarray): the visibility mask of the deleted camera.
+
+            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
+            speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
+
+            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
+            check speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
+
+            provided_vismask (Optional[Tensor]): if provided, the vismask will be used
+            directly to speedup computation, lov arguments will be ignored and the
+            correctness of this vismask should be promised.
         """
         self.cam_modify_num += 1
 
@@ -534,10 +550,31 @@ class SurveillanceRoom:
             cam_type (Optional[str | int]): the type (index) of camera. If is None,
             `cam_type` will not change.
 
+            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
+            speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
+
+            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
+            check speedup. Generate this list by `if_need_obstacle_check()` in
+            `labsurv/physics/surveillance/visibillity.py`
+
+            provided_pred_vismask (Optional[Tensor]): this vismask is used for del. If
+            provided, the vismask will be used directly to speedup computation, lov
+            arguments will be ignored and the correctness of this vismask should be
+            promised.
+
+            provided_vismask (Optional[Tensor]): this vismask is used for add. If
+            provided, the vismask will be used directly to speedup computation, lov
+            arguments will be ignored and the correctness of this vismask should be
+            promised.
+
+            delta_vismask_out (bool): whether return two vismasks separately (False) or
+            just return the delta vismask (True).
+
         ## Returns:
 
-            vis_mask (np.ndarray): the visibility difference mask of the modified
-            camera.
+            vis_mask (np.ndarray | Tuple[np.ndarray, np.ndarray]): the visibility mask
+            of the modified camera.
         """
         self.cam_modify_num += 1
 
