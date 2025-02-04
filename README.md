@@ -29,6 +29,14 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+> - [solution from CSDN](https://blog.csdn.net/Accele233/article/details/122416687)
+> 
+> In case `github.com` is not available to you, here is a solution to `ssh: connect to host github.com port 22: Connection timed out`:
+> 1. go to [ipaddress](https://www.ipaddress.com/website/www.github.com) and get latest ip for github.
+> 2. on Windows OS, go to `C:/Windows/System32/drivers/etc/hosts`.
+> 3. add `[IP] github.com` to this file, you may need to provide administor identity.
+> 4. this ip may occasionally change, so update `hosts` if the problem raises again.
+
 ### Package Modification
 
 - `pyntcloud`
