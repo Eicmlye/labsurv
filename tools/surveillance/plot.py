@@ -2,7 +2,7 @@ import argparse
 import os
 import os.path as osp
 from collections import deque
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +17,20 @@ def parse_args():
     parser.add_argument("--log", type=str, help="Path of the logger file.")
     parser.add_argument("--save", type=str, default=None, help="Path to save figures.")
     parser.add_argument("--step", type=int, default=20, help="The tick step number.")
-    parser.add_argument("--sma", type=int, default=0, help="The SMA window length.")
+    parser.add_argument("--sma", type=int, default=1, help="The SMA window length for losses.")
+    parser.add_argument(  # --reward-sma, -r
+        "--reward-sma",
+        "-r",
+        type=int,
+        default=1,
+        help="The SMA window length for reward. Ignored if `--sma` == 1. ",
+    )
+    parser.add_argument(  # --shrink
+        "--shrink",
+        type=str,
+        default=None,
+        help="Whether to take out useful lines of the log.",
+    )
 
     return parser.parse_args()
 
@@ -29,15 +42,15 @@ def get_latest_log(dir_name: str):
     latest_timestamp: int = 0
     latest_log: str = None
     for filename in filenames:
-        if filename.endswith(".log"):
+        if filename.endswith(".log") and not filename.endswith("shrink.log"):
             cur_timestamp = filename.split(".")[0].split("_")
             try:
                 cur_timestamp = int(cur_timestamp[0] + cur_timestamp[1])
-            except TypeError:
+            except (TypeError, IndexError):
                 print(
                     WARN(
                         "Log files should be named in \"yymmdd_hhmmss.log\" format. "
-                        f"{filename} is not a valid log file. "
+                        f"\"{filename}\" is not a valid log file. "
                     )
                 )
                 continue
@@ -53,7 +66,7 @@ def get_latest_log(dir_name: str):
 
 
 def ocp_get_y_axis(
-    log_filename: str,
+    log_filename: str, shrink: Optional[str] = None
 ) -> Tuple[List[float], List[float], List[float], List[float], int]:
     # load y axis
     reward = []
@@ -62,12 +75,19 @@ def ocp_get_y_axis(
     found_episode_line = False
     is_ac = False
 
+    if shrink is not None:
+        new_log = open(shrink, "w")
+
     with open(log_filename, "r") as f:
         for line in f:
             word_list = line.strip().split()
 
             if "====" in word_list and not found_episode_line:
                 found_episode_line = True
+
+                if shrink is not None:
+                    new_log.write(line)
+
                 if int(word_list[2]) != 1:
                     print(
                         WARN(
@@ -82,6 +102,8 @@ def ocp_get_y_axis(
                         f"Current log file {log_filename} is not a training log."
                     )
                 eval_step = int(word_list[4])
+                if shrink is not None:
+                    new_log.write(line)
 
             if "episode" in word_list:
                 y_flag = word_list.index("episode")
@@ -93,6 +115,9 @@ def ocp_get_y_axis(
                 and y_flag < len(word_list) - 5
                 and word_list[y_flag + 1] == "reward"
             ):
+                if shrink is not None:
+                    new_log.write(line)
+                    
                 if "A" in word_list:
                     is_ac = True
                     actor_loss = (
@@ -122,7 +147,13 @@ def ocp_get_y_axis(
                 reward_flag = -1
 
             if reward_flag > 0 and reward_flag < len(word_list) - 3:
+                if shrink is not None:
+                    new_log.write(line)
+                    
                 reward.append(float(word_list[reward_flag + 3]))
+
+    if shrink is not None:
+        new_log.close()
 
     return reward, loss, eval_step, is_ac
 
@@ -134,7 +165,8 @@ def plot_subfig(
     eval_step: int,
     save_path: str,
     tick_step: int = 20,
-    sma: int = 0,
+    sma: int = 1,
+    reward_sma: int = 1,
 ):
     if is_ac:
         actor_loss, critic_loss, entropy_loss = loss
@@ -147,6 +179,7 @@ def plot_subfig(
             save_path,
             tick_step,
             sma,
+            reward_sma,
         )
     else:
         _plot_non_ac_subfig(reward, loss, eval_step, save_path, tick_step)
@@ -160,15 +193,18 @@ def _plot_ac_subfig(
     eval_step: int,
     save_path: str,
     tick_step: int = 20,
-    sma: int = 0,
+    sma: int = 1,
+    reward_sma: int = 1,
 ):
     # figure settings
-    if sma > 0:
+    if sma > 1:
         fig = plt.figure(figsize=(30, 10))
         ax1 = fig.add_subplot(2, 4, 1)
         ax2 = fig.add_subplot(2, 4, 2)
         ax3 = fig.add_subplot(2, 4, 3)
         ax4 = fig.add_subplot(2, 4, 4)
+        if reward_sma > 1:
+            ax5 = fig.add_subplot(2, 4, 5)
         ax6 = fig.add_subplot(2, 4, 6)
         ax7 = fig.add_subplot(2, 4, 7)
         ax8 = fig.add_subplot(2, 4, 8)
@@ -222,7 +258,17 @@ def _plot_ac_subfig(
         title="actor loss",
         tick_step=tick_step,
     )
-    if sma > 0:
+    if sma > 1:
+        if reward_sma > 1:
+            _plot_subfig(
+                ax5,
+                x_reward,
+                simple_moving_average(reward, window=reward_sma),
+                line_style="-",
+                color="r",
+                title=f"SMA{reward_sma * eval_step} reward",
+                tick_step=tick_step,
+            )
         _plot_subfig(
             ax6,
             x_loss,
@@ -322,6 +368,9 @@ def _plot_subfig(
 def simple_moving_average(vals: List[float], window: int = 10) -> List[float]:
     assert len(vals) >= window
 
+    if window == 1:
+        return vals.copy()
+
     sma_vals: List[float] = []
     cache: deque = deque(maxlen=window)
 
@@ -336,13 +385,13 @@ def main():
     args = parse_args()
 
     if args.save is None:
-        args.save = args.log
+        args.save = args.log if not args.log.endswith(".log") else osp.dirname(args.log)
 
     log_filename = (
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    reward, loss, eval_step, is_ac = ocp_get_y_axis(log_filename)
+    reward, loss, eval_step, is_ac = ocp_get_y_axis(log_filename, args.shrink)
 
     plot_subfig(
         is_ac,
@@ -352,6 +401,7 @@ def main():
         to_filename(args.save, ".png", "reward_loss_fig"),
         tick_step=args.step,
         sma=args.sma,
+        reward_sma=args.reward_sma,
     )
 
 
