@@ -1,7 +1,7 @@
-from configs.surveillance._base_.agents.multi_agent_ppo_test import (
+from configs.ocp._base_.agents.multi_agent_ppo_test import (
     agent_cfg as multi_agent_ppo_agent,
 )
-from configs.surveillance._base_.envs.multi_agent_ppo_test_env import (
+from configs.ocp._base_.envs.multi_agent_ppo_test_env import (
     env_cfg as multi_agent_ppo_env,
 )
 from labsurv.utils import get_time_stamp

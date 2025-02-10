@@ -1,5 +1,4 @@
-from configs.runtime import DEVICE
-from configs.surveillance._base_.params import (
+from configs.ocp._base_.params import (
     AGENT_NUM,
     CAM_TYPE_NUM,
     PAN_RANGE,
@@ -7,6 +6,7 @@ from configs.surveillance._base_.params import (
     TILT_RANGE,
     TILT_SEC_NUM,
 )
+from configs.runtime import DEVICE
 
 agent_cfg = dict(
     multi_agent=True,
@@ -42,7 +42,7 @@ agent_cfg = dict(
         tilt_range=TILT_RANGE,
         cam_types=CAM_TYPE_NUM,
         mixed_reward=False,
-        load_from="output/ocp/test_mappo/ma6_realtime_70from50_rewarddelta/models/episode_400.pth",
-        # resume_from="output/ocp/ppo/goal_100perc_downtilt/episode_30.pth",
+        # load_from="output/ocp/mappo/EXP_NAME/models/episode_EPI_NUM.pth",
+        # resume_from="output/ocp/mappo/EXP_NAME/models/episode_EPI_NUM.pth",
     ),
 )

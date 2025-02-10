@@ -52,15 +52,15 @@ cam_intrinsics = dict(
     #     resolution=resols["SD"],
     # ),
     # `std_cam`
+    # std_cam=dict(
+    #     aov=[PI / 3, PI / 3],
+    #     dof=[3, 0.5],
+    # ),
+    # `std_cam`
     std_cam=dict(
         aov=[PI / 3, PI / 3],
         dof=[3, 0.5],
     ),
-    # `std_cam`
-    # std_cam=dict(
-    #     aov=[PI / 3, PI / 3],
-    #     dof=[1.5, 0.3],
-    # ),
 )
 
 
