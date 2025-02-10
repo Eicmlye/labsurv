@@ -1,13 +1,15 @@
 import os.path as osp
-from typing import Dict, Optional
+from copy import deepcopy
+from typing import Dict, List, Optional
 
 import numpy as np
 from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, RUNNERS
 from labsurv.models.agents import BaseAgent
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
+from labsurv.utils.string import INDENT
 from mmcv import Config
-from numpy import pi as PI
+from numpy import ndarray as array
 
 
 @RUNNERS.register_module()
@@ -46,8 +48,8 @@ class OCPMultiAgentOnPolicyRunner:
 
         for episode in range(self.start_episode, self.episodes):
             self.logger.show_log(f"\n==== Episode {episode + 1} ====\n")
-            # [1, 2, W, D, H], [AGENT_NUM, 6]
-            room_info, cur_observation = self.env.reset()
+            # SurveillanceRoom, [AGENT_NUM, PARAM_DIM]
+            room, cur_params = self.env.reset()
 
             episode_return: Dict[str, float] = dict(
                 critic_loss=0,
@@ -61,31 +63,30 @@ class OCPMultiAgentOnPolicyRunner:
             transitions = dict(
                 cur_observation=[],
                 cur_action=[],
-                next_observation=[],
+                cur_action_mask=[],
+                cur_critic_input=[],
+                next_critic_input=[],
                 reward=[],
                 terminated=[],
             )
 
             for step in range(self.steps):
-                cur_action = self.agent.take_action(
-                    cur_observation,
+                cur_observation, cur_action, cur_action_mask = self.agent.take_action(
+                    room,
+                    cur_params,
                     episode_index=episode,
                     step_index=step,
                     save_dir=self.logger.save_dir,
                 )
 
-                cur_coverage, cur_transition = self.env.step(
-                    cur_observation, cur_action, self.steps
+                cur_coverage, cur_transition, new_params = self.env.step(
+                    cur_observation, cur_action, self.steps, cur_action_mask
                 )
 
                 terminated = cur_transition["terminated"]
                 truncated = step == self.steps - 1
 
-                cur_observation = np.expand_dims(
-                    cur_transition["next_observation"], axis=0
-                )
-
-                episode_return["reward"] += cur_transition["reward"]
+                episode_return["reward"] += cur_transition["reward"][-1]
                 episode_return["coverage"] = cur_coverage
 
                 for key, item in transitions.items():
@@ -93,42 +94,28 @@ class OCPMultiAgentOnPolicyRunner:
 
                 self.logger.show_log(
                     f"[Episode {episode + 1:>4} Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
-                    f"| step reward {cur_transition["reward"]:.4f} "
+                    f"| step reward {cur_transition["reward"][-1]:.4f} "
                     f"| total reward {episode_return["reward"]:.4f} "
-                    # pred obs
-                    f"\n\tPREVIOUS pos [{int(cur_transition["cur_observation"][0]):d}, "
-                    f"{int(cur_transition["cur_observation"][1]):d}, "
-                    f"{int(cur_transition["cur_observation"][2]):d}] "
-                    f"| direction [{cur_transition["cur_observation"][3] / 2 / PI * 360:.2f}, "
-                    f"{cur_transition["cur_observation"][4] / 2 / PI * 360:.2f}] "
-                    f"| cam_type {int(cur_transition["next_observation"][5]):d}"
-                    # action
-                    f"\n\tACTION   pos [{int(cur_transition["cur_action"][0]):+d}, "
-                    f"{int(cur_transition["cur_action"][1]):+d}, "
-                    f"{int(cur_transition["cur_action"][2]):+d}] "
-                    f"| direction [{int(cur_transition["cur_action"][3]):+d}, "
-                    f"{int(cur_transition["cur_action"][4]):+d}] "
-                    f"| cam_type {int(cur_transition["cur_action"][5]):d}"
-                    # cur obs
-                    f"\n\tCURRENT  pos [{int(cur_transition["next_observation"][0]):d}, "
-                    f"{int(cur_transition["next_observation"][1]):d}, "
-                    f"{int(cur_transition["next_observation"][2]):d}] "
-                    f"| direction [{cur_transition["next_observation"][3] / 2 / PI * 360:.2f}, "
-                    f"{cur_transition["next_observation"][4] / 2 / PI * 360:.2f}] "
-                    f"| cam_type {int(cur_transition["next_observation"][5]):d}",
+                    f"\nPREVIOUS {readable_param(cur_params)} "
+                    f"\nACTION   {readable_action(cur_action)} "
+                    f"\nCURRENT  {readable_param(new_params)} ",
                     with_time=True,
                 )
 
-                # point_cloud_path = osp.join(
-                #     self.logger.save_dir,
-                #     "pointcloud",
-                #     "train",
-                #     f"epi{episode + 1}",
-                #     f"step{step + 1}_SurveillanceRoom_cam.ply",
-                # )
-                # self.env.info_room.visualize(point_cloud_path, "camera")
+                room = deepcopy(self.env.info_room)
+                cur_params: array = new_params
 
                 if terminated or truncated:
+                    point_cloud_path = osp.join(
+                        self.logger.save_dir,
+                        "pointcloud",
+                        "train",
+                        f"epi{episode + 1}",
+                        f"step{step + 1}_SurveillanceRoom_cam.ply",
+                    )
+                    self.env.info_room.visualize(
+                        point_cloud_path, "camera", heatmap=True
+                    )
                     break
 
             (
@@ -175,59 +162,44 @@ class OCPMultiAgentOnPolicyRunner:
             + "..."
         )
 
-        # [1, 2, W, D, H], [AGENT_NUM, 6]
-        room_info, cur_observation = self.env.reset()
+        # SurveillanceRoom, [AGENT_NUM, PARAM_DIM]
+        room, cur_params = self.env.reset()
 
         episode_return: Dict[str, float] = dict(
             reward=0,
             coverage=0,
         )
+        terminated = False
 
         for step in range(self.steps):
-            cur_action_with_params = self.agent.take_action(
-                cur_observation,
+            cur_observation, cur_action = self.agent.take_action(
+                room,
+                cur_params,
                 episode_index=episode_index,
                 step_index=step,
                 save_dir=self.logger.save_dir,
             )
 
-            cur_coverage, cur_transition = self.env.step(
-                cur_observation, cur_action_with_params, self.steps
+            cur_coverage, cur_transition, new_params = self.env.step(
+                cur_observation, cur_action, self.steps
             )
 
             terminated = cur_transition["terminated"]
             truncated = step == self.steps - 1
 
-            cur_observation = np.expand_dims(cur_transition["next_observation"], axis=0)
+            room = deepcopy(self.env.info_room)
+            cur_params: array = new_params
 
-            episode_return["reward"] += cur_transition["reward"]
+            episode_return["reward"] += cur_transition["reward"][-1]
             episode_return["coverage"] = cur_coverage
 
             self.logger.show_log(
                 f"[Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
-                f"| step reward {cur_transition["reward"]:.4f} "
-                f"| episode cur reward {episode_return["reward"]:.4f} "
-                # pred obs
-                f"\n\tPREVIOUS pos [{int(cur_transition["cur_observation"][0]):d}, "
-                f"{int(cur_transition["cur_observation"][1]):d}, "
-                f"{int(cur_transition["cur_observation"][2]):d}] "
-                f"| direction [{cur_transition["cur_observation"][3] / 2 / PI * 360:.2f}, "
-                f"{cur_transition["cur_observation"][4] / 2 / PI * 360:.2f}] "
-                f"| cam_type {int(cur_transition["next_observation"][5]):d}"
-                # action
-                f"\n\tACTION   pos [{int(cur_transition["cur_action"][0]):+d}, "
-                f"{int(cur_transition["cur_action"][1]):+d}, "
-                f"{int(cur_transition["cur_action"][2]):+d}] "
-                f"| direction [{int(cur_transition["cur_action"][3]):+d}, "
-                f"{int(cur_transition["cur_action"][4]):+d}] "
-                f"| cam_type {int(cur_transition["cur_action"][5]):d}"
-                # cur obs
-                f"\n\tCURRENT  pos [{int(cur_transition["next_observation"][0]):d}, "
-                f"{int(cur_transition["next_observation"][1]):d}, "
-                f"{int(cur_transition["next_observation"][2]):d}] "
-                f"| direction [{cur_transition["next_observation"][3] / 2 / PI * 360:.2f}, "
-                f"{cur_transition["next_observation"][4] / 2 / PI * 360:.2f}] "
-                f"| cam_type {int(cur_transition["next_observation"][5]):d}",
+                f"| step reward {cur_transition["reward"][-1]:.4f} "
+                f"| total reward {episode_return["reward"]:.4f} "
+                f"\nCURRENT  {readable_param(cur_params)} "
+                f"\nACTION   {readable_action(cur_action)} "
+                f"\nPREVIOUS {readable_param(new_params)} ",
                 with_time=True,
             )
 
@@ -238,7 +210,7 @@ class OCPMultiAgentOnPolicyRunner:
                 (f"epi{episode_index + 1}/" if episode_index is not None else "")
                 + f"step{step + 1}_SurveillanceRoom_cam.ply",
             )
-            self.env.info_room.visualize(point_cloud_path, "camera")
+            self.env.info_room.visualize(point_cloud_path, "camera", heatmap=True)
 
             if terminated or truncated:
                 self.logger.show_log(
@@ -246,3 +218,105 @@ class OCPMultiAgentOnPolicyRunner:
                     with_time=True,
                 )
                 break
+
+
+def readable_param(params: array) -> str:
+    """
+    ## Arguments:
+
+        params (np.ndarray): [AGENT_NUM, PARAM_DIM]
+
+    ## Returns:
+
+        readable (str)
+    """
+
+    readable: str = ""
+
+    for index, param in enumerate(params):
+        readable += _readable_param(param)
+        if index < len(params) - 1:
+            readable += ", "
+
+    return readable
+
+
+def _readable_param(param: array) -> str:
+    """
+    ## Arguments:
+
+        param (np.ndarray): [PARAM_DIM]
+
+    ## Returns:
+
+        readable (str)
+    """
+    cache: List[array] = [
+        param[:3].astype(np.int64),
+        param[3:5].astype(np.float32),
+        param[5:].nonzero()[0].astype(np.int64),
+    ]
+
+    cache[1] = cache[1] / np.pi * 180
+
+    readable_list: List = []
+    for i in range(len(cache)):
+        readable_list += cache[i].tolist()
+
+    readable: str = "["
+    for i in range(3):
+        readable += f"{readable_list[i]:>3d}" + INDENT
+    for i in range(3, 5):
+        readable += f"{readable_list[i]:>7.2f}" + INDENT
+    readable += str(readable_list[-1]) + "]"
+
+    return readable
+
+
+def readable_action(actions: array):
+    """
+    ## Arguments:
+
+        actions (np.ndarray): [AGENT_NUM, ACTION_DIM]
+
+    ## Returns:
+
+        readable (str)
+    """
+
+    readable: str = ""
+
+    for index, action in enumerate(actions):
+        readable += _readable_action(action)
+        if index < len(actions) - 1:
+            readable += ", "
+
+    return readable
+
+
+def _readable_action(action: array):
+    """
+    ## Arguments:
+
+        action (np.ndarray): [ACTION_DIM]
+
+    ## Returns:
+
+        readable (str)
+    """
+    action_index: int = action.nonzero()[0].astype(np.int64)[0]
+
+    if action_index < 2:
+        readable = " " * 2 + ("-" if action_index % 2 == 0 else "+") + "x" + " " * 32
+    elif action_index < 4:
+        readable = " " * 7 + ("-" if action_index % 2 == 0 else "+") + "y" + " " * 27
+    elif action_index < 6:
+        readable = " " * 12 + ("-" if action_index % 2 == 0 else "+") + "z" + " " * 22
+    elif action_index < 8:
+        readable = " " * 21 + ("-" if action_index % 2 == 0 else "+") + "p" + " " * 13
+    elif action_index < 10:
+        readable = " " * 30 + ("-" if action_index % 2 == 0 else "+") + "t" + " " * 4
+    else:
+        readable = " " * 32 + "->" + str(action_index - 10)
+
+    return readable

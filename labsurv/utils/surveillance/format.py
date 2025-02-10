@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -19,6 +20,11 @@ def pos_index2coord(
     pos_coord = room.nonzero()[pos_index]
 
     return pos_coord  # [3]
+
+
+def array_is_in(pos: array, candidates: array):
+    extend_pos = np.tile(pos, [len(candidates), 1])
+    return np.any(np.all(extend_pos == candidates, axis=1), axis=0)
 
 
 def direction_index2pan_tilt(
@@ -104,79 +110,54 @@ def pack_observation2transition(observation: array) -> array:
     return torch.cat(observation2input(obs), dim=1).cpu().numpy().copy()
 
 
-def action_index2movement(
-    action_index: int,
-    cam_types: int,
-) -> array:
+def action2movement(action: array) -> array:
     """
     ## Description:
 
-        Translate action_index to pos, angular and cam_type movements.
+        Translate action to movement.
 
     ## Arguments:
 
-        action_index (int)
-
-        cam_types (int)
+        action (np.ndarray)
 
     ## Returns:
 
-        action (np.ndarray): [6], np.int64,
+        movement (np.ndarray): [6], np.int64,
         [delta_x, delta_y, delta_z, delta_pan_index, delta_tilt_index, cam_type]
     """
-    assert isinstance(action_index, int) and isinstance(cam_types, int), (
-        f"`action_index` and `cam_types` must both be `int` variables, but got "
-        f"{type(action_index)} and {type(cam_types)}."
-    )
-    assert action_index in range(10 * cam_types), (
-        "`action_index` is supposed to be chosen from 0 ~ (10 * `cam_types` - 1), but "
-        f"got {action_index}."
-    )
 
-    new_cam_type: array = np.array([action_index // 10], dtype=np.int64)
+    action_index: int = round(action.nonzero()[0][0])
+    movement: array = np.zeros((6,), dtype=np.float32)
 
-    # movement
-    # | index | (x, y, z, p, t) |
-    # | ----- | --------------- |
-    # |   0   | (-, 0, 0, 0, 0) |
-    # |   1   | (+, 0, 0, 0, 0) |
-    # |   2   | (0, -, 0, 0, 0) |
-    # |   3   | (0, +, 0, 0, 0) |
-    # |   4   | (0, 0, -, 0, 0) |
-    # |   5   | (0, 0, +, 0, 0) |
-    # |   6   | (0, 0, 0, -, 0) |
-    # |   7   | (0, 0, 0, +, 0) |
-    # |   8   | (0, 0, 0, 0, -) |
-    # |   9   | (0, 0, 0, 0, +) |
-    spacial_action: array = np.zeros([5], dtype=np.int64)
-    spacial_action[action_index % 10 // 2] = -1 if action_index % 10 % 2 == 0 else 1
+    if action_index < 10:
+        movement[action_index // 2] = -1 if action_index % 2 == 0 else 1
+    else:
+        movement[5] = action_index - 10
 
-    return np.concatenate((spacial_action, new_cam_type), axis=0).astype(np.int64)
+    return movement
 
 
 def apply_movement_on_agent(
     cur_params: array,
-    movement: array,
+    action: array,
     room_shape: List[int],
     pan_section_num: int,
     tilt_section_num: int,
     pan_range: List[float],
     tilt_range: List[float],
     allow_pan_circular: bool = False,
-) -> array:
+    pos_candidate: Optional[array] = None,
+) -> array | bool:
     """
     ## Description:
 
-        Apply movement to an agent's current pos, angular and cam_type params, and
-        return its new params.
+        Apply movement to an agent's current params, and return its new params.
 
     ## Arguments:
 
-        cur_params (np.ndarray): [6], np.float32,
-        [cur_x, cur_y, cur_z, cur_pan, cur_tilt, cur_cam_type]
+        cur_params (np.ndarray): [PARAM_DIM], np.float32.
 
-        movement (np.ndarray): [6], np.int64,
-        [delta_x, delta_y, delta_z, delta_pan_index, delta_tilt_index, cam_type]
+        action (np.ndarray): [ACTION_DIM], np.int64.
 
         room_shape (List[int]): [3], W, D, H of the room.
 
@@ -186,16 +167,30 @@ def apply_movement_on_agent(
 
         allow_pan_circular (bool): whether allow circular pan angle.
 
+        pos_candidate (Optional[array]): if not None, this method return False
+        immediately if invalid action is executed (run out of `pos_candidate`, or
+        angles hit bounds).
+
     ## Returns:
 
-        new_params (np.ndarray): [6], np.float32,
-        [new_x, new_y, new_z, new_pan, new_tilt, new_cam_type]
+        new_params (np.ndarray): [PARAM_DIM], np.float32.
+
+        valid_action (bool): only return this when `pos_candidate` is not None.
     """
-    assert len(cur_params) == len(movement) == 6
+    movement = action2movement(action)
 
     # position
     pos_upper_bound = np.array(room_shape) - 1
     pos_lower_bound = np.zeros_like(pos_upper_bound)
+    if (
+        pos_candidate is not None
+        and int(action.nonzero()[0]) < 6
+        and not array_is_in(
+            (cur_params[:3].copy() + movement[:3].copy()).astype(np.int64),
+            pos_candidate.astype(np.int64),
+        )
+    ):
+        return False
     new_pos: array = np.clip(
         cur_params[:3].copy() + movement[:3].copy(), pos_lower_bound, pos_upper_bound
     )
@@ -217,6 +212,15 @@ def apply_movement_on_agent(
     else:
         pan_upper_bound = np.array([pan_range[1] - pan_step])
         pan_lower_bound = np.array([pan_range[0]])
+        if pos_candidate is not None and (
+            round(((cur_params[3] - pan_lower_bound) / pan_step)[0])
+            + angular_movement[0]
+            < 0
+            or round(((cur_params[3] - pan_lower_bound) / pan_step)[0])
+            + angular_movement[0]
+            > pan_section_num - 1
+        ):
+            return False
         new_direction[0] = np.clip(
             cur_params[3] + angular_movement[0] * pan_step,
             pan_lower_bound,
@@ -225,14 +229,327 @@ def apply_movement_on_agent(
 
     # tilt without 2 polar points
     tilt_upper_bound = np.array([tilt_range[1] - tilt_step])
-    tilt_lower_bound = np.array([tilt_range[0] + tilt_step])
+    tilt_lower_bound = np.array([tilt_range[0]])
+    if pos_candidate is not None and (
+        round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) + angular_movement[1]
+        < 1
+        or round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0])
+        + angular_movement[1]
+        > tilt_section_num - 1
+    ):
+        return False
     new_direction[1] = np.clip(
         cur_params[4] + angular_movement[1] * tilt_step,
         tilt_lower_bound,
         tilt_upper_bound,
     )
 
-    return np.concatenate(
-        (new_pos, new_direction, np.array([cur_params[5]])),
-        axis=0,
-    ).astype(np.float32)
+    return (
+        np.concatenate(
+            (
+                new_pos,
+                new_direction,
+                np.eye(len(cur_params) - 5)[cur_params[5:].astype(np.bool_)].reshape(
+                    -1
+                ),
+            ),
+            axis=0,
+        ).astype(np.float32)
+        if pos_candidate is None
+        else True
+    )
+
+
+def info_room2critic_input(room, agent_num: int) -> Tuple[array, array]:
+    """
+    ## Description:
+
+        Generate critic inputs from room info.
+
+    ## Arguments:
+
+        room (SurveillanceRoom): will be deepcopied and will NOT be modified.
+
+        agent_num (int)
+
+    ## Returns:
+
+        cam_params (np.ndarray): [AGENT_NUM, PARAM_DIM], torch.float. Absolute coords
+        and relative angles, one-hot cam_type vecs.
+
+        env (np.ndarray): [3, W, D, H], torch.float, `occupancy`,
+        `install_permitted`, `vis_redundancy`.
+        `vis_redundancy` = vis_count / agent_num, -1 if not in `must_monitor`.
+    """
+    room = deepcopy(room)
+
+    info_room: array = room.get_info()
+    cam_types: int = len(room._CAM_TYPES)
+
+    # env
+    occupancy: array = np.expand_dims(info_room[0], axis=0)
+    install_permitted: array = np.expand_dims(info_room[1], axis=0)
+    must_monitor: array = info_room[2]
+    visible_count: array = info_room[11]
+
+    assert agent_num >= np.max(visible_count)
+    vis_redundancy: array = visible_count / agent_num
+    vis_redundancy[must_monitor == 0] = -1
+    vis_redundancy = np.expand_dims(vis_redundancy, axis=0)
+
+    ## agent params
+    # [AGENT_NUM, 3]
+    cam_pos: array = np.array(info_room[7].nonzero()).transpose()
+    # [AGENT_NUM, 1]
+    pan: array = info_room[8][info_room[7].nonzero()].reshape(agent_num, 1)
+    # [AGENT_NUM, 1]
+    tilt: array = info_room[9][info_room[7].nonzero()].reshape(agent_num, 1)
+    # [AGENT_NUM , CAM_TYPES]
+    cam_type_one_hot: array = np.eye(cam_types)[
+        info_room[10][info_room[7].nonzero()].astype(np.int64)
+    ]
+
+    # [AGENT_NUM, PARAM_DIM]
+    cam_params: array = np.concatenate([cam_pos, pan, tilt, cam_type_one_hot], axis=1)
+    # [3, W, D, H]
+    env: array = np.concatenate([occupancy, install_permitted, vis_redundancy], axis=0)
+
+    return cam_params, env
+
+
+def info_room2actor_input(
+    room, agent_num: int, cur_cam_params: array
+) -> Tuple[array, array, array]:
+    """
+    ## Description:
+
+        Generate actor inputs from room info according to current camera position.
+
+    ## Arguments:
+
+        room (SurveillanceRoom): will be deepcopied and will NOT be modified.
+
+        agent_num (int)
+
+        cur_cam_params (np.ndarray): [PARAM_DIM].
+
+    ## Returns:
+
+        self_and_neigh_params (np.ndarray): [AGENT_NUM(NEIGH), PARAM_DIM], torch.float.
+        Absolute params of agents in `neigh` including current agent itself. Remaining
+        rows will be padded with 0's.
+
+        self_mask (np.ndarray): [AGENT_NUM(NEIGH)], torch.bool. 1 for current agent, 0
+        otherwise. Remaining rows will be padded with `False`'s.
+
+        neigh (np.ndarray): [3, 2L+1, 2L+1, 2L+1], torch.float, where `L` is the
+        farther dof of the camera. `occupancy`, `install_permitted`,
+        `vis_redundancy`. `vis_redundancy` = vis_count / agent_num, -1 if not
+        in `must_monitor`.
+    """
+    room = deepcopy(room)
+
+    info_room: array = room.get_info()
+    cam_types: int = len(room._CAM_TYPES)
+
+    ## full env
+    occupancy: array = np.expand_dims(info_room[0], axis=0)
+    install_permitted: array = np.expand_dims(info_room[1], axis=0)
+    must_monitor: array = info_room[2]
+    visible_count: array = info_room[11]
+
+    assert agent_num >= np.max(visible_count)
+    vis_redundancy: array = visible_count / agent_num
+    vis_redundancy[must_monitor == 0] = -1
+    vis_redundancy = np.expand_dims(vis_redundancy, axis=0)
+    # [3, W, D, H]
+    env: array = np.concatenate([occupancy, install_permitted, vis_redundancy], axis=0)
+
+    ## local env
+    cur_cam_type = round(np.array(cur_cam_params[5:].nonzero()).reshape(-1)[0])
+    cur_cam_intrinsics = room.get_cam_intrinsics(cur_cam_type)
+    if "dof" not in cur_cam_intrinsics.keys():
+        raise NotImplementedError("Only support explicit params.")
+    L: int = min(max(round(cur_cam_intrinsics["dof"][0] / room.voxel_length), 5), 10)
+    W, D, H = env[0].shape
+
+    x_min = round(max(0, cur_cam_params[0] - L))
+    x_max = round(min(cur_cam_params[0] + L, W - 1))
+    y_min = round(max(0, cur_cam_params[1] - L))
+    y_max = round(min(cur_cam_params[1] + L, D - 1))
+    z_min = round(max(0, cur_cam_params[2] - L))
+    z_max = round(min(cur_cam_params[2] + L, H - 1))
+
+    real_neigh: array = env[:, x_min : x_max + 1, y_min : y_max + 1, z_min : z_max + 1]
+    padded_neigh: array = np.concatenate(
+        [
+            [
+                np.zeros([2 * L + 1, 2 * L + 1, 2 * L + 1]),
+                np.zeros([2 * L + 1, 2 * L + 1, 2 * L + 1]),
+                -1 * np.ones([2 * L + 1, 2 * L + 1, 2 * L + 1]),
+            ]
+        ],
+        axis=1,
+    )
+
+    x_negative_bound_dis = round(cur_cam_params[0] - x_min)
+    x_positive_bound_dis = round(x_max - cur_cam_params[0])
+    y_negative_bound_dis = round(cur_cam_params[1] - y_min)
+    y_positive_bound_dis = round(y_max - cur_cam_params[1])
+    z_negative_bound_dis = round(cur_cam_params[2] - z_min)
+    z_positive_bound_dis = round(z_max - cur_cam_params[2])
+    padded_neigh[
+        :,
+        L - x_negative_bound_dis : L + x_positive_bound_dis + 1,
+        L - y_negative_bound_dis : L + y_positive_bound_dis + 1,
+        L - z_negative_bound_dis : L + z_positive_bound_dis + 1,
+    ] = real_neigh
+
+    ## params
+    neigh_extrin: array = np.zeros_like(info_room[7])
+    neigh_extrin[x_min : x_max + 1, y_min : y_max + 1, z_min : z_max + 1] = info_room[
+        7
+    ][x_min : x_max + 1, y_min : y_max + 1, z_min : z_max + 1]
+    # [AGENT_NUM(NEIGH), 3]
+    self_and_neigh_cam_pos: array = np.array(neigh_extrin.nonzero()).transpose()
+    # [AGENT_NUM(NEIGH), 1]
+    self_and_neigh_pan: array = info_room[8][neigh_extrin.nonzero()].reshape(-1, 1)
+    # [AGENT_NUM(NEIGH), 1]
+    self_and_neigh_tilt: array = info_room[9][neigh_extrin.nonzero()].reshape(-1, 1)
+    # [AGENT_NUM(NEIGH), CAM_TYPES]
+    self_and_neigh_cam_type_one_hot: array = np.eye(cam_types)[
+        info_room[10][neigh_extrin.nonzero()].astype(np.int64)
+    ]
+    # [AGENT_NUM(NEIGH), PARAM_DIM]
+    self_and_neigh_params: array = np.concatenate(
+        [
+            self_and_neigh_cam_pos,
+            self_and_neigh_pan,
+            self_and_neigh_tilt,
+            self_and_neigh_cam_type_one_hot,
+        ],
+        axis=1,
+    )
+
+    param_dim = self_and_neigh_params.shape[1]
+    padded_self_and_neigh_params = np.zeros((agent_num, param_dim), dtype=np.float32)
+    padded_self_and_neigh_params[: len(self_and_neigh_params)] = self_and_neigh_params
+    self_mask: array = np.all(
+        np.round(self_and_neigh_cam_pos - cur_cam_params[:3]).astype(np.int64) == 0,
+        axis=1,
+    )
+    padded_self_mask = np.zeros((agent_num,), dtype=np.bool_)
+    padded_self_mask[: len(self_mask)] = self_mask
+
+    return padded_self_and_neigh_params, padded_self_mask, padded_neigh
+
+
+def generate_action_mask(
+    room,
+    cam_params: array,
+    pan_section_num: int,
+    tilt_section_num: int,
+    pan_range: List[float],
+    tilt_range: List[float],
+) -> array:
+    """
+    ## Description:
+
+        Generate mask for invalid actions.
+
+    ## Arguments:
+
+        room (SurveillanceRoom)
+
+        cam_params (np.ndarray): [PARAM_DIM] or [B, PARAM_DIM]
+
+    ## Returns:
+
+        valid_actions (np.ndarray): [ACTION_DIM] or [B, ACTION_DIM]
+    """
+    assert cam_params.ndim in [1, 2]
+    if cam_params.ndim == 1:
+        return _generate_action_mask(
+            room,
+            cam_params,
+            pan_section_num,
+            tilt_section_num,
+            pan_range,
+            tilt_range,
+        )
+    else:
+        batched_masks = []
+        for cam_param in cam_params:
+            batched_masks.append(
+                _generate_action_mask(
+                    room,
+                    cam_param,
+                    pan_section_num,
+                    tilt_section_num,
+                    pan_range,
+                    tilt_range,
+                )
+            )
+        return np.array(batched_masks)
+
+
+def _generate_action_mask(
+    room,
+    cam_params: array,
+    pan_section_num: int,
+    tilt_section_num: int,
+    pan_range: List[float],
+    tilt_range: List[float],
+) -> array:
+    """
+    ## Description:
+
+        Generate mask for invalid actions.
+
+    ## Arguments:
+
+        room (SurveillanceRoom)
+
+        cam_params (np.ndarray): [PARAM_DIM]
+
+    ## Returns:
+
+        valid_actions (np.ndarray): [ACTION_DIM]
+    """
+    room = deepcopy(room)
+
+    pos_candidates = (
+        (
+            torch.logical_xor(
+                room.install_permitted,
+                room.cam_extrinsics[:, :, :, 0],
+            )
+            .nonzero()
+            .type(torch.int64)
+        )
+        .cpu()
+        .numpy()
+        .copy()
+    )
+    cur_cam_type = int(cam_params[5:].nonzero()[0])
+
+    actions = np.eye(5 + len(cam_params))
+    valid_actions = np.ones((5 + len(cam_params),))
+    for index, action in enumerate(actions):
+        if index >= 10:
+            is_valid = cur_cam_type != int(action[10:].nonzero()[0])
+        else:
+            is_valid = apply_movement_on_agent(
+                cam_params,
+                action,
+                room.shape,
+                pan_section_num,
+                tilt_section_num,
+                pan_range,
+                tilt_range,
+                pos_candidate=pos_candidates,
+            )
+        if not is_valid:
+            valid_actions[index] = 0
+
+    return valid_actions  # [ACTION_DIM]

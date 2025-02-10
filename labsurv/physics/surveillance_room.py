@@ -11,12 +11,14 @@ from labsurv.utils.surveillance import (
     AdjustUninstalledCameraError,
     DeleteUninstalledCameraError,
     InstallAtExistingCameraError,
+    apply_colormap_to_list,
     build_block,
     compute_single_cam_visibility,
     concat_points_with_color,
     save_visualized_points,
     shift,
 )
+from matplotlib.colors import LinearSegmentedColormap
 from mmcv import Config, ProgressBar
 from numpy import ndarray as array
 from torch import Tensor
@@ -179,6 +181,37 @@ class SurveillanceRoom:
 
     def get_extra_params_namelist(self, point_type: str) -> List[str]:
         return self._POINT_CONFIGS[point_type]["extra_params"]
+
+    def get_cam_type_index(self, cam_type: str | int) -> int:
+        if isinstance(cam_type, (int, self.AINT)) or (
+            isinstance(cam_type, torch.Tensor)
+            and cam_type.dtype == self.INT
+            and cam_type.ndim == 1
+            and cam_type.shape[0] == 1
+        ):
+            if cam_type >= len(self._CAM_TYPES):
+                raise ValueError(
+                    f"SurveillanceRoom supports {len(self._CAM_TYPES)} "
+                    f"types of cameras. Cam Index {cam_type} is invalid."
+                )
+        elif isinstance(cam_type, str):
+            if cam_type not in self._CAM_TYPES:
+                raise ValueError(
+                    f"SurveillanceRoom does not support \"{cam_type}\" cameras."
+                )
+            else:
+                cam_type = self._CAM_TYPES.index(cam_type)
+        else:
+            raise ValueError(
+                f"Unsupported cam_type {cam_type} in type {type(cam_type)}"
+            )
+
+        return cam_type
+
+    def get_cam_intrinsics(self, cam_type: str | int):
+        cam_type_index = self.get_cam_type_index(cam_type)
+
+        return self._CAM_INTRINSICS[self._CAM_TYPES[cam_type_index]]
 
     def _assert_dtype_device(
         self, tensor: Tensor, dtype, device: Optional[torch.cuda.device] = None
@@ -364,8 +397,6 @@ class SurveillanceRoom:
         pos: array,
         direction: array,
         cam_type: str | int,
-        lov_indices: Optional[List[int]] = None,
-        lov_check_list: Optional[List[List[int]]] = None,
         provided_vismask: Optional[Tensor] = None,
     ) -> array:
         """
@@ -377,14 +408,6 @@ class SurveillanceRoom:
             camera. `pan` in [-pi, pi), `tilt` in [-pi/2, pi/2].
 
             cam_type (str | int): the type (index) of camera.
-
-            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
-            speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
-
-            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
-            check speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
 
             provided_vismask (Optional[Tensor]): if provided, the vismask will be used
             directly to speedup computation, lov arguments will be ignored and the
@@ -410,31 +433,13 @@ class SurveillanceRoom:
         assert direction[0] >= -torch.pi and direction[0] < torch.pi
         assert direction[1] >= -torch.pi / 2 and direction[1] <= torch.pi / 2
 
-        if isinstance(cam_type, (int, self.AINT)) or (
-            isinstance(cam_type, torch.Tensor) and cam_type.dtype == self.INT
-        ):
-            if cam_type >= len(self._CAM_TYPES):
-                raise ValueError(
-                    f"SurveillanceRoom supports {len(self._CAM_TYPES)} "
-                    f"types of cameras. Cam Index {cam_type} is invalid."
-                )
-        elif isinstance(cam_type, str):
-            if cam_type not in self._CAM_TYPES:
-                raise ValueError(
-                    f"SurveillanceRoom does not support \"{cam_type}\" cameras."
-                )
-            else:
-                cam_type = self._CAM_TYPES.index(cam_type)
-        else:  # in case of torch numbers
-            raise ValueError(
-                f"Unsupported cam_type {cam_type} in type {type(cam_type)}"
-            )
+        cam_type_index = self.get_cam_type_index(cam_type)
 
         extrinsics = torch.cat(
             (
                 torch.tensor([1], dtype=self.FLOAT, device=self.device),
                 direction,
-                torch.tensor([cam_type], dtype=self.FLOAT, device=self.device),
+                torch.tensor([cam_type_index], dtype=self.FLOAT, device=self.device),
             )
         )
         self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
@@ -443,12 +448,10 @@ class SurveillanceRoom:
             vis_mask = compute_single_cam_visibility(
                 pos,
                 direction,
-                self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
+                self.get_cam_intrinsics(cam_type_index),
                 self.occupancy,
                 self.must_monitor,
                 self.voxel_length,
-                lov_indices,
-                lov_check_list,
             )
         else:
             vis_mask = provided_vismask
@@ -460,8 +463,6 @@ class SurveillanceRoom:
     def del_cam(
         self,
         pos: array,
-        lov_indices: Optional[List[int]] = None,
-        lov_check_list: Optional[List[List[int]]] = None,
         provided_vismask: Optional[Tensor] = None,
     ) -> array:
         """
@@ -469,21 +470,13 @@ class SurveillanceRoom:
 
             pos (np.ndarray): [3], np.int64, the position of the camera.
 
-        ## Returns:
-
-            vis_mask (np.ndarray): the visibility mask of the deleted camera.
-
-            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
-            speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
-
-            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
-            check speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
-
             provided_vismask (Optional[Tensor]): if provided, the vismask will be used
             directly to speedup computation, lov arguments will be ignored and the
             correctness of this vismask should be promised.
+
+        ## Returns:
+
+            vis_mask (np.ndarray): the visibility mask of the deleted camera.
         """
         self.cam_modify_num += 1
 
@@ -518,8 +511,6 @@ class SurveillanceRoom:
                 self.occupancy,
                 self.must_monitor,
                 self.voxel_length,
-                lov_indices,
-                lov_check_list,
             )
         else:
             vis_mask = provided_vismask
@@ -533,8 +524,6 @@ class SurveillanceRoom:
         pos: array,
         direction: array,
         cam_type: Optional[str | int] = None,
-        lov_indices: Optional[List[int]] = None,
-        lov_check_list: Optional[List[List[int]]] = None,
         provided_pred_vismask: Optional[Tensor] = None,
         provided_vismask: Optional[Tensor] = None,
         delta_vismask_out: bool = False,
@@ -549,14 +538,6 @@ class SurveillanceRoom:
 
             cam_type (Optional[str | int]): the type (index) of camera. If is None,
             `cam_type` will not change.
-
-            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
-            speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
-
-            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
-            check speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
 
             provided_pred_vismask (Optional[Tensor]): this vismask is used for del. If
             provided, the vismask will be used directly to speedup computation, lov
@@ -594,38 +575,22 @@ class SurveillanceRoom:
         direction = direction.to(self.device)
 
         pred_extrinsics = self.cam_extrinsics[pos[0], pos[1], pos[2]]
-        pred_cam_type = pred_extrinsics[-1].type(self.INT).item()
+        pred_cam_type_index = pred_extrinsics[-1].type(self.INT).item()
 
-        if isinstance(cam_type, (int, np.int64)):
-            if cam_type >= len(self._CAM_TYPES):
-                raise ValueError(
-                    f"SurveillanceRoom supports {len(self._CAM_TYPES)} "
-                    f"types of cameras. Cam Index {cam_type} is invalid."
-                )
-        elif isinstance(cam_type, str):
-            if cam_type not in self._CAM_TYPES:
-                raise ValueError(
-                    f"SurveillanceRoom does not support \"{cam_type}\" cameras."
-                )
-            else:
-                cam_type = self._CAM_TYPES.index(cam_type)
-        elif cam_type is None:
-            cam_type = pred_cam_type
-        else:  # in case of torch numbers
-            raise ValueError(
-                f"Unsupported cam_type {cam_type} in type {type(cam_type)}"
-            )
+        cam_type_index = (
+            pred_cam_type_index
+            if cam_type is None
+            else self.get_cam_type_index(cam_type)
+        )
 
         if provided_pred_vismask is None:
             pred_vis_mask = compute_single_cam_visibility(
                 pos,
                 pred_extrinsics[1:3],
-                self._CAM_INTRINSICS[self._CAM_TYPES[pred_cam_type]],
+                self._CAM_INTRINSICS[self._CAM_TYPES[pred_cam_type_index]],
                 self.occupancy,
                 self.must_monitor,
                 self.voxel_length,
-                lov_indices,
-                lov_check_list,
             )
         else:
             pred_vis_mask = provided_pred_vismask
@@ -635,7 +600,7 @@ class SurveillanceRoom:
             (
                 torch.tensor([1], dtype=self.FLOAT, device=self.device),
                 direction,
-                torch.tensor([cam_type], dtype=self.FLOAT, device=self.device),
+                torch.tensor([cam_type_index], dtype=self.FLOAT, device=self.device),
             )
         )
         self.cam_extrinsics[pos[0], pos[1], pos[2]] = extrinsics
@@ -644,12 +609,10 @@ class SurveillanceRoom:
             vis_mask = compute_single_cam_visibility(
                 pos,
                 direction,
-                self._CAM_INTRINSICS[self._CAM_TYPES[cam_type]],
+                self.get_cam_intrinsics(cam_type_index),
                 self.occupancy,
                 self.must_monitor,
                 self.voxel_length,
-                lov_indices,
-                lov_check_list,
             )
         else:
             vis_mask = provided_vismask
@@ -682,7 +645,7 @@ class SurveillanceRoom:
                 fpkl,
             )
 
-    def visualize(self, save_path: str, mode: str = "occupancy"):
+    def visualize(self, save_path: str, mode: str = "occupancy", heatmap: bool = False):
         """
         ## Description:
 
@@ -701,7 +664,7 @@ class SurveillanceRoom:
         if mode == "occupancy":
             points_with_color = self._visualize_occupancy()
         elif mode == "camera":
-            points_with_color = self._visualize_camera()
+            points_with_color = self._visualize_camera(heatmap)
         else:
             raise ValueError(f"Unsupported mode {mode}.")
 
@@ -748,7 +711,7 @@ class SurveillanceRoom:
 
         return points_with_color
 
-    def _visualize_camera(self) -> Tensor:
+    def _visualize_camera(self, heatmap: bool = False) -> Tensor:
         """
         ## Description:
 
@@ -772,9 +735,34 @@ class SurveillanceRoom:
             print(WARN("No cameras have been placed. Visualization aborted."))
             return None
 
-        visible_with_color = concat_points_with_color(
-            self.visible_points, self.get_color("visible")  # , -XEPSILON
-        )
+        if heatmap and self.visible_points.sum() > 0:
+            CENTER_SHIFT = torch.tensor(
+                [0.5, 0.5, 0.5], dtype=torch.float16, device=self.device
+            )
+            colors = [
+                "#000000",  # black, min
+                "#00ff00",  # green, max
+            ]
+            colormap = LinearSegmentedColormap.from_list("custom", colors, N=256)
+            colored_dist: Tensor = apply_colormap_to_list(  # [N, 3]
+                self.visible_points[self.visible_points > 0]
+                .view(-1)
+                .cpu()
+                .numpy()
+                .copy(),
+                colormap=colormap,
+                device=torch.device("cuda"),
+                divide_by_max=True,
+            )
+
+            visible_with_color = torch.cat(
+                (shift(self.visible_points.nonzero(), CENTER_SHIFT), colored_dist),
+                dim=1,
+            )  # [N, 6]
+        else:
+            visible_with_color = concat_points_with_color(
+                self.visible_points, self.get_color("visible")  # , -XEPSILON
+            )
         must_monitor_with_color = concat_points_with_color(
             self.must_monitor, self.get_color("must_monitor")  # , YEPSILON
         )
@@ -853,8 +841,6 @@ class SurveillanceRoom:
         direction: List[float] | array,
         section_nums: List[int],
         cam_type: int,
-        lov_indices: Optional[List[int]] = None,
-        lov_check_list: Optional[List[List[int]]] = None,
     ) -> Tuple[int, float, List[List[float]], List[array], List]:
         """
         ## Description:
@@ -872,14 +858,6 @@ class SurveillanceRoom:
             section_nums (List[int]): [2], pan and tilt section nums.
 
             cam_type (int): camera type index.
-
-            lov_indices (Optional[List[int]]): auxiliary list for obstacle check
-            speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
-
-            lov_check_list (Optional[List[List[int]]): auxiliary list for obstacle
-            check speedup. Generate this list by `if_need_obstacle_check()` in
-            `labsurv/physics/surveillance/visibillity.py`
 
         ## Returns:
 
@@ -930,9 +908,7 @@ class SurveillanceRoom:
                     input_direction_index = index_counter
 
                 cache_room: SurveillanceRoom = deepcopy(self)
-                cache_room.add_cam(
-                    pos, np.array([pan, tilt]), cam_type, lov_indices, lov_check_list
-                )
+                cache_room.add_cam(pos, np.array([pan, tilt]), cam_type)
                 cur_coverage: float = (
                     cache_room.visible_points > 0
                 ).sum().item() / total_target_point_num

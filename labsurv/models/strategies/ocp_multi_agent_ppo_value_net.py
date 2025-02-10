@@ -1,8 +1,188 @@
 import torch
-import torch.nn.functional as F
 from labsurv.builders import STRATEGIES
 from torch import Tensor
-from torch.nn import Linear, Module
+from torch.nn import Conv3d, Linear, Module, MultiheadAttention, ReLU, Sequential
+
+
+@STRATEGIES.register_module()
+class OCPMultiAgentPPOValueAttentionNet(Module):
+    INT = torch.int64
+    FLOAT = torch.float
+
+    def __init__(
+        self,
+        device: str,
+        hidden_dim: int,
+        cam_types: int,
+    ):
+        super().__init__()
+        self.device = torch.device(device)
+        self.cam_types = cam_types
+
+        param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
+        attn_head_num = 1
+
+        # neighbourhood
+        self.env_conv = Sequential(
+            Conv3d(
+                in_channels=3,
+                out_channels=hidden_dim // 2,
+                kernel_size=3,
+                padding=1,
+                device=self.device,
+            ),
+            ReLU(),
+            Conv3d(
+                in_channels=hidden_dim // 2,
+                out_channels=hidden_dim,
+                kernel_size=3,
+                padding=1,
+                device=self.device,
+            ),
+            ReLU(),
+        )
+
+        # agent params
+        self.params_encoder = Sequential(
+            Linear(param_dim, hidden_dim, device=self.device), ReLU()
+        )
+
+        # cross attention
+        self.attn = MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=attn_head_num, device=self.device
+        )
+
+        # value head
+        self.out = Sequential(
+            Linear(2 * hidden_dim, hidden_dim, device=self.device),
+            ReLU(),
+            Linear(hidden_dim, 1, device=self.device),
+        )
+
+    def forward(self, cam_params: Tensor, env: Tensor) -> Tensor:
+        """
+        ## Arguments:
+
+            cam_params (Tensor): [B, AGENT_NUM, PARAM_DIM], torch.float. Relative
+            coords and relative angles, one-hot cam_type vecs.
+
+            env (Tensor): [B, 3, W, D, H], torch.float, `occupancy`,
+            `install_permitted`, `vis_redundancy`.
+            `vis_redundancy` = vis_count / agent_num, -1 if not in `must_monitor`.
+        """
+
+        ## neighbourhood
+        # [B, HIDDEN_DIM, W, D, H]
+        env_feats: Tensor = self.env_conv(env)
+        # [W*D*H, B, HIDDEN_DIM]
+        env_seqs: Tensor = env_feats.flatten(start_dim=2).permute(2, 0, 1)
+
+        ## agents
+        # [B, AGENT_NUM, HIDDEN_DIM]
+        agents_embedding: Tensor = self.params_encoder(cam_params)
+        # [B, HIDDEN_DIM]
+        agents_feat: Tensor = agents_embedding.mean(dim=1)
+
+        ## cross attention
+        # [1, B, HIDDEN_DIM], ...
+        attn_feats, _ = self.attn(
+            query=agents_feat.unsqueeze(0),
+            key=env_seqs,
+            value=env_seqs,
+        )
+
+        ## feat fusion
+        # [B, CONV_OUT + HIDDEN_DIM]
+        fused_feats: Tensor = torch.cat(
+            [torch.squeeze(attn_feats, dim=0), env_seqs.mean(dim=0)], dim=1
+        )
+
+        value_predict = self.out(fused_feats)
+
+        return value_predict  # [B, 1]
+
+
+@STRATEGIES.register_module()
+class OCPMultiAgentPPOValueComplexNet(Module):
+    INT = torch.int64
+    FLOAT = torch.float
+
+    def __init__(
+        self,
+        device: str,
+        hidden_dim: int,
+        conv_out_channels: int,
+        cam_types: int,
+    ):
+        super().__init__()
+        self.device = torch.device(device)
+        self.cam_types = cam_types
+
+        param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
+
+        # neighbourhood
+        self.env_conv = Sequential(
+            Conv3d(
+                in_channels=3,
+                out_channels=conv_out_channels // 2,
+                kernel_size=3,
+                padding=1,
+                device=self.device,
+            ),
+            ReLU(),
+            Conv3d(
+                in_channels=conv_out_channels // 2,
+                out_channels=conv_out_channels,
+                kernel_size=3,
+                padding=1,
+                device=self.device,
+            ),
+            ReLU(),
+        )
+
+        # agent params
+        self.params_encoder = Sequential(
+            Linear(param_dim, hidden_dim, device=self.device), ReLU()
+        )
+
+        # value head
+        self.out = Sequential(
+            Linear(conv_out_channels + hidden_dim, hidden_dim, device=self.device),
+            ReLU(),
+            Linear(hidden_dim, 1, device=self.device),
+        )
+
+    def forward(self, cam_params: Tensor, env: Tensor) -> Tensor:
+        """
+        ## Arguments:
+
+            cam_params (Tensor): [B, AGENT_NUM, PARAM_DIM], torch.float. Relative
+            coords and relative angles, one-hot cam_type vecs.
+
+            env (Tensor): [B, 3, W, D, H], torch.float, `occupancy`,
+            `install_permitted`, `vis_redundancy`.
+            `vis_redundancy` = vis_count / agent_num, -1 if not in `must_monitor`.
+        """
+
+        ## neighbourhood
+        # [B, CONV_OUT, W, D, H]
+        env_feats: Tensor = self.env_conv(env)
+        # [W*D*H, B, CONV_OUT]
+        env_seqs: Tensor = env_feats.flatten(start_dim=2).permute(2, 0, 1)
+
+        ## agents
+        # [B, AGENT_NUM, HIDDEN_DIM]
+        agents_embedding: Tensor = self.params_encoder(cam_params)
+        # [B, HIDDEN_DIM]
+        agents_feat: Tensor = agents_embedding.mean(dim=1)
+
+        ## feat fusion
+        # [B, CONV_OUT + HIDDEN_DIM]
+        fused_feats: Tensor = torch.cat([agents_feat, env_seqs.mean(dim=0)], dim=1)
+
+        value_predict = self.out(fused_feats)
+
+        return value_predict  # [B, 1]
 
 
 @STRATEGIES.register_module()
@@ -14,30 +194,75 @@ class OCPMultiAgentPPOValueNet(Module):
         self,
         device: str,
         hidden_dim: int,
+        conv_out_channels: int,
+        cam_types: int,
     ):
         super().__init__()
         self.device = torch.device(device)
-        self.hidden_dim = hidden_dim
+        self.cam_types = cam_types
 
-        self.hidden_1 = Linear(6, self.hidden_dim, device=self.device)
-        self.hidden_2 = Linear(self.hidden_dim, self.hidden_dim, device=self.device)
-        self.hidden_3 = Linear(self.hidden_dim, self.hidden_dim, device=self.device)
+        param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
 
-        self.out = Linear(self.hidden_dim, 1, device=self.device)
+        # neighbourhood
+        self.env_conv = Sequential(
+            Conv3d(
+                in_channels=3,
+                out_channels=conv_out_channels // 2,
+                kernel_size=3,
+                padding=1,
+                device=self.device,
+            ),
+            ReLU(),
+            Conv3d(
+                in_channels=conv_out_channels // 2,
+                out_channels=conv_out_channels,
+                kernel_size=3,
+                padding=1,
+                device=self.device,
+            ),
+            ReLU(),
+        )
 
-    def forward(self, input: Tensor) -> Tensor:
-        assert input.ndim == 2 and input.shape[1] == 6, "Input should be shaped [B, 6]."
-        assert (
-            str(input.device).startswith("cuda") and str(self.device).startswith("cuda")
-        ) or (
-            str(input.device).startswith("cpu") and str(self.device).startswith("cpu")
-        ), "Different devices found."
-        assert input.dtype == self.FLOAT
+        # agent params
+        self.params_encoder = Sequential(
+            Linear(param_dim, hidden_dim, device=self.device), ReLU()
+        )
 
-        x = F.relu(self.hidden_1(input))
-        x = F.relu(self.hidden_2(x))
-        x = F.relu(self.hidden_3(x))
+        # value head
+        self.out = Sequential(
+            Linear(conv_out_channels + hidden_dim, hidden_dim, device=self.device),
+            ReLU(),
+            Linear(hidden_dim, 1, device=self.device),
+        )
 
-        x = self.out(x)
+    def forward(self, cam_params: Tensor, env: Tensor) -> Tensor:
+        """
+        ## Arguments:
 
-        return x  # [B, 1]
+            cam_params (Tensor): [B, AGENT_NUM, PARAM_DIM], torch.float. Relative
+            coords and relative angles, one-hot cam_type vecs.
+
+            env (Tensor): [B, 3, W, D, H], torch.float, `occupancy`,
+            `install_permitted`, `vis_redundancy`.
+            `vis_redundancy` = vis_count / agent_num, -1 if not in `must_monitor`.
+        """
+
+        ## neighbourhood
+        # [B, CONV_OUT, W, D, H]
+        env_feats: Tensor = self.env_conv(env)
+        # [W*D*H, B, CONV_OUT]
+        env_seqs: Tensor = env_feats.flatten(start_dim=2).permute(2, 0, 1)
+
+        ## agents
+        # [B, AGENT_NUM, HIDDEN_DIM]
+        agents_embedding: Tensor = self.params_encoder(cam_params)
+        # [B, HIDDEN_DIM]
+        agents_feat: Tensor = agents_embedding.mean(dim=1)
+
+        ## feat fusion
+        # [B, CONV_OUT + HIDDEN_DIM]
+        fused_feats: Tensor = torch.cat([agents_feat, env_seqs.mean(dim=0)], dim=1)
+
+        value_predict = self.out(fused_feats)
+
+        return value_predict  # [B, 1]
