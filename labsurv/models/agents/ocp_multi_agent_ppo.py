@@ -229,9 +229,6 @@ class OCPMultiAgentPPO(BaseAgent):
                     print(f"{action_probs_list[i]:>9.6f}  ", end="")
                 print(f"\nEntropy: {action_dist_cat.entropy().item():.6f}")
 
-                import pdb
-
-                pdb.set_trace()
                 action_index = action_dist_cat.sample().type(torch.int64).item()
 
                 actions.append(np.eye(len(action_dist))[[action_index]].reshape(-1))

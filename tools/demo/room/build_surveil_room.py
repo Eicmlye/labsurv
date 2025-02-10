@@ -418,10 +418,7 @@ def main(size: str, is_demo: bool):
     if is_demo:
         room.visualize(save_dir, "camera", heatmap=True)
 
-        coverage: float = (room.visible_points > 0).sum().item() / room.must_monitor[
-            :, :, :, 0
-        ].sum().item()
-        print(f"cov = {coverage}")
+        print(f"cov = {room.coverage}")
 
 
 def parse_args():
