@@ -1,6 +1,5 @@
 import os.path as osp
 import pickle
-from copy import deepcopy
 from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
@@ -19,7 +18,7 @@ from labsurv.utils.surveillance import (
     shift,
 )
 from matplotlib.colors import LinearSegmentedColormap
-from mmcv import Config, ProgressBar
+from mmcv.utils import Config
 from numpy import ndarray as array
 from torch import Tensor
 
@@ -69,6 +68,8 @@ class SurveillanceRoom:
 
         visible_points (Tensor): [W, D, H], torch.int64, visibility mask. The value
         represents the number of cameras that watching this voxel.
+
+        voxel_length (float): the actual length of sides of voxels.
     """
 
     INT = torch.int64
@@ -78,15 +79,15 @@ class SurveillanceRoom:
 
     def __init__(
         self,
-        device: Optional[torch.cuda.device],
+        device: torch.cuda.device,
         cfg_path: Optional[str] = None,
         shape: Optional[List[int]] = None,
         load_from: Optional[str] = None,
     ):
         """
-        ## Argument:
+        ## Arguments:
 
-            device (Optional[torch.cuda.device]): the device where all the tensors are
+            device (torch.cuda.device): the device where all the tensors are
             placed.
 
             cfg_path (Optional[str]): the configuration file path of the clip size,
@@ -183,6 +184,12 @@ class SurveillanceRoom:
         return self._POINT_CONFIGS[point_type]["extra_params"]
 
     def get_cam_type_index(self, cam_type: str | int) -> int:
+        """
+        ## Description:
+
+            Translate cam_type string to index. If index provided, it'll be returned
+            directly.
+        """
         if isinstance(cam_type, (int, self.AINT)) or (
             isinstance(cam_type, torch.Tensor)
             and cam_type.dtype == self.INT
@@ -242,6 +249,10 @@ class SurveillanceRoom:
 
     def _check_inside_room(self, points: Tensor) -> bool:
         """
+        ## Description:
+
+            Check if the given point(s) locates inside the room.
+
         ## Arguments:
 
             points (Tensor): [3] or [N, 3], torch.int64.
@@ -313,7 +324,7 @@ class SurveillanceRoom:
         self,
         shape: List[int],
         point_type: str = "occupancy",
-        displacement: Optional[List[int]] = None,
+        displacement: List[int] = [0, 0, 0],
         **kwargs,
     ):
         """
@@ -323,9 +334,8 @@ class SurveillanceRoom:
 
             point_type (str): the type of the point, chosen from cfg file.
 
-            displacement (Optional[List[int]]): [3], the displacement of the
-            block, consider the block is geenrated from the origin. If None, set
-            default to [0, 0, 0].
+            displacement (List[int]): [3], the displacement of the block, consider the
+            block is generated from the origin.
 
             kwargs: extra_param dict, must match `point_type`.
         """
@@ -340,15 +350,13 @@ class SurveillanceRoom:
                 f"`SurveillanceRoom` does not support {point_type} type points."
             )
 
-        if displacement is None:
-            displacement = [0, 0, 0]
-        displacement = torch.tensor(displacement, dtype=self.INT, device=self.device)
+        dis = torch.tensor(displacement, dtype=self.INT, device=self.device)
 
         points = build_block(shape, self.device)
         if not self._check_inside_room(points):
             raise ValueError("Point outside of the room.")
 
-        points = shift(points, displacement, int_output=True)
+        points = shift(points, dis, int_output=True)
 
         # NOTE(eric): `target_mask` is a pointer
         target_mask = None
@@ -659,6 +667,9 @@ class SurveillanceRoom:
 
             mode (str): specifying what to visualize. Supported mode: `occupancy`,
             `camera`.
+
+            heatmap (bool): Whether to use heatmap display. Only available for
+            `camera` mode.
         """
 
         if mode == "occupancy":
@@ -677,7 +688,7 @@ class SurveillanceRoom:
         """
         ## Desctiption:
 
-            Visualize occupancy, install_permitted and must_monitor.
+            Visualize `occupancy`, `install_permitted` and `must_monitor`.
 
         ## Returns:
 
@@ -707,7 +718,7 @@ class SurveillanceRoom:
                 install_permitted_with_color,
             )
         )
-        points_with_color = torch.cat(to_be_visualized, 0)
+        points_with_color = torch.cat(to_be_visualized, dim=0)
 
         return points_with_color
 
@@ -715,7 +726,7 @@ class SurveillanceRoom:
         """
         ## Description:
 
-            Visualize occupancy, camera pos, visible points and must_monitor.
+            Visualize `occupancy`, camera pos, `visible_points` and `must_monitor`.
 
         ## Returns:
 
@@ -803,15 +814,13 @@ class SurveillanceRoom:
         """
         ## Description:
 
-            Merge all the tensor attributes to a single array. Usually used to avoid
-            gpu memory leaks.
+            Merge all the tensor attributes to a single array.
 
         ## Returns:
 
             result (np.ndarray): [12, W, D, H], np.float32.
         """
 
-        # .type method always return a new tensor
         result = (
             torch.cat(
                 (
@@ -834,152 +843,3 @@ class SurveillanceRoom:
         )
 
         return result
-
-    def best_installation(
-        self,
-        pos: array,
-        direction: List[float] | array,
-        section_nums: List[int],
-        cam_type: int,
-    ) -> Tuple[int, float, List[List[float]], List[array], List]:
-        """
-        ## Description:
-
-            Find the installation directions that increases the most coverage at `pos`
-            with `cam_type`.
-
-        ## Arguments:
-
-            pos (np.ndarray): [3], np.int64, the pos coord.
-
-            direction (List[float] | array): [2], float | np.float32, the pan and tilt
-            angle values. This entry is only used to locate `input_direction_index`.
-
-            section_nums (List[int]): [2], pan and tilt section nums.
-
-            cam_type (int): camera type index.
-
-        ## Returns:
-
-            input_direction_index (int): the index of the transition correspond to the
-            input direction.
-
-            best_coverage_increment (float): The coverage increment when best installed.
-
-            pan_tilt_list (List[List[float]]): [N, 2], list of all pan-tilt combinations.
-
-            room_info_list (List[np.ndarray]): [N], list of room info array to all
-            pan-tilt combinations.
-
-            similarity_list (List[float]): [N], list of all similarity value to all
-            pan-tilt combinations.
-        """
-        pan_list = [
-            -np.pi + 2 * np.pi / section_nums[0] * k for k in range(section_nums[0])
-        ]
-        tilt_list = [
-            -np.pi / 2 + np.pi / section_nums[1] * k for k in range(section_nums[1])
-        ]
-
-        total_target_point_num: float = self.must_monitor[:, :, :, 0].sum().item()
-        pred_coverage: float = (
-            self.visible_points > 0
-        ).sum().item() / total_target_point_num
-
-        best_coverage_increment: float = 0
-        best_parameters = []
-
-        print("\nComputing best installation params...")
-        prog_bar = ProgressBar(len(pan_list) * (len(tilt_list) - 1) + 1)
-
-        pan_tilt_list: List[List[float]] = []
-        room_info_list: List[array] = []
-        direction_coord_list: List[array] = []
-        input_direction_index = -1
-        index_counter = -1
-
-        for tilt in tilt_list:
-            for pan in pan_list:
-                index_counter += 1
-                if (
-                    np.abs(pan - direction[0]) < 1e-6
-                    and np.abs(tilt - direction[1]) < 1e-6
-                ):
-                    input_direction_index = index_counter
-
-                cache_room: SurveillanceRoom = deepcopy(self)
-                cache_room.add_cam(pos, np.array([pan, tilt]), cam_type)
-                cur_coverage: float = (
-                    cache_room.visible_points > 0
-                ).sum().item() / total_target_point_num
-
-                cov_incre = cur_coverage - pred_coverage
-
-                if cov_incre > best_coverage_increment:
-                    best_coverage_increment = cov_incre
-                    best_parameters = [[pan, tilt]]
-                elif cov_incre == best_coverage_increment:
-                    best_parameters.append([pan, tilt])
-
-                pan_tilt_list.append([pan, tilt])
-                room_info_list.append(cache_room.get_info())
-                direction_coord_list.append(
-                    _pan_tilt_2_coord([pan, tilt], array_out=True)
-                )
-
-                prog_bar.update()
-                if np.abs(tilt - (-np.pi / 2)) < 1e-6:
-                    # deal with polar point
-                    break
-        print("\r\033[K\033[1A\033[K\033[1A\033[K\033[1A")
-
-        best_vecs_list = []
-        for param in best_parameters:
-            best_vecs_list.append(_pan_tilt_2_coord(param))
-        best_vecs: array = np.array(best_vecs_list)
-
-        avg_vec = np.mean(best_vecs, axis=0)
-        normalized_avg_vec = avg_vec / np.linalg.norm(avg_vec)
-
-        similarity_list: List[float] = []
-        for coord in direction_coord_list:
-            similarity_list.append(np.sum(coord * normalized_avg_vec))
-
-        return (
-            input_direction_index,
-            best_coverage_increment,
-            pan_tilt_list,
-            room_info_list,
-            similarity_list,
-        )
-
-
-def _pan_tilt_2_coord(
-    direction: List[float] | array, array_out: bool = False
-) -> array | List[float]:
-    """
-    ## Description:
-
-        Transform a [pan, tilt] direction to the corresponding directional vector
-        [x, y, z].
-
-    ## Arguments:
-
-        direction (List[float] | np.ndarray): [2], pan and tilt angle in radian.
-
-        array_out (bool): if transform the output to an array.
-
-    ## Returns:
-
-        coord (np.ndarray | List[float]): [3], the direction vector in xyz-coord.
-    """
-    assert len(direction) == 2
-
-    pan, tilt = direction
-
-    vec = [
-        np.cos(tilt) * np.cos(pan),
-        np.cos(tilt) * np.sin(pan),
-        np.sin(tilt),
-    ]
-    return np.array(vec) if array_out else vec
