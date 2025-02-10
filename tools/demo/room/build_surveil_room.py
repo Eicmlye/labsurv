@@ -307,7 +307,7 @@ def main(size: str, is_demo: bool):
     load_from = None
     # load_from = "output/demo/surv_room/SurveillanceRoom.pkl"
 
-    cfg_path = "configs/surveillance/_base_/envs/std_surveil.py"
+    cfg_path = "configs/ocp/_base_/std_surveil.py"
     if load_from is not None:
         room = SurveillanceRoom(
             device=DEVICE,

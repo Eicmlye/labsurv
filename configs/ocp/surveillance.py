@@ -1,19 +1,14 @@
-from configs.ocp._base_.agents.multi_agent_ppo_test import (
-    agent_cfg as multi_agent_ppo_agent,
-)
-from configs.ocp._base_.envs.multi_agent_ppo_test_env import (
-    env_cfg as multi_agent_ppo_env,
-)
-from configs.ocp._base_.params import AGENT_NUM
+from configs.ocp._base_.agents import multi_agent_ppo_agent
+from configs.ocp._base_.envs import multi_agent_ppo_env
 from labsurv.utils import get_time_stamp
 
 agent_type = "MAPPO"
 
-work_dir = f"./output/ocp/{agent_type.lower()}/ma{AGENT_NUM}"
+work_dir = f"./output/ocp/{agent_type.lower()}/ma2"
 exp_name = get_time_stamp()
 
-episodes = 10000
-steps = 50
+episodes = 1
+steps = 1
 
 agent_cfg = None
 if agent_type == "MAPPO":
@@ -31,13 +26,13 @@ if agent_cfg["multi_agent"]:
 if "replay_buffer" in agent_cfg.keys():
     replay_buffer = agent_cfg["replay_buffer"]
 
-save_checkpoint_interval = 100
+save_checkpoint_interval = 1
 
 logger_cfg = dict(
     type="LoggerHook",
-    log_interval=100,
+    log_interval=1,
     save_dir=work_dir,
     save_filename=exp_name,
 )
 
-eval_interval = 20
+eval_interval = 1

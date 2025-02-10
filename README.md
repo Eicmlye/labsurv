@@ -30,8 +30,9 @@ pip install -e .
 ```
 
 > - [solution from CSDN](https://blog.csdn.net/Accele233/article/details/122416687)
-> 
+>
 > In case `github.com` is not available to you, here is a solution to `ssh: connect to host github.com port 22: Connection timed out`:
+>
 > 1. go to [ipaddress](https://www.ipaddress.com/website/www.github.com) and get latest ip for github.
 > 2. on Windows OS, go to `C:/Windows/System32/drivers/etc/hosts`.
 > 3. add `[IP] github.com` to this file, you may need to provide administor identity.
@@ -148,4 +149,4 @@ You may also find generated samples in `tools/demo/room/samples/`.
 
 The `SurveillanceRoom` class implements `add_block()` and `add_cam()` method as its main function. You may add `occupancy`, `install_permitted` and `must_monitor` blocks by `add_block()`, and add multiple sorts of cameras by `add_cam()`. The intrinsics of the cameras should be saved in `cfg_path` beforehand.
 
-An example of the camera configuration is given in `configs\surveillance\_base_\envs\std_surveil.py`. You may simply add new types of cameras as value dict of `cam_intrinsics`, and it is recommended to choose from existed intrinsic params dict `clips`, `focals` and `resols`.
+An example of the camera configuration is given in `configs\ocp\_base_\std_surveil.py`. You may simply add new types of cameras as value dict of `cam_intrinsics`, and it is recommended to choose from existed intrinsic params dict `clips`, `focals` and `resols`.
