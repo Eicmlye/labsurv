@@ -243,12 +243,8 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         cur_critic_input = info_room2critic_input(self.info_room, self.agent_num)
         self.action_count += 1
 
-        total_target_point_num: float = (
-            self.info_room.must_monitor[:, :, :, 0].sum().item()
-        )
-        pred_coverage: float = (
-            self.info_room.visible_points > 0
-        ).sum().item() / total_target_point_num
+        pred_coverage: float = self.info_room.coverage
+
         new_params: List[array] = []
         new_vismasks: List[array] = []
 
@@ -318,9 +314,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             )
             self.visit_count[new_pos_ind] += 1
 
-        cur_coverage: float = (
-            self.info_room.visible_points > 0
-        ).sum().item() / total_target_point_num
+        cur_coverage: float = self.info_room.coverage
 
         output_transition = dict(
             cur_observation=observations,  # [AGENT_NUM, Tuple]
@@ -333,7 +327,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 pred_coverage,
                 new_vismasks,
                 self.info_room.visible_points.cpu().numpy().copy(),
-                total_target_point_num,
+                self.info_room.must_monitor[:, :, :, 0].sum().item(),
             ),
             terminated=(
                 self.action_count == total_steps or cur_coverage >= self.terminate_goal

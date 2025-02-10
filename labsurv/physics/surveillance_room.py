@@ -172,6 +172,12 @@ class SurveillanceRoom:
         self._POINT_CONFIGS: Dict[str, Dict[str, str | List[str]]] = cfg.point_configs
         self.voxel_length: float = cfg.voxel_length
 
+    @property
+    def coverage(self) -> float:
+        return (self.visible_points > 0).sum().item() / self.must_monitor[
+            :, :, :, 0
+        ].sum().item()
+
     def get_color(self, point_type: str) -> array:
         """
         ## Description:
