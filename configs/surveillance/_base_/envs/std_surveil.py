@@ -98,4 +98,4 @@ point_configs = dict(
     ),
 )
 
-voxel_length = 0.1  # meter
+voxel_length = 0.2  # meter

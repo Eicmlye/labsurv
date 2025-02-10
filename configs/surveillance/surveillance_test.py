@@ -8,7 +8,7 @@ from labsurv.utils import get_time_stamp
 
 agent_type = "MAPPO"
 
-work_dir = f"./output/ocp/test_{agent_type.lower()}/std_realtime_4w"
+work_dir = f"./output/ocp/test_{agent_type.lower()}/debug"
 exp_name = get_time_stamp()
 
 episodes = 10000
@@ -35,7 +35,7 @@ else:
 if "replay_buffer" in agent_cfg.keys():
     replay_buffer = agent_cfg["replay_buffer"]
 
-save_checkpoint_interval = 1000
+save_checkpoint_interval = 100
 
 logger_cfg = dict(
     type="LoggerHook",
@@ -44,4 +44,4 @@ logger_cfg = dict(
     save_filename=exp_name,
 )
 
-eval_interval = 200
+eval_interval = 20
