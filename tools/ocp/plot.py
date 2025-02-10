@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument("--log", type=str, help="Path of the logger file.")
     parser.add_argument("--save", type=str, default=None, help="Path to save figures.")
     parser.add_argument("--step", type=int, default=20, help="The tick step number.")
-    parser.add_argument(
+    parser.add_argument(  # --sma
         "--sma", type=int, default=1, help="The SMA window length for losses."
     )
     parser.add_argument(  # --reward-sma, -r
