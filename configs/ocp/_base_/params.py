@@ -1,4 +1,4 @@
-from configs.surveillance._base_.envs.std_surveil import cam_intrinsics as CAM_TYPES
+from configs.ocp._base_.envs.std_surveil import cam_intrinsics as CAM_TYPES
 from numpy import pi as PI
 
 AGENT_NUM = 2  # should be greater than 1
