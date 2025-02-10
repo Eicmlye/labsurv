@@ -29,8 +29,7 @@ def parse_args():
     )
     parser.add_argument(  # --shrink
         "--shrink",
-        type=str,
-        default=None,
+        action="store_true",
         help="Whether to take out useful lines of the log.",
     )
     parser.add_argument(  # --drop-abnormal
@@ -438,12 +437,14 @@ def main():
 
     if args.save is None:
         args.save = args.log if not args.log.endswith(".log") else osp.dirname(args.log)
+    if args.shrink:
+        filename_shrink_to = osp.join(args.save, "shrink.log")
 
     log_filename = (
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    reward, loss, eval_step, is_ac = ocp_get_y_axis(log_filename, args.shrink)
+    reward, loss, eval_step, is_ac = ocp_get_y_axis(log_filename, filename_shrink_to)
 
     plot_subfig(
         is_ac,
