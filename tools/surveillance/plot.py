@@ -2,7 +2,7 @@ import argparse
 import os
 import os.path as osp
 from collections import deque
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +17,9 @@ def parse_args():
     parser.add_argument("--log", type=str, help="Path of the logger file.")
     parser.add_argument("--save", type=str, default=None, help="Path to save figures.")
     parser.add_argument("--step", type=int, default=20, help="The tick step number.")
-    parser.add_argument("--sma", type=int, default=1, help="The SMA window length for losses.")
+    parser.add_argument(
+        "--sma", type=int, default=1, help="The SMA window length for losses."
+    )
     parser.add_argument(  # --reward-sma, -r
         "--reward-sma",
         "-r",
@@ -30,6 +32,12 @@ def parse_args():
         type=str,
         default=None,
         help="Whether to take out useful lines of the log.",
+    )
+    parser.add_argument(  # --drop-abnormal
+        "--drop-abnormal",
+        "-d",
+        action="store_true",
+        help="Whether to drop abnormal values.",
     )
 
     return parser.parse_args()
@@ -117,7 +125,7 @@ def ocp_get_y_axis(
             ):
                 if shrink is not None:
                     new_log.write(line)
-                    
+
                 if "A" in word_list:
                     is_ac = True
                     actor_loss = (
@@ -149,7 +157,7 @@ def ocp_get_y_axis(
             if reward_flag > 0 and reward_flag < len(word_list) - 3:
                 if shrink is not None:
                     new_log.write(line)
-                    
+
                 reward.append(float(word_list[reward_flag + 3]))
 
     if shrink is not None:
@@ -167,6 +175,7 @@ def plot_subfig(
     tick_step: int = 20,
     sma: int = 1,
     reward_sma: int = 1,
+    drop_abnormal: bool = False,
 ):
     if is_ac:
         actor_loss, critic_loss, entropy_loss = loss
@@ -180,6 +189,7 @@ def plot_subfig(
             tick_step,
             sma,
             reward_sma,
+            drop_abnormal,
         )
     else:
         _plot_non_ac_subfig(reward, loss, eval_step, save_path, tick_step)
@@ -195,6 +205,7 @@ def _plot_ac_subfig(
     tick_step: int = 20,
     sma: int = 1,
     reward_sma: int = 1,
+    drop_abnormal: bool = False,
 ):
     # figure settings
     if sma > 1:
@@ -238,6 +249,7 @@ def _plot_ac_subfig(
         title="entropy loss",
         tick_step=tick_step,
         log_if_needed=True,
+        drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
         ax3,
@@ -248,6 +260,7 @@ def _plot_ac_subfig(
         title="critic loss",
         tick_step=tick_step,
         log_if_needed=True,
+        drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
         ax4,
@@ -257,6 +270,7 @@ def _plot_ac_subfig(
         color="b",
         title="actor loss",
         tick_step=tick_step,
+        drop_abnormal=drop_abnormal,
     )
     if sma > 1:
         if reward_sma > 1:
@@ -278,6 +292,7 @@ def _plot_ac_subfig(
             title=f"SMA{sma} entropy loss",
             tick_step=tick_step,
             log_if_needed=True,
+            drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
             ax7,
@@ -288,6 +303,7 @@ def _plot_ac_subfig(
             title=f"SMA{sma} critic loss",
             tick_step=tick_step,
             log_if_needed=True,
+            drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
             ax8,
@@ -297,6 +313,7 @@ def _plot_ac_subfig(
             color="b",
             title=f"SMA{sma} actor loss",
             tick_step=tick_step,
+            drop_abnormal=drop_abnormal,
         )
 
     # plt.show()
@@ -355,20 +372,32 @@ def _plot_subfig(
     title: str = "loss",
     tick_step: int = 20,
     log_if_needed: bool = False,
+    drop_abnormal: bool = False,
 ):
     log_scale = False
     if log_if_needed and np.abs((max(y) + 1e-8) / (min(y) + 1e-8)) > 100:
         log_scale = True
         y = np.array(np.log10(np.array(y) + 1e-8)).tolist()
+
+    dropped = 0
+    if drop_abnormal:
+        x, y, dropped = _drop_abnormal(
+            x, y, [-9, -8] if "actor" not in title and log_scale else [500, 1e8]
+        )
+
     ax.plot(x, y, line_style, color=color, label=title)
-    ax.set_title(("log10 " if log_scale else "") + title)
-    ax.set_xticks(generate_absolute_ticks(1, max(x), step=tick_step))
+    ax.set_title(
+        ("log10 " if log_scale else "")
+        + title
+        + (f" dropped {dropped}" if dropped > 0 else "")
+    )
+    ax.set_xticks(
+        generate_absolute_ticks(1, max(x) if len(x) > 0 else 1, step=tick_step)
+    )
 
 
 def simple_moving_average(vals: List[float], window: int = 10) -> List[float]:
-    assert len(vals) >= window
-
-    if window == 1:
+    if window == 1 or len(vals) < window:
         return vals.copy()
 
     sma_vals: List[float] = []
@@ -379,6 +408,29 @@ def simple_moving_average(vals: List[float], window: int = 10) -> List[float]:
         sma_vals.append(sum(cache) / len(cache))
 
     return sma_vals
+
+
+def _drop_abnormal(
+    x: List[float],
+    y: List[float],
+    drop_range: List[float],
+) -> Tuple[List[float], List[float], int]:
+    assert len(x) == len(y)
+    assert len(drop_range) == 2
+
+    result_x = []
+    result_y = []
+
+    dropped = 0
+
+    for index in range(len(y)):
+        if y[index] >= drop_range[0] and y[index] <= drop_range[1]:
+            dropped += 1
+        else:
+            result_x.append(x[index])
+            result_y.append(y[index])
+
+    return result_x, result_y, dropped
 
 
 def main():
@@ -402,6 +454,7 @@ def main():
         tick_step=args.step,
         sma=args.sma,
         reward_sma=args.reward_sma,
+        drop_abnormal=args.drop_abnormal,
     )
 
 
