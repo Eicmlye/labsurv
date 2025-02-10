@@ -17,7 +17,7 @@ from .format import (
     pos_index2coord,
 )
 from .transform import rotate, shift
-from .visibility import compute_single_cam_visibility, if_need_obstacle_check
+from .visibility import compute_single_cam_visibility
 from .visualize import (
     apply_colormap_to_3dtensor,
     apply_colormap_to_list,
@@ -27,28 +27,33 @@ from .visualize import (
 )
 
 __all__ = [
+    # build
     "COLOR_MAP",
     "build_block",
-    "rotate",
-    "shift",
-    "compute_single_cam_visibility",
-    "if_need_obstacle_check",
-    "concat_points_with_color",
-    "save_visualized_points",
-    "apply_colormap_to_3dtensor",
-    "visualize_distribution_heatmap",
+    # error
     "AdjustUninstalledCameraError",
     "DeleteUninstalledCameraError",
     "InstallAtExistingCameraError",
+    # format
+    "action2movement",
+    "apply_movement_on_agent",
+    "array_is_in",
     "direction_index2pan_tilt",
-    "pos_index2coord",
-    "info_room2critic_input",
+    "generate_action_mask",
     "info_room2actor_input",
+    "info_room2critic_input",
     "observation2input",
     "pack_observation2transition",
-    "array_is_in",
-    "action2movement",
-    "generate_action_mask",
-    "apply_movement_on_agent",
+    "pos_index2coord",
+    # transform
+    "rotate",
+    "shift",
+    # visibility
+    "compute_single_cam_visibility",
+    # visualize
+    "apply_colormap_to_3dtensor",
     "apply_colormap_to_list",
+    "concat_points_with_color",
+    "save_visualized_points",
+    "visualize_distribution_heatmap",
 ]
