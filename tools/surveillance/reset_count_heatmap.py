@@ -62,8 +62,8 @@ def main():
     )
 
     colors = [
-        "#ffffff",  # black
-        "#000000",  # white
+        "#ffffff",  # white, min
+        "#000000",  # black, max
     ]
     colormap = LinearSegmentedColormap.from_list("custom", colors, N=256)
     colored_dist: Tensor = apply_colormap_to_list(  # [N, 3]
