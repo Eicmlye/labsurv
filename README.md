@@ -3,7 +3,7 @@
 
 # labsurv
 
-This repository is a reinforcement learning solution to the Optimal Camera Placement (OCP) problem.
+This repository is a reinforcement learning solution to the Optimal Camera Placement (OCP) problem of indoors scene.
 
 ## Contents
 
@@ -42,7 +42,7 @@ pip install -e .
 
 - `pyntcloud`
 
-  - For fewer warnings, change code in `Lib\site-packages\pyntcloud\io\ply.py` from
+  - For fewer warnings, change code in `Lib/site-packages/pyntcloud/io/ply.py` from
 
   ```python
     def describe_element(name, df):
@@ -75,12 +75,15 @@ pip install -e .
 Make sure your current working directory is `labsurv/`, then
 
 ```bash
+# build room pointcloud
+python tools/demo/room/build_surveil_room.py
+
 # train a new agent for cart pole
-python tools/train.py --config configs/cart_pole/cart_pole.py
+python tools/train.py --config configs/ocp/surveillance.py
 
 # test an existing agent for cart pole
 # should change `load_from` in config file
-python tools/test.py --config configs/cart_pole/cart_pole.py
+python tools/test.py --config configs/ocp/surveillance.py
 ```
 
 ## Code Style
@@ -101,8 +104,6 @@ And find more formatting options with `--help`.
 
 The project mainly uses `mmcv` registry module as the module administration system. An abstraction of the project structure is provided below.
 
-![](https://github.com/Eicmlye/labsurv/blob/master/.readme/001_ProjectStructure.png)
-
 ### Runner
 
 The `Runner` class is the information processing center during the learning process. It deals with all the information from other components and checks if the episode truncates due to specific conditions.
@@ -118,7 +119,7 @@ An `Agent` must implement the `take_action()` and `update()` methods.
 
 ### Environment
 
-The `Environment` is the class to model the extrinsic reward and terminating condition. It is designed to be a little bit different from the `gym.Envs` class, to better decouple the `Agent` and `Environment` and to adapt to dynamically changing `Environment`s. It is recommended to inherit from `BaseEnv` class when creating a new `Env`.
+The `Environment` models the extrinsic reward and terminating conditions. It is designed to be a little bit different from the `gym.Envs` class, to better decouple the `Agent` and `Environment` and to adapt to dynamically changing `Environment`s. It is recommended to inherit from `BaseEnv` class when creating a new `Env`.
 
 An `Environment` must implement the `step()` and `reset()` methods.
 
@@ -149,4 +150,25 @@ You may also find generated samples in `tools/demo/room/samples/`.
 
 The `SurveillanceRoom` class implements `add_block()` and `add_cam()` method as its main function. You may add `occupancy`, `install_permitted` and `must_monitor` blocks by `add_block()`, and add multiple sorts of cameras by `add_cam()`. The intrinsics of the cameras should be saved in `cfg_path` beforehand.
 
-An example of the camera configuration is given in `configs\ocp\_base_\std_surveil.py`. You may simply add new types of cameras as value dict of `cam_intrinsics`, and it is recommended to choose from existed intrinsic params dict `clips`, `focals` and `resols`.
+An example of the camera configuration is given in `configs/ocp/_base_/std_surveil.py`. You may simply add new types of cameras as value dict of `cam_intrinsics`, and it is recommended to choose from existed intrinsic params dict `clips`, `focals` and `resols`.
+
+### Visualization Tools
+
+#### `plot.py`
+
+Located at `labsurv/tools/ocp/`. This script plots reward and loss curves of the training process according to training logs.
+
+- `--log`: if entered the path of the directory of the logs, the latest log will be analysed. If entered an exact file path, only this file will be analysed. After you run the traning, the log files are saved at `labsurv/output/ocp/AGENT_NAME/EXP_NAME/` and is named with a time stamp formatted as `yymmdd_hhmmss.log`.
+- `--save`: path of the directory to save output images. If not specified, the directory of the log file will be used.
+- `--step`: the step of the x-axis of the plots. Go to `labsurv/utils/plot/tick.py` and see docs of method `generate_absolute_ticks()` to get some examples on how x-ticks are generated.
+- `--sma`: the window length of SMA operation on loss curves. If not specified, no SMA loss curves will be plotted.
+- `--reward-sma`: the window length of SMA operation on reward curves. If not specified, no SMA reward curves will be plotted. Notice that this window length counts how many times evaluation is processed, but not how many episodes passed before an evaluation is completed.
+- `--shrink`: takes out useful log lines and output a new log file. One may merge the shrank log to plot curves before and after resumation.
+- `--drop-abnormal`: whether to drop abnormal values. The loss values are read from the log, and losses in the log files are printed with 6 decimal digits. Lower loss will drop to 1e-8 and the curve may be confusing. And this option drops these entries.
+
+#### `reset_count_heatmap.py`
+
+Located at `labsurv/tools/ocp/`. This script creates a point cloud heatmap of the visit counts.
+
+- `--pkl`: the `.pkl` file of the visit counts. After you run the training, the `.pkl` file is saved at `labsurv/output/AGENT_NAME/EXP_NAME/envs/`.
+- `--save`: path of the directory to save output pointcloud. If not specified, the directory of the `.pkl` file will be used.
