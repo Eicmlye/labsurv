@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from labsurv.builders import AGENTS, STRATEGIES
 from labsurv.models.agents import BaseAgent
 from labsurv.runners.hooks import LoggerHook
+from labsurv.utils.string import INDENT
 from labsurv.utils.surveillance import generate_action_mask, info_room2actor_input
 from numpy import ndarray as array
 from numpy import pi as PI
@@ -163,10 +164,13 @@ class OCPMultiAgentPPO(BaseAgent):
             action_masks (List[array]): [AGENT_NUM, ACTION_DIM].
         """
 
+        logger: LoggerHook = kwargs["logger"]
         with torch.no_grad():  # if grad, memory leaks
             observations: List[Tuple[array, array, array]] = []
             actions: List[array] = []
             action_masks: List[array] = []
+
+            log = None
 
             for agent_index, cam_param in enumerate(cam_params):
                 actor_inputs = info_room2actor_input(room, self.agent_num, cam_param)
@@ -205,34 +209,24 @@ class OCPMultiAgentPPO(BaseAgent):
                 action_dist_cat = torch.distributions.Categorical(action_dist)
 
                 # DEBUG(eric)
-                print(
-                    f"[Episode {kwargs["episode_index"] + 1:>4}  "
-                    f"Step {kwargs["step_index"] + 1:>3}] "
-                    f"action dist for agent {agent_index + 1} "
-                    "\n           x          y          z          p          t",
-                    end="",
+                log = _readable_action_dist(
+                    kwargs["step_index"] + 1,
+                    agent_index,
+                    action_dist,
+                    action_dist_cat.entropy().item(),
+                    episode=kwargs["episode_index"] + 1,
+                    action_mask=action_mask,
+                    pred_log=log,
                 )
-                action_probs = action_dist.clone().detach()
-                action_probs[action_mask == 1] = -1
-                action_probs_list = [float(i) for i in action_probs.tolist()]
-                print("\n   -   ", end="")
-                for i in range(5):
-                    print(f"{action_probs_list[2 * i]:>9.6f}  ", end="")
-                print("\n   +   ", end="")
-                for i in range(5):
-                    print(f"{action_probs_list[2 * i + 1]:>9.6f}  ", end="")
-                print("\n  cam  ", end="")
-                for i in range(len(action_probs_list) - 10):
-                    print(f"    {i}     ", end="")
-                print("\n       ", end="")
-                for i in range(10, len(action_probs_list)):
-                    print(f"{action_probs_list[i]:>9.6f}  ", end="")
-                print(f"\nEntropy: {action_dist_cat.entropy().item():.6f}")
 
                 action_index = action_dist_cat.sample().type(torch.int64).item()
 
                 actions.append(np.eye(len(action_dist))[[action_index]].reshape(-1))
                 action_masks.append(action_mask)
+
+        logger.show_log(
+            _print_readable_action_dist(log, return_str=True), with_time=True, end=""
+        )
 
         # [AGENT_NUM, Tuple], [AGENT_NUM, ACTION_DIM], [AGENT_NUM, ACTION_DIM]
         return observations, actions, action_masks
@@ -254,10 +248,13 @@ class OCPMultiAgentPPO(BaseAgent):
 
             actions (np.ndarray): [AGENT_NUM, ACTION_DIM].
         """
+        logger: LoggerHook = kwargs["logger"]
 
         with torch.no_grad():  # if grad, memory leaks
             observations: List[Tuple[array, array, array]] = []
             actions: List[array] = []
+
+            log = None
 
             for agent_index, cam_param in enumerate(cam_params):
                 actor_inputs = info_room2actor_input(room, self.agent_num, cam_param)
@@ -284,33 +281,24 @@ class OCPMultiAgentPPO(BaseAgent):
                     self.actor(self_and_neigh_params, self_mask, neigh).view(-1),
                     dim=-1,
                 )
+                action_dist_cat = torch.distributions.Categorical(action_dist)
 
                 # DEBUG(eric)
-                print(
-                    f"[Step {kwargs["step_index"] + 1:>3}] "
-                    f"action dist for agent {agent_index + 1} "
-                    "\n           x          y          z          p          t",
-                    end="",
+                log = _readable_action_dist(
+                    kwargs["step_index"] + 1,
+                    agent_index,
+                    action_dist,
+                    action_dist_cat.entropy().item(),
+                    pred_log=log,
                 )
-                action_dist_cat = torch.distributions.Categorical(action_dist)
-                action_probs = [float(i) for i in action_dist.tolist()]
-                print("\n   -   ", end="")
-                for i in range(5):
-                    print(f"{action_probs[2 * i]:>9.6f}  ", end="")
-                print("\n   +   ", end="")
-                for i in range(5):
-                    print(f"{action_probs[2 * i + 1]:>9.6f}  ", end="")
-                print("\n  cam  ", end="")
-                for i in range(len(action_probs) - 10):
-                    print(f"    {i}     ", end="")
-                print("\n       ", end="")
-                for i in range(10, len(action_probs)):
-                    print(f"{action_probs[i]:>9.6f}  ", end="")
-                print(f"\nEntropy: {action_dist_cat.entropy().item():.6f}")
 
                 action_index = action_dist_cat.sample().type(torch.int64).item()
 
                 actions.append(np.eye(len(action_dist))[[action_index]].reshape(-1))
+
+        logger.show_log(
+            _print_readable_action_dist(log, return_str=True), with_time=True, end=""
+        )
 
         # [AGENT_NUM, Tuple], [AGENT_NUM, ACTION_DIM]
         return observations, actions
@@ -332,85 +320,36 @@ class OCPMultiAgentPPO(BaseAgent):
         rewards: List[float] = transitions["reward"]
         terminated: List[bool] = transitions["terminated"]
 
-        ## permute batch channel and agent channel for actor inputs
-        batch_size = len(cur_observations)
-        cur_self_and_neigh_params_list: List[List[array]] = [
-            [] for i in range(self.agent_num)
-        ]
-        cur_self_mask_list: List[List[array]] = [[] for i in range(self.agent_num)]
-        cur_neigh_list: List[List[array]] = [[] for i in range(self.agent_num)]
-        cur_all_actions_list: List[List[array]] = [[] for i in range(self.agent_num)]
-        cur_all_action_masks_list: List[List[array]] = [
-            [] for i in range(self.agent_num)
-        ]
-        for batch_index in range(batch_size):
-            for agent_index in range(self.agent_num):
-                cur_self_and_neigh_params_list[agent_index].append(
-                    cur_observations[batch_index][agent_index][0]
-                )
-                cur_self_mask_list[agent_index].append(
-                    cur_observations[batch_index][agent_index][1]
-                )
-                cur_neigh_list[agent_index].append(
-                    cur_observations[batch_index][agent_index][2]
-                )
-                cur_all_actions_list[agent_index].append(
-                    cur_actions[batch_index][agent_index]
-                )
-                cur_all_action_masks_list[agent_index].append(
-                    cur_action_masks[batch_index][agent_index]
-                )
-        # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
-        cur_self_and_neigh_params: Tensor = torch.tensor(
-            np.array(cur_self_and_neigh_params_list),
-            dtype=torch.float,
-            device=self.device,
-        )
-        cur_self_mask: Tensor = torch.tensor(  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
-            np.array(cur_self_mask_list), dtype=torch.bool, device=self.device
-        )
-        cur_neigh: Tensor = torch.tensor(  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
-            np.array(cur_neigh_list), dtype=torch.float, device=self.device
-        )
-        cur_all_actions: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
-            np.array(cur_all_actions_list), dtype=torch.float, device=self.device
-        )
-        cur_all_action_masks: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
-            np.array(cur_all_action_masks_list), dtype=torch.bool, device=self.device
+        # actor inputs
+        (
+            cur_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+            cur_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
+            cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
+            cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+        ) = _reformat_actor_input(
+            self.agent_num,
+            self.device,
+            cur_observations,
+            cur_actions,
+            cur_action_masks,
         )
 
-        ## critic inputs
-        cur_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
-            np.array([cur_critic_input[0] for cur_critic_input in cur_critic_inputs]),
-            dtype=torch.float,
-            device=self.device,
-        )
-        cur_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
-            np.array([cur_critic_input[1] for cur_critic_input in cur_critic_inputs]),
-            dtype=torch.float,
-            device=self.device,
-        )
-        next_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
-            np.array(
-                [next_critic_input[0] for next_critic_input in next_critic_inputs]
-            ),
-            dtype=torch.float,
-            device=self.device,
-        )
-        next_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
-            np.array(
-                [next_critic_input[1] for next_critic_input in next_critic_inputs]
-            ),
-            dtype=torch.float,
-            device=self.device,
-        )
-        all_rewards: Tensor = torch.tensor(  # [B, AGENT_NUM + 1]
-            rewards, dtype=torch.float, device=self.device
-        )
-        mixed_rewards: Tensor = all_rewards[:, :-1]  # [B, AGENT_NUM]
-        system_rewards: Tensor = all_rewards[:, -1]  # [B]
-        all_terminated: Tensor = torch.tensor(  # [B]
-            terminated, dtype=self.INT, device=self.device
+        # critic inputs
+        (
+            cur_cam_params,  # [B, AGENT_NUM, PARAM_DIM]
+            cur_envs,  # [B, 3, W, D, H]
+            next_cam_params,  # [B, AGENT_NUM, PARAM_DIM]
+            next_envs,  # [B, 3, W, D, H]
+            mixed_rewards,  # [B, AGENT_NUM]
+            system_rewards,  # [B]
+            all_terminated,  # [B]
+        ) = _reformat_critic_input(
+            self.device,
+            cur_critic_inputs,
+            next_critic_inputs,
+            rewards,
+            terminated,
         )
 
         value_predict: Tensor = self.critic(next_cam_params, next_envs).view(-1)  # [B]
@@ -543,6 +482,201 @@ class OCPMultiAgentPPO(BaseAgent):
             save_path = osp.join(save_path, f"episode_{episode}.pth")
 
         torch.save(checkpoint, save_path)
+
+
+def _readable_action_dist(
+    step: int,
+    agent_index: int,
+    action_dist: Tensor,
+    entropy: float,
+    episode: Optional[int] = None,
+    action_mask: Optional[Tensor] = None,
+    pred_log: Optional[List[str | List[str]]] = None,
+):
+    if pred_log is None:
+        pred_log = [
+            (
+                f"[Episode {episode:>4}  Step {step:>3}] action distributions"
+                if episode is not None
+                else f"[Step {step:>3}] action distributions"
+            )
+        ]
+
+    cur_log = []
+    cur_log.append(  # header line
+        f"|{agent_index + 1:^7}{INDENT}{"x":^9}{INDENT}{"y":^9}{INDENT}"
+        f"{"z":^9}{INDENT}{"p":^9}{INDENT}{"t":^9}{INDENT}"
+    )
+
+    action_probs = action_dist.clone().detach()
+    if action_mask is not None:
+        action_probs[action_mask == 1] = -1
+    action_probs_list = [float(i) for i in action_probs.tolist()]
+    cur_log.append(f"|{"-":^7}{INDENT}")  # "-" actions
+    for i in range(5):
+        cur_log[-1] += f"{action_probs_list[2 * i]:>9.6f}{INDENT}"
+    cur_log.append(f"|{"+":^7}{INDENT}")  # "+" actions
+    for i in range(5):
+        cur_log[-1] += f"{action_probs_list[2 * i + 1]:>9.6f}{INDENT}"
+
+    # cam lines
+    cam_types = len(action_probs_list) - 10
+    cam_line_count = int(np.ceil(cam_types / 5.0))
+    for line in range(cam_line_count):
+        cur_log.append(f"|{"cam":^7}{INDENT}")
+        for i in range(5 * line, min(5 * (line + 1), cam_types)):
+            cur_log[-1] += f"{i:^9}{INDENT}"
+        for i in range(min(5 * (line + 1), cam_types), 5 * (line + 1)):
+            cur_log[-1] += " " * 9 + INDENT
+
+        cur_log.append("|" + " " * 7 + INDENT)
+        for i in range(5 * line, min(5 * (line + 1), cam_types)):
+            cur_log[-1] += f"{action_probs_list[10 + i]:>9.6f}{INDENT}"
+        for i in range(min(5 * (line + 1), cam_types), 5 * (line + 1)):
+            cur_log[-1] += " " * 9 + INDENT
+
+    # entropy
+    cur_log.append("|entropy" + INDENT + f"{entropy:>9.6f}" + INDENT)
+    cur_log[-1] += (" " * 9 + INDENT) * 4
+
+    if len(pred_log) == 1:
+        for i in range(len(cur_log)):
+            pred_log.append([cur_log[i]])
+    else:
+        for i in range(len(cur_log)):
+            pred_log[i + 1].append(cur_log[i])
+
+    return pred_log
+
+
+def _print_readable_action_dist(
+    action_dist_log: List[str | List[str]], step: int = 3, return_str: bool = False
+):
+    out_log = ""
+    out_log += action_dist_log[0] + "\n"
+
+    agent_num = len(action_dist_log[1])
+    log_content = action_dist_log[1:]
+
+    cur_agent_range = [0, min(step - 1, agent_num - 1)]
+    while cur_agent_range[0] < agent_num:
+        for line in log_content:
+            for index in range(min(step, agent_num - cur_agent_range[0])):
+                out_log += line[cur_agent_range[0] + index]
+            out_log += "\n"
+        cur_agent_range[0] += step
+        cur_agent_range[1] += step
+
+    if return_str:
+        return out_log
+    else:
+        print(out_log, end="")
+
+
+def _reformat_actor_input(
+    agent_num: int,
+    device: torch.cuda.device,
+    cur_observations: List[List[Tuple[array, array, array]]],
+    cur_actions: List[List[array]],
+    cur_action_masks: List[List[array]],
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    ## permute batch channel and agent channel for actor inputs
+    batch_size = len(cur_observations)
+    cur_self_and_neigh_params_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_self_mask_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_neigh_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_all_actions_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_all_action_masks_list: List[List[array]] = [[] for i in range(agent_num)]
+    for batch_index in range(batch_size):
+        for agent_index in range(agent_num):
+            cur_self_and_neigh_params_list[agent_index].append(
+                cur_observations[batch_index][agent_index][0]
+            )
+            cur_self_mask_list[agent_index].append(
+                cur_observations[batch_index][agent_index][1]
+            )
+            cur_neigh_list[agent_index].append(
+                cur_observations[batch_index][agent_index][2]
+            )
+            cur_all_actions_list[agent_index].append(
+                cur_actions[batch_index][agent_index]
+            )
+            cur_all_action_masks_list[agent_index].append(
+                cur_action_masks[batch_index][agent_index]
+            )
+    # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+    cur_self_and_neigh_params: Tensor = torch.tensor(
+        np.array(cur_self_and_neigh_params_list),
+        dtype=torch.float,
+        device=device,
+    )
+    cur_self_mask: Tensor = torch.tensor(  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+        np.array(cur_self_mask_list), dtype=torch.bool, device=device
+    )
+    cur_neigh: Tensor = torch.tensor(  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
+        np.array(cur_neigh_list), dtype=torch.float, device=device
+    )
+    cur_all_actions: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
+        np.array(cur_all_actions_list), dtype=torch.float, device=device
+    )
+    cur_all_action_masks: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
+        np.array(cur_all_action_masks_list), dtype=torch.bool, device=device
+    )
+
+    return (
+        cur_self_and_neigh_params,
+        cur_self_mask,
+        cur_neigh,
+        cur_all_actions,
+        cur_all_action_masks,
+    )
+
+
+def _reformat_critic_input(
+    device: torch.cuda.device,
+    cur_critic_inputs: List[Tuple[array, array]],
+    next_critic_inputs: List[Tuple[array, array]],
+    rewards: List[float],
+    terminated: List[bool],
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+    cur_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
+        np.array([cur_critic_input[0] for cur_critic_input in cur_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    cur_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
+        np.array([cur_critic_input[1] for cur_critic_input in cur_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    next_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
+        np.array([next_critic_input[0] for next_critic_input in next_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    next_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
+        np.array([next_critic_input[1] for next_critic_input in next_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    all_rewards: Tensor = torch.tensor(  # [B, AGENT_NUM + 1]
+        rewards, dtype=torch.float, device=device
+    )
+    mixed_rewards: Tensor = all_rewards[:, :-1]  # [B, AGENT_NUM]
+    system_rewards: Tensor = all_rewards[:, -1]  # [B]
+    all_terminated: Tensor = torch.tensor(  # [B]
+        terminated, dtype=torch.int64, device=device
+    )
+
+    return (
+        cur_cam_params,
+        cur_envs,
+        next_cam_params,
+        next_envs,
+        mixed_rewards,
+        system_rewards,
+        all_terminated,
+    )
 
 
 def _compute_advantage(

@@ -77,6 +77,7 @@ class OCPMultiAgentOnPolicyRunner:
                     episode_index=episode,
                     step_index=step,
                     save_dir=self.logger.save_dir,
+                    logger=self.logger,
                 )
 
                 cur_coverage, cur_transition, new_params = self.env.step(
@@ -178,6 +179,7 @@ class OCPMultiAgentOnPolicyRunner:
                 episode_index=episode_index,
                 step_index=step,
                 save_dir=self.logger.save_dir,
+                logger=self.logger,
             )
 
             cur_coverage, cur_transition, new_params = self.env.step(
