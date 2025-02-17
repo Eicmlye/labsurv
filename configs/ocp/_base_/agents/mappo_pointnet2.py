@@ -47,6 +47,7 @@ agent_cfg = dict(
         tilt_range=TILT_RANGE,
         cam_types=CAM_TYPE_NUM,
         mixed_reward=False,
+        backbone_path="labsurv/checkpoint/pointnet2backbone_rename.pth",
         # load_from="output/ocp/mappo/EXP_NAME/models/episode_EPI_NUM.pth",
         # resume_from="output/ocp/mappo/EXP_NAME/models/episode_EPI_NUM.pth",
     ),
