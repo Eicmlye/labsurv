@@ -381,7 +381,7 @@ def _plot_subfig(
     dropped = 0
     if drop_abnormal:
         x, y, dropped = _drop_abnormal(
-            x, y, [-9, -8] if "actor" not in title and log_scale else [500, 1e8]
+            x, y, [-9, -8] if "actor" not in title and log_scale else [2000, 1e8]
         )
 
     ax.plot(x, y, line_style, color=color, label=title)
