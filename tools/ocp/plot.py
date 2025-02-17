@@ -437,8 +437,8 @@ def main():
 
     if args.save is None:
         args.save = args.log if not args.log.endswith(".log") else osp.dirname(args.log)
-    if args.shrink:
-        filename_shrink_to = osp.join(args.save, "shrink.log")
+    
+    filename_shrink_to = osp.join(args.save, "shrink.log") if args.shrink else None
 
     log_filename = (
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log

@@ -40,6 +40,7 @@ class OCPMultiAgentPPO(BaseAgent):
         tilt_range: List[float] = [-PI / 2, PI / 2],
         cam_types: int = 1,
         mixed_reward: bool = False,
+        backbone_path: Optional[str] = None,
         load_from: Optional[str] = None,
         resume_from: Optional[str] = None,
         test_mode: bool = False,
@@ -94,6 +95,8 @@ class OCPMultiAgentPPO(BaseAgent):
             self.resume(resume_from)
         elif load_from is not None:
             self.load(load_from)
+        elif backbone_path is not None:
+            self.load_backbone(backbone_path)
 
     def eval(self):
         self.test_mode = True
@@ -120,6 +123,17 @@ class OCPMultiAgentPPO(BaseAgent):
         self.actor_opt.load_state_dict(checkpoint["actor"]["optimizer_state_dict"])
         self.critic_opt.load_state_dict(checkpoint["critic"]["optimizer_state_dict"])
         self.start_episode = checkpoint["episode"] + 1
+
+    def load_backbone(self, backbone_path: str):
+        """
+        ## Description:
+
+            Load pretrained params for PointNet++ backbone module.
+        """
+        backbone = torch.load(backbone_path)
+        import pdb; pdb.set_trace()
+        self.actor.backbone.load_state_dict(backbone)
+        self.critic.backbone.load_state_dict(backbone)
 
     def take_action(
         self, room, cam_params: array, **kwargs
