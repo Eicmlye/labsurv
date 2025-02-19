@@ -41,6 +41,7 @@ class OCPMultiAgentPPO(BaseAgent):
         cam_types: int = 1,
         mixed_reward: bool = False,
         backbone_path: Optional[str] = None,
+        freeze_backbone: List[int] = [],
         load_from: Optional[str] = None,
         resume_from: Optional[str] = None,
         test_mode: bool = False,
@@ -63,6 +64,12 @@ class OCPMultiAgentPPO(BaseAgent):
         if test_mode and resume_from is not None:
             raise ValueError(
                 "Use `load_from` instead of `resume_from` to load model in test mode."
+            )
+
+        if (load_from is not None or resume_from is not None) and backbone_path is not None:
+            raise ValueError(
+                "`backbone_path` will be ignored if `load_from` "
+                "or `resume_from` is not None"
             )
 
         super().__init__(device, gamma)
@@ -96,7 +103,26 @@ class OCPMultiAgentPPO(BaseAgent):
         elif load_from is not None:
             self.load(load_from)
         elif backbone_path is not None:
-            self.load_backbone(backbone_path)
+            self.load_backbone(backbone_path, freeze_backbone)
+        
+        if len(freeze_backbone) > 0:
+            freeze_name = tuple([f"set_abstraction.{index}" for index in freeze_backbone])
+            for name, parameter in self.actor.backbone.named_parameters():
+                if name.startswith(freeze_name):
+                    parameter.requires_grad = False
+            for name, parameter in self.critic.backbone.named_parameters():
+                if name.startswith(freeze_name):
+                    parameter.requires_grad = False
+
+            self.actor_opt = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, self.actor.parameters()),
+                lr=self.lr[0],
+            )
+            self.critic_opt = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, self.critic.parameters()),
+                lr=self.lr[1],
+            )
+
 
     def eval(self):
         self.test_mode = True
@@ -131,7 +157,6 @@ class OCPMultiAgentPPO(BaseAgent):
             Load pretrained params for PointNet++ backbone module.
         """
         backbone = torch.load(backbone_path)
-        import pdb; pdb.set_trace()
         self.actor.backbone.load_state_dict(backbone)
         self.critic.backbone.load_state_dict(backbone)
 

@@ -7,8 +7,8 @@ agent_type = "MAPPO_PointNet2"
 work_dir = f"./output/ocp/{agent_type.lower()}/ma10"
 exp_name = get_time_stamp()
 
-episodes = 10000
-steps = 50
+episodes = 1000
+steps = 20
 
 agent_cfg = None
 if agent_type == "MAPPO_PointNet2":

@@ -48,7 +48,8 @@ agent_cfg = dict(
         cam_types=CAM_TYPE_NUM,
         mixed_reward=False,
         backbone_path="labsurv/checkpoint/pointnet2backbone_rename.pth",
-        # load_from="output/ocp/mappo/EXP_NAME/models/episode_EPI_NUM.pth",
-        # resume_from="output/ocp/mappo/EXP_NAME/models/episode_EPI_NUM.pth",
+        freeze_backbone=[],
+        # load_from="output/ocp/AGENT_NAME/EXP_NAME/models/episode_EPI_NUM.pth",
+        # resume_from="output/ocp/AGENT_NAME/EXP_NAME/models/episode_EPI_NUM.pth",
     ),
 )
