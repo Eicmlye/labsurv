@@ -74,13 +74,14 @@ def get_latest_log(dir_name: str):
 
 def ocp_get_y_axis(
     log_filename: str, shrink: Optional[str] = None
-) -> Tuple[List[float], List[float], List[float], List[float], int]:
+) -> Tuple[List[float], List[float], List[List[float]], int, bool]:
     # load y axis
-    reward = []
+    train_reward = []
+    eval_reward = []
     loss = []
     eval_step = None
     found_episode_line = False
-    is_ac = False
+    is_ac: bool = False
 
     if shrink is not None:
         new_log = open(shrink, "w")
@@ -125,6 +126,8 @@ def ocp_get_y_axis(
                 if shrink is not None:
                     new_log.write(line)
 
+                train_reward.append(float(word_list[y_flag + 2]))
+
                 if "A" in word_list:
                     is_ac = True
                     actor_loss = (
@@ -157,17 +160,18 @@ def ocp_get_y_axis(
                 if shrink is not None:
                     new_log.write(line)
 
-                reward.append(float(word_list[reward_flag + 3]))
+                eval_reward.append(float(word_list[reward_flag + 3]))
 
     if shrink is not None:
         new_log.close()
 
-    return reward, loss, eval_step, is_ac
+    return train_reward, eval_reward, loss, eval_step, is_ac
 
 
 def plot_subfig(
     is_ac: bool,
-    reward: List[float],
+    train_reward: List[float],
+    eval_reward: List[float],
     loss: List[float],
     eval_step: int,
     save_path: str,
@@ -179,7 +183,8 @@ def plot_subfig(
     if is_ac:
         actor_loss, critic_loss, entropy_loss = loss
         _plot_ac_subfig(
-            reward,
+            train_reward,
+            eval_reward,
             actor_loss,
             critic_loss,
             entropy_loss,
@@ -191,11 +196,12 @@ def plot_subfig(
             drop_abnormal,
         )
     else:
-        _plot_non_ac_subfig(reward, loss, eval_step, save_path, tick_step)
+        _plot_non_ac_subfig(eval_reward, loss, eval_step, save_path, tick_step)
 
 
 def _plot_ac_subfig(
-    reward: List[float],
+    train_reward: List[float],
+    eval_reward: List[float],
     actor_loss: List[float],
     critic_loss: List[float],
     entropy_loss: List[float],
@@ -208,39 +214,52 @@ def _plot_ac_subfig(
 ):
     # figure settings
     if sma > 1:
-        fig = plt.figure(figsize=(30, 10))
-        ax1 = fig.add_subplot(2, 4, 1)
-        ax2 = fig.add_subplot(2, 4, 2)
-        ax3 = fig.add_subplot(2, 4, 3)
-        ax4 = fig.add_subplot(2, 4, 4)
+        fig = plt.figure(figsize=(40, 10))
+        ax1 = fig.add_subplot(2, 5, 1)  # train_reward
+        ax2 = fig.add_subplot(2, 5, 2)  # eval_reward
+        ax3 = fig.add_subplot(2, 5, 3)  # entropy loss
+        ax4 = fig.add_subplot(2, 5, 4)  # critic loss
+        ax5 = fig.add_subplot(2, 5, 5)  # actor loss
+        ax6 = fig.add_subplot(2, 5, 6)  # train_reward sma
         if reward_sma > 1:
-            ax5 = fig.add_subplot(2, 4, 5)
-        ax6 = fig.add_subplot(2, 4, 6)
-        ax7 = fig.add_subplot(2, 4, 7)
-        ax8 = fig.add_subplot(2, 4, 8)
+            ax7 = fig.add_subplot(2, 5, 7)  # eval_reward sma
+        ax8 = fig.add_subplot(2, 5, 8)  # entropy loss sma
+        ax9 = fig.add_subplot(2, 5, 9)  # critic loss sma
+        ax10 = fig.add_subplot(2, 5, 10)  # actor loss sma
     else:
-        fig = plt.figure(figsize=(20, 10))
-        ax1 = fig.add_subplot(2, 2, 1)
-        ax2 = fig.add_subplot(2, 2, 2)
-        ax3 = fig.add_subplot(2, 2, 3)
-        ax4 = fig.add_subplot(2, 2, 4)
+        raise NotImplementedError()
+    
+        # fig = plt.figure(figsize=(20, 10))
+        # ax1 = fig.add_subplot(2, 2, 1)
+        # ax2 = fig.add_subplot(2, 2, 2)
+        # ax3 = fig.add_subplot(2, 2, 3)
+        # ax4 = fig.add_subplot(2, 2, 4)
 
     # plot graph
     valid_episode = min(len(actor_loss), len(critic_loss), len(entropy_loss))
-    x_reward = [(i + 1) * eval_step for i in range(len(reward))]
+    x_reward = [(i + 1) * eval_step for i in range(len(eval_reward))]
     x_loss = [(epi + 1) for epi in range(valid_episode)]
 
     _plot_subfig(
         ax1,
-        x_reward,
-        reward,
+        x_loss,
+        train_reward,
         line_style="-",
         color="r",
-        title="reward",
+        title="train reward",
         tick_step=tick_step,
     )
     _plot_subfig(
         ax2,
+        x_reward,
+        eval_reward,
+        line_style="-",
+        color="r",
+        title="eval reward",
+        tick_step=tick_step,
+    )
+    _plot_subfig(
+        ax3,
         x_loss,
         entropy_loss,
         line_style="-",
@@ -251,7 +270,7 @@ def _plot_ac_subfig(
         drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
-        ax3,
+        ax4,
         x_loss,
         critic_loss,
         line_style="-",
@@ -262,7 +281,7 @@ def _plot_ac_subfig(
         drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
-        ax4,
+        ax5,
         x_loss,
         actor_loss,
         line_style="-",
@@ -272,18 +291,27 @@ def _plot_ac_subfig(
         drop_abnormal=drop_abnormal,
     )
     if sma > 1:
+        _plot_subfig(
+            ax6,
+            x_loss,
+            simple_moving_average(train_reward, window=sma),
+            line_style="-",
+            color="r",
+            title=f"SMA{sma} train reward",
+            tick_step=tick_step,
+        )
         if reward_sma > 1:
             _plot_subfig(
-                ax5,
+                ax7,
                 x_reward,
-                simple_moving_average(reward, window=reward_sma),
+                simple_moving_average(eval_reward, window=reward_sma),
                 line_style="-",
                 color="r",
-                title=f"SMA{reward_sma * eval_step} reward",
+                title=f"SMA{reward_sma * eval_step} eval reward",
                 tick_step=tick_step,
             )
         _plot_subfig(
-            ax6,
+            ax8,
             x_loss,
             simple_moving_average(entropy_loss, window=sma),
             line_style="-",
@@ -294,7 +322,7 @@ def _plot_ac_subfig(
             drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
-            ax7,
+            ax9,
             x_loss,
             simple_moving_average(critic_loss, window=sma),
             line_style="-",
@@ -305,7 +333,7 @@ def _plot_ac_subfig(
             drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
-            ax8,
+            ax10,
             x_loss,
             simple_moving_average(actor_loss, window=sma),
             line_style="-",
@@ -444,11 +472,12 @@ def main():
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    reward, loss, eval_step, is_ac = ocp_get_y_axis(log_filename, filename_shrink_to)
+    train_reward, eval_reward, loss, eval_step, is_ac = ocp_get_y_axis(log_filename, filename_shrink_to)
 
     plot_subfig(
         is_ac,
-        reward,
+        train_reward,
+        eval_reward,
         loss,
         eval_step,
         to_filename(args.save, ".png", "reward_loss_fig"),
