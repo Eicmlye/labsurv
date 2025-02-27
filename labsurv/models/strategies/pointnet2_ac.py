@@ -291,8 +291,8 @@ def _ply2data(ply_pointcloud: Tensor, voxel_length: float) -> Tensor:
     ## Returns:
 
         data (Tensor): [B, W*D*H, 9], torch.float, S3DIS format pointcloud.
-        [x, y, z, normalized_x, normalized_y, normalized_z, normalized_r,
-        normalized_g, normalized_b]
+        [decentralized_x, decentralized_y, decentralized_z, normalized_x,
+        normalized_y, normalized_z, normalized_r, normalized_g, normalized_b]
     """
     device = ply_pointcloud.device
     batch_size, _, W, D, H = ply_pointcloud.shape
