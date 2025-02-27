@@ -79,6 +79,11 @@ class OCPMultiAgentPPO(BaseAgent):
         self.cam_types = cam_types
         self.agent_num = agent_num
 
+        self.pan_section_num = pan_section_num
+        self.tilt_section_num = tilt_section_num
+        self.pan_range = pan_range
+        self.tilt_range = tilt_range
+
         self.actor: Module = STRATEGIES.build(actor_cfg).to(self.device)
         self.critic: Module = STRATEGIES.build(critic_cfg).to(self.device)
 
@@ -86,11 +91,6 @@ class OCPMultiAgentPPO(BaseAgent):
             self.lr = [actor_lr, critic_lr]
             self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr[0])
             self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr[1])
-
-            self.pan_section_num = pan_section_num
-            self.tilt_section_num = tilt_section_num
-            self.pan_range = pan_range
-            self.tilt_range = tilt_range
 
             self.start_episode = 0
             self.update_step = update_step
@@ -162,7 +162,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
     def take_action(
         self, room, cam_params: array, **kwargs
-    ) -> Tuple[List[Tuple[array, array, array]], List[array]]:
+    ) -> Tuple[List[Tuple[array, array, array]], List[array], List[array]]:
         """
         ## Arguments:
 
@@ -185,7 +185,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
     def train_take_action(
         self, room, cam_params: array, **kwargs
-    ) -> Tuple[List[Tuple[array, array, array]], List[array]]:
+    ) -> Tuple[List[Tuple[array, array, array]], List[array], List[array]]:
         """
         ## Arguments:
 
@@ -272,7 +272,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
     def test_take_action(
         self, room, cam_params: array, **kwargs
-    ) -> Tuple[List[Tuple[array, array, array]], List[array]]:
+    ) -> Tuple[List[Tuple[array, array, array]], List[array], List[array]]:
         """
         ## Arguments:
 
@@ -286,12 +286,15 @@ class OCPMultiAgentPPO(BaseAgent):
             inputs.
 
             actions (np.ndarray): [AGENT_NUM, ACTION_DIM].
+
+            action_masks (List[array]): [AGENT_NUM, ACTION_DIM].
         """
         logger: LoggerHook = kwargs["logger"]
 
         with torch.no_grad():  # if grad, memory leaks
             observations: List[Tuple[array, array, array]] = []
             actions: List[array] = []
+            action_masks: List[array] = []
 
             log = None
 
@@ -316,10 +319,19 @@ class OCPMultiAgentPPO(BaseAgent):
                 )
 
                 # [ACTION_DIM]
-                action_dist: Tensor = F.softmax(
-                    self.actor(self_and_neigh_params, self_mask, neigh).view(-1),
-                    dim=-1,
+                action_logits: Tensor = self.actor(
+                    self_and_neigh_params, self_mask, neigh
+                ).view(-1)
+                action_mask = 1 - generate_action_mask(
+                    room,
+                    cam_param,
+                    self.pan_section_num,
+                    self.tilt_section_num,
+                    self.pan_range,
+                    self.tilt_range,
                 )
+                action_logits[action_mask == 1] = float("-inf")
+                action_dist = F.softmax(action_logits, dim=-1)
                 action_dist_cat = torch.distributions.Categorical(action_dist)
 
                 # DEBUG(eric)
@@ -328,19 +340,21 @@ class OCPMultiAgentPPO(BaseAgent):
                     agent_index,
                     action_dist,
                     action_dist_cat.entropy().item(),
+                    action_mask=action_mask,
                     pred_log=log,
                 )
 
                 action_index = action_dist_cat.sample().type(torch.int64).item()
 
                 actions.append(np.eye(len(action_dist))[[action_index]].reshape(-1))
+                action_masks.append(action_mask)
 
         logger.show_log(
             _print_readable_action_dist(log, return_str=True), with_time=True, end=""
         )
 
-        # [AGENT_NUM, Tuple], [AGENT_NUM, ACTION_DIM]
-        return observations, actions
+        # [AGENT_NUM, Tuple], [AGENT_NUM, ACTION_DIM], [AGENT_NUM, ACTION_DIM]
+        return observations, actions, action_masks
 
     def update(
         self,

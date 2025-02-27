@@ -173,7 +173,7 @@ class OCPMultiAgentOnPolicyRunner:
         terminated = False
 
         for step in range(self.steps):
-            cur_observation, cur_action = self.agent.take_action(
+            cur_observation, cur_action, cur_action_mask = self.agent.take_action(
                 room,
                 cur_params,
                 episode_index=episode_index,
@@ -189,9 +189,6 @@ class OCPMultiAgentOnPolicyRunner:
             terminated = cur_transition["terminated"]
             truncated = step == self.steps - 1
 
-            room = deepcopy(self.env.info_room)
-            cur_params: array = new_params
-
             episode_return["reward"] += cur_transition["reward"][-1]
             episode_return["coverage"] = cur_coverage
 
@@ -204,6 +201,9 @@ class OCPMultiAgentOnPolicyRunner:
                 f"\nPREVIOUS {readable_param(new_params)} ",
                 with_time=True,
             )
+
+            room = deepcopy(self.env.info_room)
+            cur_params: array = new_params
 
             point_cloud_path = osp.join(
                 self.logger.save_dir,
