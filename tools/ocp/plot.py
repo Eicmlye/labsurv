@@ -53,7 +53,7 @@ def get_latest_log(dir_name: str):
             cur_timestamp = filename.split(".")[0].split("_")
             try:
                 cur_timestamp = int(cur_timestamp[0] + cur_timestamp[1])
-            except (TypeError, IndexError):
+            except (TypeError, IndexError, ValueError):
                 print(
                     WARN(
                         "Log files should be named in \"yymmdd_hhmmss.log\" format. "
@@ -81,6 +81,7 @@ def ocp_get_y_axis(
     loss = []
     eval_step = None
     found_episode_line = False
+    start_episode: int = 1
     is_ac: bool = False
 
     if shrink is not None:
@@ -96,20 +97,14 @@ def ocp_get_y_axis(
                 if shrink is not None:
                     new_log.write(line)
 
-                if int(word_list[2]) != 1:
-                    print(
-                        WARN(
-                            f"Current log file {log_filename} does not start from "
-                            "episode 1. The x axis could be wrong. "
-                        )
-                    )
+                start_episode = int(word_list[2])
 
             if "Evaluating" in word_list and eval_step is None:
                 if len(word_list) < 4:
                     raise ValueError(
                         f"Current log file {log_filename} is not a training log."
                     )
-                eval_step = int(word_list[4])
+                eval_step = int(word_list[4]) - start_episode + 1
                 if shrink is not None:
                     new_log.write(line)
 
