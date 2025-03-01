@@ -17,6 +17,7 @@ This repository is a reinforcement learning solution to the Optimal Camera Place
 - [Tools Usage](#tools-usage)
   - [`Room`](#room)
   - [`SurveillanceRoom`](#surveillanceroom)
+- [Data Download](#data-download)
 
 ## Installation
 
@@ -172,3 +173,50 @@ Located at `labsurv/tools/ocp/`. This script creates a point cloud heatmap of th
 
 - `--pkl`: the `.pkl` file of the visit counts. After you run the training, the `.pkl` file is saved at `labsurv/output/AGENT_NAME/EXP_NAME/envs/`.
 - `--save`: path of the directory to save output pointcloud. If not specified, the directory of the `.pkl` file will be used.
+
+## Data Download
+
+We use the [Benchmark testbed on the Optimal Camera Placement Problem (OCP) and the Unicost Set Covering Problem (USCP)](https://www.mage.fst.uha.fr/brevilliers/ocp-uscp-benchmark/index.html0) to compare our method with existing methods. You may download the data `.txt` files [here](https://www.mage.fst.uha.fr/brevilliers/gecco-2021-ocp-uscp-competition/data.tar.xz), and the data structure is described [here](https://www.mage.fst.uha.fr/brevilliers/gecco-2021-ocp-uscp-competition/gecco_2021_ocp_uscp_competition.pdf).
+
+### Modifications
+
+#### `xx_specs.txt`
+
+We suggest adding the size of the room to `xx_specs.txt` for easier data loading.
+
+For `AC_specs.txt`, 
+
+```
+AC_01 5 5 2 2.5 100 1920 1080 65 0.5 4
+AC_02 10 10 2 2.5 100 1920 1080 65 0.5 4
+AC_03 15 15 2 2.5 100 1920 1080 65 0.5 4
+AC_04 20 20 2 2.5 100 1920 1080 65 0.5 4
+AC_05 25 25 2 2.5 100 1920 1080 65 0.5 4
+AC_06 30 30 2 2.5 100 1920 1080 65 0.5 4
+AC_07 40 40 2 2.5 100 1920 1080 65 0.5 4
+AC_08 50 50 2 2.5 100 1920 1080 65 0.5 4
+AC_09 60 60 2 2.5 100 1920 1080 65 0.5 4
+AC_10 5 5 2 2.5 500 1920 1080 65 0.5 4
+AC_11 10 10 2 2.5 500 1920 1080 65 0.5 4
+AC_12 15 15 2 2.5 500 1920 1080 65 0.5 4
+AC_13 20 20 2 2.5 500 1920 1080 65 0.5 4
+AC_14 25 25 2 2.5 500 1920 1080 65 0.5 4
+AC_15 30 30 2 2.5 500 1920 1080 65 0.5 4
+AC_16 40 40 2 2.5 500 1920 1080 65 0.5 4
+AC_17 50 50 2 2.5 500 1920 1080 65 0.5 4
+AC_18 60 60 2 2.5 500 1920 1080 65 0.5 4
+AC_19 70 70 2 2.5 500 1920 1080 65 0.5 4
+AC_20 80 80 2 2.5 500 1920 1080 65 0.5 4
+AC_21 90 90 2 2.5 500 1920 1080 65 0.5 4
+AC_22 100 100 2 2.5 500 1920 1080 65 0.5 4
+AC_23 110 110 2 2.5 500 1920 1080 65 0.5 4
+AC_24 120 120 2 2.5 500 1920 1080 65 0.5 4
+AC_25 130 130 2 2.5 500 1920 1080 65 0.5 4
+AC_26 140 140 2 2.5 500 1920 1080 65 0.5 4
+AC_27 150 150 2 2.5 500 1920 1080 65 0.5 4
+AC_28 160 160 2 2.5 500 1920 1080 65 0.5 4
+AC_29 170 170 2 2.5 500 1920 1080 65 0.5 4
+AC_30 180 180 2 2.5 500 1920 1080 65 0.5 4
+AC_31 190 190 2 2.5 500 1920 1080 65 0.5 4
+AC_32 200 200 2 2.5 500 1920 1080 65 0.5 4
+```

@@ -20,6 +20,9 @@ __pycache__/
 # output
 /output/
 
+# data
+/data/
+
 # tmp files
 *tmp*
 *temp*
