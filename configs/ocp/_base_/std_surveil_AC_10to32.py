@@ -48,7 +48,7 @@ res_v = 1080
 res_op = 500
 
 aov_h = 65 / 180 * PI
-aov_v = arctan(res_v * tan(aov_h / 2) * res_h) * 2
+aov_v = arctan(res_v * tan(aov_h / 2) / res_h) * 2
 
 d_far = res_h / 2 / res_op / tan(aov_h / 2)
 
