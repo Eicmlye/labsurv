@@ -41,6 +41,7 @@ class OCPMultiAgentPPO(BaseAgent):
         tilt_section_num: int = 180,
         pan_range: List[float] = [-PI, PI],
         tilt_range: List[float] = [-PI / 2, PI / 2],
+        allow_polar: bool = False,
         cam_types: int = 1,
         mixed_reward: bool = False,
         backbone_path: Optional[str] = None,
@@ -86,6 +87,7 @@ class OCPMultiAgentPPO(BaseAgent):
         self.tilt_section_num = tilt_section_num
         self.pan_range = pan_range
         self.tilt_range = tilt_range
+        self.allow_polar = allow_polar
 
         self.actor: Module = STRATEGIES.build(actor_cfg).to(self.device)
         self.critic: Module = STRATEGIES.build(critic_cfg).to(self.device)
@@ -249,6 +251,7 @@ class OCPMultiAgentPPO(BaseAgent):
                     self.tilt_section_num,
                     self.pan_range,
                     self.tilt_range,
+                    allow_polar=self.allow_polar,
                 )
                 action_logits[action_mask == 1] = float("-inf")
                 action_dist = F.softmax(action_logits, dim=-1)
@@ -336,6 +339,7 @@ class OCPMultiAgentPPO(BaseAgent):
                     self.tilt_section_num,
                     self.pan_range,
                     self.tilt_range,
+                    allow_polar=self.allow_polar,
                 )
                 action_logits[action_mask == 1] = float("-inf")
                 action_dist = F.softmax(action_logits, dim=-1)

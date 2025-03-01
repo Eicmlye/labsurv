@@ -9,3 +9,4 @@ TILT_SEC_NUM = 9
 PAN_RANGE = [-PI, PI]
 TILT_RANGE = [-PI / 2, 0]
 VOXEL_LENGTH = voxel_length
+ALLOW_POLAR = False

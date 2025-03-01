@@ -145,7 +145,7 @@ def apply_movement_on_agent(
     tilt_section_num: int,
     pan_range: List[float],
     tilt_range: List[float],
-    allow_pan_circular: bool = False,
+    allow_polar: bool = False,
     pos_candidate: Optional[array] = None,
 ) -> array | bool:
     """
@@ -201,14 +201,18 @@ def apply_movement_on_agent(
     angular_movement = movement[3:5].copy()
 
     new_direction: array = np.zeros([2], dtype=np.float32)
-    if allow_pan_circular and pan_range[0] == -PI and pan_range[1] == PI:
-        # pan is circular
-        if np.abs(cur_params[3] - (-PI)) < 1e-5 and angular_movement[0] == -1:
-            new_direction[0] = PI - pan_step
-        elif np.abs(cur_params[3] + pan_step - PI) < 1e-5 and angular_movement[0] == 1:
-            new_direction[0] = -PI
-        else:
-            new_direction[0] = cur_params[3] + angular_movement[0] * pan_step
+    if allow_polar:
+        tilt_upper_bound = np.array([tilt_range[1]])
+        tilt_lower_bound = np.array([tilt_range[0]])
+    else:
+        tilt_upper_bound = np.array([tilt_range[1] - tilt_step])
+        tilt_lower_bound = np.array([tilt_range[0] + tilt_step])
+
+    if allow_polar and angular_movement[0] != 0 and (
+        round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) == 0
+        or round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0]) == 0
+    ):
+        return False
     else:
         pan_upper_bound = np.array([pan_range[1] - pan_step])
         pan_lower_bound = np.array([pan_range[0]])
@@ -216,9 +220,9 @@ def apply_movement_on_agent(
             round(((cur_params[3] - pan_lower_bound) / pan_step)[0])
             + angular_movement[0]
             < 0
-            or round(((cur_params[3] - pan_lower_bound) / pan_step)[0])
+            or round(((pan_upper_bound - cur_params[3]) / pan_step)[0])
             + angular_movement[0]
-            > pan_section_num - 1
+            < 0
         ):
             return False
         new_direction[0] = np.clip(
@@ -227,15 +231,12 @@ def apply_movement_on_agent(
             pan_upper_bound,
         )
 
-    # tilt without 2 polar points
-    tilt_upper_bound = np.array([tilt_range[1] - tilt_step])
-    tilt_lower_bound = np.array([tilt_range[0]])
     if pos_candidate is not None and (
         round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) + angular_movement[1]
-        < 1
-        or round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0])
+        < 0
+        or round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0])
         + angular_movement[1]
-        > tilt_section_num - 1
+        < 0
     ):
         return False
     new_direction[1] = np.clip(
@@ -451,6 +452,7 @@ def generate_action_mask(
     tilt_section_num: int,
     pan_range: List[float],
     tilt_range: List[float],
+    allow_polar: bool = False,
 ) -> array:
     """
     ## Description:
@@ -476,6 +478,7 @@ def generate_action_mask(
             tilt_section_num,
             pan_range,
             tilt_range,
+            allow_polar=allow_polar,
         )
     else:
         batched_masks = []
@@ -488,6 +491,7 @@ def generate_action_mask(
                     tilt_section_num,
                     pan_range,
                     tilt_range,
+                    allow_polar=allow_polar,
                 )
             )
         return np.array(batched_masks)
@@ -500,6 +504,7 @@ def _generate_action_mask(
     tilt_section_num: int,
     pan_range: List[float],
     tilt_range: List[float],
+    allow_polar: bool = False,
 ) -> array:
     """
     ## Description:
@@ -547,6 +552,7 @@ def _generate_action_mask(
                 tilt_section_num,
                 pan_range,
                 tilt_range,
+                allow_polar=allow_polar,
                 pos_candidate=pos_candidates,
             )
         if not is_valid:

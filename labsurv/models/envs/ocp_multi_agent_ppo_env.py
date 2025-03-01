@@ -39,6 +39,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         terminate_goal: float = 1.0,
         reset_weight: int = 4,
         individual_reward_alpha: float = 0,
+        allow_polar: bool = False,
     ):
         """
         ## Description:
@@ -84,6 +85,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         self.pan_range = pan_range
         self.tilt_range = tilt_range
         self.cam_types = cam_types
+        self.allow_polar = allow_polar
 
         self.subgoals = subgoals
         self.terminate_goal = terminate_goal
@@ -264,6 +266,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 self.tilt_section_num,
                 self.pan_range,
                 self.tilt_range,
+                allow_polar=self.allow_polar,
             )
             new_pos: array = new_param[:3].copy()  # [3]
             new_direction: array = new_param[3:5].copy()  # [2]
@@ -385,7 +388,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             individual_rewards = (
                 np.array(individual_rewards)
                 / sum(individual_rewards)
-                * 100
+                * total_reward
                 * self.individual_reward_alpha
             )
             mixed_rewards = (
