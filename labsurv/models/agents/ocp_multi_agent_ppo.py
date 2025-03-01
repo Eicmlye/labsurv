@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import os.path as osp
 from typing import Dict, List, Optional, Tuple
@@ -14,6 +15,7 @@ from numpy import ndarray as array
 from numpy import pi as PI
 from torch import Tensor
 from torch.nn import Module
+from mmcv.utils import ProgressBar
 
 
 @AGENTS.register_module()
@@ -27,6 +29,7 @@ class OCPMultiAgentPPO(BaseAgent):
         critic_cfg: Dict,
         device: Optional[str] = None,
         gamma: float = 0.9,
+        gradient_accumulation_batchsize: Optional[int] = None,
         actor_lr: float = 1e-5,
         critic_lr: float = 1e-4,
         update_step: int = 10,
@@ -88,6 +91,10 @@ class OCPMultiAgentPPO(BaseAgent):
         self.critic: Module = STRATEGIES.build(critic_cfg).to(self.device)
 
         if not self.test_mode:
+            self.gradient_accumulation_batchsize = (
+                gradient_accumulation_batchsize
+                if gradient_accumulation_batchsize is not None else self.agent_num
+            )
             self.lr = [actor_lr, critic_lr]
             self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr[0])
             self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr[1])
@@ -388,6 +395,10 @@ class OCPMultiAgentPPO(BaseAgent):
             cur_action_masks,
         )
 
+        batch_size: int = cur_self_and_neigh_params.shape[1]
+        param_dim: int = cur_self_and_neigh_params.shape[3]
+        neigh_side_length: int = cur_neigh.shape[3]
+
         # critic inputs
         (
             cur_cam_params,  # [B, AGENT_NUM, PARAM_DIM]
@@ -410,13 +421,14 @@ class OCPMultiAgentPPO(BaseAgent):
             1 - all_terminated
         )  # [B]
         if not self.mixed_reward:
-            critic_td_error: Tensor = critic_td_target - self.critic(
+            critic_td_error: Tensor = critic_td_target - self.critic(  # [B]
                 cur_cam_params, cur_envs
-            )
-            advantages: Tensor = _compute_advantage(  # [B]
+            ).view(-1)
+            advantages: Tensor = _compute_advantage(  # [AGENT_NUM * B]
                 self.gamma, self.advantage_param, critic_td_error, self.device
-            )
+            ).repeat(self.agent_num)
 
+        all_agents_actor_advantages: Tensor = None  # [AGENT_NUM * B]
         for agent_index in range(self.agent_num):
             if self.mixed_reward:
                 actor_td_target: Tensor = mixed_rewards[
@@ -426,60 +438,118 @@ class OCPMultiAgentPPO(BaseAgent):
                 )
                 actor_td_error: Tensor = actor_td_target - self.critic(
                     cur_cam_params, cur_envs
-                )
+                ).view(-1)
                 actor_advantages: Tensor = _compute_advantage(  # [B]
                     self.gamma, self.advantage_param, actor_td_error, self.device
                 )
-            cur_action_indices = (
-                cur_all_actions[agent_index].nonzero()[:, 1].view(-1, 1)
-            )  # [B, 1]
-            pred_strat_prob = torch.log(  # [B]
-                torch.gather(
-                    F.softmax(
-                        self.actor(
-                            cur_self_and_neigh_params[agent_index],
-                            cur_self_mask[agent_index],
-                            cur_neigh[agent_index],
-                        ),
-                        dim=-1,
-                    ),
-                    dim=1,
-                    index=cur_action_indices,
-                ).view(-1)
-            ).detach()
 
-            for step in range(self.update_step):
-                action_logits: Tensor = self.actor(  # [B, ACTION_DIM]
-                    cur_self_and_neigh_params[agent_index],
-                    cur_self_mask[agent_index],
-                    cur_neigh[agent_index],
+                if all_agents_actor_advantages is None:
+                    all_agents_actor_advantages = actor_advantages.clone()
+                else:
+                    all_agents_actor_advantages = torch.cat(
+                        (all_agents_actor_advantages, actor_advantages),
+                        dim=0,
+                    )
+
+        cur_action_indices = (
+            cur_all_actions.nonzero()[:, -1].view(-1, 1)
+        )  # [B, 1]
+
+        pred_actor = deepcopy(self.actor)
+
+        gradient_accumulation_batchnum = int(
+            np.ceil(
+                batch_size * self.agent_num / self.gradient_accumulation_batchsize
+            )
+        )
+        for param_group in self.actor_opt.param_groups:
+            param_group["lr"] = self.lr[0] / gradient_accumulation_batchnum
+        for param_group in self.critic_opt.param_groups:
+            param_group["lr"] = self.lr[1] / gradient_accumulation_batchnum
+
+        for step in range(self.update_step):
+            self.actor_opt.zero_grad()
+            self.critic_opt.zero_grad()
+            print(f"\nGradient accumulation for step {step + 1}...")
+            prog_bar = ProgressBar(gradient_accumulation_batchnum)
+            for ga_step in range(gradient_accumulation_batchnum):
+                lower_index = ga_step * self.gradient_accumulation_batchsize
+                upper_index_excluded = min(
+                    (ga_step + 1) * self.gradient_accumulation_batchsize,
+                    batch_size * self.agent_num,
                 )
-                action_logits[cur_all_action_masks[agent_index] == 1] = float("-inf")
-                action_dist = F.softmax(action_logits, dim=-1)
 
-                cur_strat_prob = torch.log(  # [B]
+                ga_cur_self_and_neigh_params = cur_self_and_neigh_params.view(
+                    batch_size * self.agent_num, -1, param_dim
+                )[lower_index: upper_index_excluded]
+                ga_cur_self_mask = cur_self_mask.view(batch_size * self.agent_num, -1)[
+                    lower_index: upper_index_excluded
+                ]
+                ga_cur_neigh = cur_neigh.view(
+                    batch_size * self.agent_num,
+                    3,
+                    neigh_side_length,
+                    neigh_side_length,
+                    neigh_side_length,
+                )[lower_index: upper_index_excluded]
+
+                action_logits: Tensor = self.actor(  # [GA, ACTION_DIM]
+                    ga_cur_self_and_neigh_params, ga_cur_self_mask, ga_cur_neigh
+                )
+                action_logits[
+                    cur_all_action_masks.view(batch_size * self.agent_num, -1)[
+                        lower_index: upper_index_excluded
+                    ] == 1
+                ] = float("-inf")
+                action_dist = F.softmax(action_logits, dim=-1)  # [GA]
+
+                cur_strat_prob = torch.log(  # [GA]
                     torch.gather(
-                        action_dist,
+                        action_dist + 1e-8,
                         dim=1,
-                        index=cur_action_indices,
+                        index=cur_action_indices[
+                            lower_index: upper_index_excluded
+                        ],
                     ).view(-1)
                 )
 
                 entropy: Tensor = torch.distributions.Categorical(
                     action_dist
-                ).entropy()  # [B]
+                ).entropy()  # [GA]
 
-                significance = torch.exp(cur_strat_prob - pred_strat_prob)  # [B]
+                pred_strat_prob = torch.log(  # [GA]
+                    torch.gather(
+                        F.softmax(
+                            pred_actor(
+                                ga_cur_self_and_neigh_params,
+                                ga_cur_self_mask,
+                                ga_cur_neigh,
+                            ),
+                            dim=-1,
+                        ) + 1e-8,
+                        dim=1,
+                        index=cur_action_indices[
+                            lower_index: upper_index_excluded
+                        ],
+                    ).view(-1)
+                ).detach()
+
+                # [GA]
+                significance = torch.exp(cur_strat_prob - pred_strat_prob)
 
                 surrogate_1 = significance * (
-                    actor_advantages if self.mixed_reward else advantages
-                )  # [B]
-                surrogate_2 = torch.clamp(  # [B]
+                    all_agents_actor_advantages[lower_index: upper_index_excluded]
+                    if self.mixed_reward
+                    else advantages[lower_index: upper_index_excluded]
+                )  # [GA]
+                surrogate_2 = torch.clamp(  # [GA]
                     significance,
                     1 - self.clip_epsilon,
                     1 + self.clip_epsilon,
                 ) * (
-                    actor_advantages if self.mixed_reward else advantages
+                    all_agents_actor_advantages[lower_index: upper_index_excluded]
+                    if self.mixed_reward
+                    else advantages[lower_index: upper_index_excluded]
                 )  # PPO clip
 
                 actor_loss = torch.mean(  # PPO loss
@@ -496,20 +566,22 @@ class OCPMultiAgentPPO(BaseAgent):
                     actor_loss
                     + 0.5 * critic_loss
                     - self.entropy_loss_coef * entropy_loss
-                )
+                ) / gradient_accumulation_batchnum
 
-                self.actor_opt.zero_grad()
-                self.critic_opt.zero_grad()
                 total_loss.backward()
-                self.actor_opt.step()
-                self.critic_opt.step()
 
-                logger.show_log(
-                    f"[Update step {step + 1:>3}  Agent {agent_index + 1}]  "
-                    f"loss: C {critic_loss.item():.6f} "
-                    f"A {actor_loss.item():.6f} E {entropy_loss.item():.6f}",
-                    with_time=True,
-                )
+                prog_bar.update()
+            print("\r\033[K\033[1A\033[K", end="")
+
+            self.actor_opt.step()
+            self.critic_opt.step()
+
+            logger.show_log(
+                f"[Update step {step + 1:>3}]  "
+                f"loss: C {critic_loss.item():.6f} "
+                f"A {actor_loss.item():.6f} E {entropy_loss.item():.6f}",
+                with_time=True,
+            )
 
         return critic_loss.item(), actor_loss.item(), entropy_loss.item()
 
