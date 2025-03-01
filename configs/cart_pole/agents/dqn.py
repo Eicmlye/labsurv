@@ -1,9 +1,8 @@
 from configs.runtime import DEVICE
 
 agent_cfg = dict(
-    episode_based = False,
-
-    agent = dict(
+    episode_based=False,
+    agent=dict(
         type="DQN",
         device=DEVICE,
         gamma=0.98,
@@ -24,8 +23,7 @@ agent_cfg = dict(
         # resume_from="output/cart_pole_trial/episode_9900.pth",
         # load_from="output/cart_pole_trial/episode_9900.pth",
     ),
-
-    replay_buffer = dict(
+    replay_buffer=dict(
         type="BaseReplayBuffer",
         device=DEVICE,
         capacity=10000,
