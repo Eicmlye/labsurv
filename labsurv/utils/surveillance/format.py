@@ -208,9 +208,13 @@ def apply_movement_on_agent(
         tilt_upper_bound = np.array([tilt_range[1] - tilt_step])
         tilt_lower_bound = np.array([tilt_range[0] + tilt_step])
 
-    if allow_polar and angular_movement[0] != 0 and (
-        round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) == 0
-        or round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0]) == 0
+    if (
+        allow_polar
+        and angular_movement[0] != 0
+        and (
+            round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) == 0
+            or round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0]) == 0
+        )
     ):
         return False
     else:

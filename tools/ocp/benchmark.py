@@ -7,6 +7,7 @@ from configs.runtime import DEVICE as DEVICE_STR
 from labsurv.physics import SurveillanceRoom
 from torch import pi as PI
 
+
 DEVICE = torch.device(DEVICE_STR)
 
 
@@ -92,7 +93,7 @@ def main(sample_name: str, data_path: str):
 
     room = _build_room(cfg_path, spec_path, sample_name)
 
-    save_dir = (f"output/{sample_name}")
+    save_dir = f"output/{sample_name}"
     room.save(save_dir)
     room.visualize(save_dir)
 

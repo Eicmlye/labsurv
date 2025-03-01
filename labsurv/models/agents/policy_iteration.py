@@ -172,7 +172,6 @@ def check_same_strategy(old_strat, new_strat, threshold):
 
 
 if __name__ == "__main__":
-    from labsurv.builders import ENVIRONMENTS
     from mmcv import Config
 
     cfg_path = input("Enter config path: ")

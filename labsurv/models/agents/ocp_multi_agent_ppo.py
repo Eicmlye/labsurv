@@ -1,6 +1,6 @@
-from copy import deepcopy
 import os
 import os.path as osp
+from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -11,11 +11,11 @@ from labsurv.models.agents import BaseAgent
 from labsurv.runners.hooks import LoggerHook
 from labsurv.utils.string import INDENT
 from labsurv.utils.surveillance import generate_action_mask, info_room2actor_input
+from mmcv.utils import ProgressBar
 from numpy import ndarray as array
 from numpy import pi as PI
 from torch import Tensor
 from torch.nn import Module
-from mmcv.utils import ProgressBar
 
 
 @AGENTS.register_module()
@@ -70,7 +70,9 @@ class OCPMultiAgentPPO(BaseAgent):
                 "Use `load_from` instead of `resume_from` to load model in test mode."
             )
 
-        if (load_from is not None or resume_from is not None) and backbone_path is not None:
+        if (
+            load_from is not None or resume_from is not None
+        ) and backbone_path is not None:
             raise ValueError(
                 "`backbone_path` will be ignored if `load_from` "
                 "or `resume_from` is not None"
@@ -95,7 +97,8 @@ class OCPMultiAgentPPO(BaseAgent):
         if not self.test_mode:
             self.gradient_accumulation_batchsize = (
                 gradient_accumulation_batchsize
-                if gradient_accumulation_batchsize is not None else self.agent_num
+                if gradient_accumulation_batchsize is not None
+                else self.agent_num
             )
             self.lr = [actor_lr, critic_lr]
             self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr[0])
@@ -113,9 +116,11 @@ class OCPMultiAgentPPO(BaseAgent):
             self.load(load_from)
         elif backbone_path is not None:
             self.load_backbone(backbone_path, freeze_backbone)
-        
+
         if len(freeze_backbone) > 0:
-            freeze_name = tuple([f"set_abstraction.{index}" for index in freeze_backbone])
+            freeze_name = tuple(
+                [f"set_abstraction.{index}" for index in freeze_backbone]
+            )
             for name, parameter in self.actor.backbone.named_parameters():
                 if name.startswith(freeze_name):
                     parameter.requires_grad = False
@@ -131,7 +136,6 @@ class OCPMultiAgentPPO(BaseAgent):
                 filter(lambda p: p.requires_grad, self.critic.parameters()),
                 lr=self.lr[1],
             )
-
 
     def eval(self):
         self.test_mode = True
@@ -455,16 +459,12 @@ class OCPMultiAgentPPO(BaseAgent):
                         dim=0,
                     )
 
-        cur_action_indices = (
-            cur_all_actions.nonzero()[:, -1].view(-1, 1)
-        )  # [B, 1]
+        cur_action_indices = cur_all_actions.nonzero()[:, -1].view(-1, 1)  # [B, 1]
 
         pred_actor = deepcopy(self.actor)
 
         gradient_accumulation_batchnum = int(
-            np.ceil(
-                batch_size * self.agent_num / self.gradient_accumulation_batchsize
-            )
+            np.ceil(batch_size * self.agent_num / self.gradient_accumulation_batchsize)
         )
         for param_group in self.actor_opt.param_groups:
             param_group["lr"] = self.lr[0] / gradient_accumulation_batchnum
@@ -485,9 +485,9 @@ class OCPMultiAgentPPO(BaseAgent):
 
                 ga_cur_self_and_neigh_params = cur_self_and_neigh_params.view(
                     batch_size * self.agent_num, -1, param_dim
-                )[lower_index: upper_index_excluded]
+                )[lower_index:upper_index_excluded]
                 ga_cur_self_mask = cur_self_mask.view(batch_size * self.agent_num, -1)[
-                    lower_index: upper_index_excluded
+                    lower_index:upper_index_excluded
                 ]
                 ga_cur_neigh = cur_neigh.view(
                     batch_size * self.agent_num,
@@ -495,15 +495,16 @@ class OCPMultiAgentPPO(BaseAgent):
                     neigh_side_length,
                     neigh_side_length,
                     neigh_side_length,
-                )[lower_index: upper_index_excluded]
+                )[lower_index:upper_index_excluded]
 
                 action_logits: Tensor = self.actor(  # [GA, ACTION_DIM]
                     ga_cur_self_and_neigh_params, ga_cur_self_mask, ga_cur_neigh
                 )
                 action_logits[
                     cur_all_action_masks.view(batch_size * self.agent_num, -1)[
-                        lower_index: upper_index_excluded
-                    ] == 1
+                        lower_index:upper_index_excluded
+                    ]
+                    == 1
                 ] = float("-inf")
                 action_dist = F.softmax(action_logits, dim=-1)  # [GA]
 
@@ -511,9 +512,7 @@ class OCPMultiAgentPPO(BaseAgent):
                     torch.gather(
                         action_dist + 1e-8,
                         dim=1,
-                        index=cur_action_indices[
-                            lower_index: upper_index_excluded
-                        ],
+                        index=cur_action_indices[lower_index:upper_index_excluded],
                     ).view(-1)
                 )
 
@@ -530,11 +529,10 @@ class OCPMultiAgentPPO(BaseAgent):
                                 ga_cur_neigh,
                             ),
                             dim=-1,
-                        ) + 1e-8,
+                        )
+                        + 1e-8,
                         dim=1,
-                        index=cur_action_indices[
-                            lower_index: upper_index_excluded
-                        ],
+                        index=cur_action_indices[lower_index:upper_index_excluded],
                     ).view(-1)
                 ).detach()
 
@@ -542,18 +540,18 @@ class OCPMultiAgentPPO(BaseAgent):
                 significance = torch.exp(cur_strat_prob - pred_strat_prob)
 
                 surrogate_1 = significance * (
-                    all_agents_actor_advantages[lower_index: upper_index_excluded]
+                    all_agents_actor_advantages[lower_index:upper_index_excluded]
                     if self.mixed_reward
-                    else advantages[lower_index: upper_index_excluded]
+                    else advantages[lower_index:upper_index_excluded]
                 )  # [GA]
                 surrogate_2 = torch.clamp(  # [GA]
                     significance,
                     1 - self.clip_epsilon,
                     1 + self.clip_epsilon,
                 ) * (
-                    all_agents_actor_advantages[lower_index: upper_index_excluded]
+                    all_agents_actor_advantages[lower_index:upper_index_excluded]
                     if self.mixed_reward
-                    else advantages[lower_index: upper_index_excluded]
+                    else advantages[lower_index:upper_index_excluded]
                 )  # PPO clip
 
                 actor_loss = torch.mean(  # PPO loss

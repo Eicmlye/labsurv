@@ -223,7 +223,7 @@ def _plot_ac_subfig(
         ax10 = fig.add_subplot(2, 5, 10)  # actor loss sma
     else:
         raise NotImplementedError()
-    
+
         # fig = plt.figure(figsize=(20, 10))
         # ax1 = fig.add_subplot(2, 2, 1)
         # ax2 = fig.add_subplot(2, 2, 2)
@@ -460,14 +460,16 @@ def main():
 
     if args.save is None:
         args.save = args.log if not args.log.endswith(".log") else osp.dirname(args.log)
-    
+
     filename_shrink_to = osp.join(args.save, "shrink.log") if args.shrink else None
 
     log_filename = (
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    train_reward, eval_reward, loss, eval_step, is_ac = ocp_get_y_axis(log_filename, filename_shrink_to)
+    train_reward, eval_reward, loss, eval_step, is_ac = ocp_get_y_axis(
+        log_filename, filename_shrink_to
+    )
 
     plot_subfig(
         is_ac,

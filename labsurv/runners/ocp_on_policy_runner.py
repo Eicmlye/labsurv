@@ -147,7 +147,7 @@ class OCPOnPolicyRunner:
 
     def test(self, episode_index: Optional[int] = None):
         self.agent.eval()
-        
+
         self.logger.show_log(
             "\nEvaluating agent"
             + ("" if episode_index is None else f" at episode {episode_index + 1} ")

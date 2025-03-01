@@ -1,6 +1,7 @@
-from torch import pi as PI
 from math import atan as arctan
 from math import tan
+
+from torch import pi as PI
 
 # 感光元件尺寸
 # 1/4 inches: 靶面尺寸约为3.2mm x 2.4mm, 常用于小型监控设备, 如家庭安全摄像头.
