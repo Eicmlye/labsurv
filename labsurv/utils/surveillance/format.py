@@ -212,8 +212,13 @@ def apply_movement_on_agent(
         allow_polar
         and angular_movement[0] != 0
         and (
-            round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) == 0
-            or round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0]) == 0
+            (
+                round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) == 0
+                and abs(tilt_lower_bound - (-PI / 2)) < 1e-5
+            ) or (
+                round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0]) == 0
+                and abs(tilt_upper_bound - PI / 2) < 1e-5
+            )
         )
     ):
         return False
@@ -224,9 +229,9 @@ def apply_movement_on_agent(
             round(((cur_params[3] - pan_lower_bound) / pan_step)[0])
             + angular_movement[0]
             < 0
-            or round(((pan_upper_bound - cur_params[3]) / pan_step)[0])
+            or round(((cur_params[3] - pan_upper_bound) / pan_step)[0])
             + angular_movement[0]
-            < 0
+            > 0
         ):
             return False
         new_direction[0] = np.clip(
@@ -238,9 +243,9 @@ def apply_movement_on_agent(
     if pos_candidate is not None and (
         round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) + angular_movement[1]
         < 0
-        or round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0])
+        or round(((cur_params[4] - tilt_upper_bound) / tilt_step)[0])
         + angular_movement[1]
-        < 0
+        > 0
     ):
         return False
     new_direction[1] = np.clip(

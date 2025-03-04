@@ -115,7 +115,7 @@ class OCPMultiAgentPPO(BaseAgent):
         elif load_from is not None:
             self.load(load_from)
         elif backbone_path is not None:
-            self.load_backbone(backbone_path, freeze_backbone)
+            self.load_backbone(backbone_path)
 
         if len(freeze_backbone) > 0:
             freeze_name = tuple(
