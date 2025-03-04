@@ -220,3 +220,23 @@ AC_30 180 180 2 2.5 500 1920 1080 65 0.5 4
 AC_31 190 190 2 2.5 500 1920 1080 65 0.5 4
 AC_32 200 200 2 2.5 500 1920 1080 65 0.5 4
 ```
+
+### Check consistency
+
+Because the benchmark provides covering information explicitly, and our algorithm computes covering relations by DDA algorithm, we have to check the consistency between these two covering set.
+
+The operation below will generate the difference of the above coverings of the camera `[x, y, z, p, t]` in room `AC_01`.
+
+```bash
+python tools/ocp/data_check.py -n AC_01 -d <your_data_directory> --cam x y z p t
+```
+
+In the pointcloud, green points are covered by DDA, red points by benchmark, and orange by both.
+
+### Train and test on benchmark
+
+Change the room name variable `BENCHMARK_NAME` in `configs/ocp/_base_/params_benchmark.py`, and run
+
+```bash
+python tools/train.py --config configs/ocp/mappo_benchmark.py
+```
