@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from configs.runtime import DEVICE as DEVICE_STR
 from labsurv.physics import SurveillanceRoom
-from torch import pi as PI
 
 
 DEVICE = torch.device(DEVICE_STR)
@@ -30,7 +29,7 @@ def _get_room_params(spec_path: str, sample_name: str):
         _,
         _,
         voxel_length,
-        section_num,
+        _,
     ) = [float(param) for param in params[1:]]
 
     room_shape = [
@@ -39,11 +38,11 @@ def _get_room_params(spec_path: str, sample_name: str):
         int(cam_h / voxel_length) + 1,
     ]
 
-    return room_shape, int(sample_max_h / voxel_length) + 1, section_num
+    return room_shape, int(sample_max_h / voxel_length) + 1
 
 
 def _build_room(cfg_path: str, spec_path: str, sample_name: str) -> SurveillanceRoom:
-    full_shape, room_h, section_num = _get_room_params(spec_path, sample_name)
+    full_shape, room_h = _get_room_params(spec_path, sample_name)
     room = SurveillanceRoom(
         device=DEVICE,
         cfg_path=cfg_path,
