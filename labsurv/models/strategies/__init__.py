@@ -1,6 +1,6 @@
 from .ocp_multi_agent_ppo_policy_net import OCPMultiAgentPPOPolicyNet
 from .ocp_multi_agent_ppo_value_net import OCPMultiAgentPPOValueNet
-from .pointnet2_ac import PointNet2Actor, PointNet2Critic
+from .pointnet2_ac import PointNet2Actor, PointNet2Critic, PointNet2Discriminator
 from .rnd_net import RNDNet
 from .simple_cnn import SimpleCNN
 from .simple_policy_net import SimplePolicyNet
@@ -13,4 +13,5 @@ __all__ = [
     "OCPMultiAgentPPOValueNet",
     "PointNet2Actor",
     "PointNet2Critic",
+    "PointNet2Discriminator",
 ]
