@@ -64,6 +64,7 @@ class OCPMultiAgentOnPolicyRunner:
                 critic_loss=0,
                 actor_loss=0,
                 entropy_loss=0,
+                disc_loss=0,
                 reward=0,
                 coverage=0,
             )
@@ -129,8 +130,9 @@ class OCPMultiAgentOnPolicyRunner:
                     break
 
             if hasattr(self, "expert"):
-                expert_transitions = self.expert.sample()
-                transitions = self.expert.train(transitions, expert_transitions)
+                transitions, episode_return["disc_loss"] = self.expert.train(
+                    transitions
+                )
             if self.agent.manual:
                 expert_save_path = osp.join(self.logger.save_dir, "expert")
                 os.makedirs(expert_save_path, exist_ok=True)
@@ -152,7 +154,8 @@ class OCPMultiAgentOnPolicyRunner:
                     f"episode reward {episode_return["reward"]:.4f} "
                     f"| loss: C {episode_return["critic_loss"]:.6f} "
                     f"A {episode_return["actor_loss"]:.6f} "
-                    f"E {episode_return["entropy_loss"]:.6f} ",
+                    f"E {episode_return["entropy_loss"]:.6f} "
+                    f"D {episode_return["disc_loss"]:.6f} ",
                     with_time=True,
                 )
 

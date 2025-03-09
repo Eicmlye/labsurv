@@ -3,7 +3,7 @@ from configs.runtime import DEVICE
 
 expert = dict(
     type="GAIL",
-    disctiminator_cfg=dict(
+    discriminator_cfg=dict(
         type="PointNet2Discriminator",
         device=DEVICE,
         hidden_dim=16,
@@ -15,8 +15,7 @@ expert = dict(
     device=DEVICE,
     lr=1e-5,
     agent_num=AGENT_NUM,
-    sample_batchsize=15,
-    gradient_accumulation_batchsize=20,
+    gradient_accumulation_batchsize=25,
     backbone_path="labsurv/checkpoint/pointnet2backbone_rename.pth",
     freeze_backbone=[0, 1, 2, 3],
     expert_data_path="output/expert",
