@@ -36,7 +36,7 @@ agent_cfg = dict(
         ),
         device=DEVICE,
         gamma=0.95,
-        gradient_accumulation_batchsize=20,
+        gradient_accumulation_batchsize=25,
         actor_lr=1e-6,
         critic_lr=1e-5,
         update_step=5,

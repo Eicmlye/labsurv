@@ -27,7 +27,6 @@ class GAIL(BaseImitator):
         lr: float = 1e-4,
         gradient_accumulation_batchsize: Optional[int] = None,
         agent_num: int = 2,
-        sample_batchsize: int = 1,
         load_from: Optional[str] = None,
         resume_from: Optional[str] = None,
         backbone_path: Optional[str] = None,
@@ -53,10 +52,10 @@ class GAIL(BaseImitator):
         self._random = random.Random(seed)
 
         self.agent_num = agent_num
+        self.lr = lr
 
         self.discriminator: Module = STRATEGIES.build(discriminator_cfg).to(self.device)
-        self.opt = torch.optim.Adam(self.discriminator.parameters(), lr=lr)
-        self.batch_size = sample_batchsize
+        self.opt = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr)
         self.gradient_accumulation_batchsize = (
             gradient_accumulation_batchsize
             if gradient_accumulation_batchsize is not None
@@ -120,7 +119,7 @@ class GAIL(BaseImitator):
 
         pkl_list = os.listdir(expert_data_path)
         for data_path in pkl_list:
-            with open(data_path, "rb") as f:
+            with open(osp.join(expert_data_path, data_path), "rb") as f:
                 cur_transitions = pickle.load(f)
                 for batch_index in range(len(cur_transitions["cur_observation"])):
                     transition = dict()
@@ -129,14 +128,9 @@ class GAIL(BaseImitator):
 
                     self._buffer.append(transition)
 
-    def sample(self) -> Dict[str, List[bool | float | array]]:
-        """
-        Replay buffer is only available for sampling after the number of contents hit
-        the threshold.
-        """
-
+    def sample(self, batch_size: int) -> Dict[str, List[bool | float | array]]:
         batch_transitions: List[Dict[str, bool | float | array]] = self._random.sample(
-            self._buffer, self.batch_size
+            self._buffer, batch_size
         )
 
         samples: Dict[str, List[bool | float | array]] = {
@@ -151,7 +145,6 @@ class GAIL(BaseImitator):
     def train(
         self,
         transitions: Dict[str, List[bool | float | array | Tuple[int, array]]],
-        expert_transitions: Dict[str, List[bool | float | array | Tuple[int, array]]],
     ):
         (
             cur_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
@@ -164,6 +157,7 @@ class GAIL(BaseImitator):
         param_dim: int = cur_self_and_neigh_params.shape[3]
         neigh_side_length: int = cur_neigh.shape[3]
 
+        expert_transitions = self.sample(batch_size)
         (
             expert_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
             expert_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
@@ -242,7 +236,7 @@ class GAIL(BaseImitator):
 
             discriminator_loss.backward()
 
-            rewards += -torch.log(agent_disc_prob).tolist()
+            rewards += (-torch.log(agent_disc_prob)).tolist()
 
             prog_bar.update()
         print("\r\033[K\033[1A\033[K", end="")
@@ -257,7 +251,7 @@ class GAIL(BaseImitator):
             dim=1,
         ).tolist()
 
-        return transitions
+        return transitions, discriminator_loss.item()
 
     def _reformat_input(
         self,

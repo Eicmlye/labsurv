@@ -78,7 +78,7 @@ def ocp_get_y_axis(
     # load y axis
     train_reward = []
     eval_reward = []
-    loss = []
+    loss: List[Optional[List[float]]] = []
     eval_step = None
     found_episode_line = False
     start_episode: int = 1
@@ -136,13 +136,19 @@ def ocp_get_y_axis(
                         else float(word_list[y_flag + 8])
                     )
                     entropy_loss = float(word_list[y_flag + 10])
+                    if "D" in word_list:
+                        disc_loss = float(word_list[y_flag + 12])
 
                     if len(loss) == 0:
-                        loss = [[actor_loss], [critic_loss], [entropy_loss]]
+                        loss = [[actor_loss], [critic_loss], [entropy_loss], None]
+                        if "D" in word_list:
+                            loss[3] = [disc_loss]
                     else:
                         loss[0].append(actor_loss)
                         loss[1].append(critic_loss)
                         loss[2].append(entropy_loss)
+                        if "D" in word_list:
+                            loss[3].append(disc_loss)
                 else:
                     loss.append(float(word_list[y_flag + 5]))
 
@@ -176,7 +182,7 @@ def plot_subfig(
     drop_abnormal: bool = False,
 ):
     if is_ac:
-        actor_loss, critic_loss, entropy_loss = loss
+        actor_loss, critic_loss, entropy_loss, disc_loss = loss
         _plot_ac_subfig(
             train_reward,
             eval_reward,
@@ -185,10 +191,11 @@ def plot_subfig(
             entropy_loss,
             eval_step,
             save_path,
-            tick_step,
-            sma,
-            reward_sma,
-            drop_abnormal,
+            tick_step=tick_step,
+            sma=sma,
+            reward_sma=reward_sma,
+            drop_abnormal=drop_abnormal,
+            disc_loss=disc_loss,
         )
     else:
         _plot_non_ac_subfig(eval_reward, loss, eval_step, save_path, tick_step)
@@ -206,21 +213,24 @@ def _plot_ac_subfig(
     sma: int = 1,
     reward_sma: int = 1,
     drop_abnormal: bool = False,
+    disc_loss: Optional[List[float]] = None,
 ):
     # figure settings
     if sma > 1:
-        fig = plt.figure(figsize=(40, 10))
-        ax1 = fig.add_subplot(2, 5, 1)  # train_reward
-        ax2 = fig.add_subplot(2, 5, 2)  # eval_reward
-        ax3 = fig.add_subplot(2, 5, 3)  # entropy loss
-        ax4 = fig.add_subplot(2, 5, 4)  # critic loss
-        ax5 = fig.add_subplot(2, 5, 5)  # actor loss
-        ax6 = fig.add_subplot(2, 5, 6)  # train_reward sma
+        fig = plt.figure(figsize=(40, 20))
+        ax1 = fig.add_subplot(3, 4, 1)  # train_reward
+        ax2 = fig.add_subplot(3, 4, 2)  # train_reward sma
+        ax3 = fig.add_subplot(3, 4, 3)  # eval_reward
         if reward_sma > 1:
-            ax7 = fig.add_subplot(2, 5, 7)  # eval_reward sma
-        ax8 = fig.add_subplot(2, 5, 8)  # entropy loss sma
-        ax9 = fig.add_subplot(2, 5, 9)  # critic loss sma
-        ax10 = fig.add_subplot(2, 5, 10)  # actor loss sma
+            ax4 = fig.add_subplot(3, 4, 4)  # eval_reward sma
+        ax5 = fig.add_subplot(3, 4, 5)  # entropy loss
+        ax6 = fig.add_subplot(3, 4, 6)  # entropy loss sma
+        ax7 = fig.add_subplot(3, 4, 7)  # critic loss
+        ax8 = fig.add_subplot(3, 4, 8)  # critic loss sma
+        ax9 = fig.add_subplot(3, 4, 9)  # actor loss
+        ax10 = fig.add_subplot(3, 4, 10)  # actor loss sma
+        ax11 = fig.add_subplot(3, 4, 11)  # disc loss
+        ax12 = fig.add_subplot(3, 4, 12)  # disc loss sma
     else:
         raise NotImplementedError()
 
@@ -245,7 +255,7 @@ def _plot_ac_subfig(
         tick_step=tick_step,
     )
     _plot_subfig(
-        ax2,
+        ax3,
         x_reward,
         eval_reward,
         line_style="-",
@@ -254,7 +264,7 @@ def _plot_ac_subfig(
         tick_step=tick_step,
     )
     _plot_subfig(
-        ax3,
+        ax5,
         x_loss,
         entropy_loss,
         line_style="-",
@@ -265,7 +275,7 @@ def _plot_ac_subfig(
         drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
-        ax4,
+        ax7,
         x_loss,
         critic_loss,
         line_style="-",
@@ -276,7 +286,7 @@ def _plot_ac_subfig(
         drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
-        ax5,
+        ax9,
         x_loss,
         actor_loss,
         line_style="-",
@@ -285,9 +295,20 @@ def _plot_ac_subfig(
         tick_step=tick_step,
         drop_abnormal=drop_abnormal,
     )
+    if disc_loss is not None:
+        _plot_subfig(
+            ax11,
+            x_loss,
+            disc_loss,
+            line_style="-",
+            color="orange",
+            title="discriminator loss",
+            tick_step=tick_step,
+            drop_abnormal=drop_abnormal,
+        )
     if sma > 1:
         _plot_subfig(
-            ax6,
+            ax2,
             x_loss,
             simple_moving_average(train_reward, window=sma),
             line_style="-",
@@ -297,7 +318,7 @@ def _plot_ac_subfig(
         )
         if reward_sma > 1:
             _plot_subfig(
-                ax7,
+                ax4,
                 x_reward,
                 simple_moving_average(eval_reward, window=reward_sma),
                 line_style="-",
@@ -306,7 +327,7 @@ def _plot_ac_subfig(
                 tick_step=tick_step,
             )
         _plot_subfig(
-            ax8,
+            ax6,
             x_loss,
             simple_moving_average(entropy_loss, window=sma),
             line_style="-",
@@ -317,7 +338,7 @@ def _plot_ac_subfig(
             drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
-            ax9,
+            ax8,
             x_loss,
             simple_moving_average(critic_loss, window=sma),
             line_style="-",
@@ -337,6 +358,17 @@ def _plot_ac_subfig(
             tick_step=tick_step,
             drop_abnormal=drop_abnormal,
         )
+        if disc_loss is not None:
+            _plot_subfig(
+                ax12,
+                x_loss,
+                simple_moving_average(disc_loss, window=sma),
+                line_style="-",
+                color="orange",
+                title=f"SMA{sma} discriminator loss",
+                tick_step=tick_step,
+                drop_abnormal=drop_abnormal,
+            )
 
     # plt.show()
     fig.subplots_adjust(left=0.05, right=0.95, wspace=0.4, hspace=0.5)
