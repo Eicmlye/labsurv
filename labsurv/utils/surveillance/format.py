@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -568,3 +568,168 @@ def _generate_action_mask(
             valid_actions[index] = 0
 
     return valid_actions  # [ACTION_DIM]
+
+
+def reformat_actor_input(
+    agent_num: int,
+    device: torch.cuda.device,
+    cur_observations: List[List[Tuple[array, array, array]]],
+    cur_actions: List[List[array]],
+    cur_action_masks: List[List[array]],
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    ## permute batch channel and agent channel for actor inputs
+    batch_size = len(cur_observations)
+    cur_self_and_neigh_params_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_self_mask_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_neigh_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_all_actions_list: List[List[array]] = [[] for i in range(agent_num)]
+    cur_all_action_masks_list: List[List[array]] = [[] for i in range(agent_num)]
+    for batch_index in range(batch_size):
+        for agent_index in range(agent_num):
+            cur_self_and_neigh_params_list[agent_index].append(
+                cur_observations[batch_index][agent_index][0]
+            )
+            cur_self_mask_list[agent_index].append(
+                cur_observations[batch_index][agent_index][1]
+            )
+            cur_neigh_list[agent_index].append(
+                cur_observations[batch_index][agent_index][2]
+            )
+            cur_all_actions_list[agent_index].append(
+                cur_actions[batch_index][agent_index]
+            )
+            cur_all_action_masks_list[agent_index].append(
+                cur_action_masks[batch_index][agent_index]
+            )
+    # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+    cur_self_and_neigh_params: Tensor = torch.tensor(
+        np.array(cur_self_and_neigh_params_list),
+        dtype=torch.float,
+        device=device,
+    )
+    cur_self_mask: Tensor = torch.tensor(  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+        np.array(cur_self_mask_list), dtype=torch.bool, device=device
+    )
+    cur_neigh: Tensor = torch.tensor(  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
+        np.array(cur_neigh_list), dtype=torch.float, device=device
+    )
+    cur_all_actions: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
+        np.array(cur_all_actions_list), dtype=torch.float, device=device
+    )
+    cur_all_action_masks: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
+        np.array(cur_all_action_masks_list), dtype=torch.bool, device=device
+    )
+
+    return (
+        cur_self_and_neigh_params,
+        cur_self_mask,
+        cur_neigh,
+        cur_all_actions,
+        cur_all_action_masks,
+    )
+
+
+def reformat_critic_input(
+    device: torch.cuda.device,
+    cur_critic_inputs: List[Tuple[array, array]],
+    next_critic_inputs: List[Tuple[array, array]],
+    rewards: List[float],
+    terminated: List[bool],
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+    cur_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
+        np.array([cur_critic_input[0] for cur_critic_input in cur_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    cur_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
+        np.array([cur_critic_input[1] for cur_critic_input in cur_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    next_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
+        np.array([next_critic_input[0] for next_critic_input in next_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    next_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
+        np.array([next_critic_input[1] for next_critic_input in next_critic_inputs]),
+        dtype=torch.float,
+        device=device,
+    )
+    all_rewards: Tensor = torch.tensor(  # [B, AGENT_NUM + 1]
+        rewards, dtype=torch.float, device=device
+    )
+    mixed_rewards: Tensor = all_rewards[:, :-1]  # [B, AGENT_NUM]
+    system_rewards: Tensor = all_rewards[:, -1]  # [B]
+    all_terminated: Tensor = torch.tensor(  # [B]
+        terminated, dtype=torch.int64, device=device
+    )
+
+    return (
+        cur_cam_params,
+        cur_envs,
+        next_cam_params,
+        next_envs,
+        mixed_rewards,
+        system_rewards,
+        all_terminated,
+    )
+
+
+def reformat_input(
+    agent_num: int,
+    device: torch.device,
+    transitions: Dict[str, List[bool | float | array | Tuple[int, array]]],
+):
+    """
+    ## Returns:
+
+        actor_inputs:
+        (
+            cur_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+            cur_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
+            cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
+            cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+        )
+        
+        critic_inputs:
+        (
+            cur_cam_params,  # [B, AGENT_NUM, PARAM_DIM]
+            cur_envs,  # [B, 3, W, D, H]
+            next_cam_params,  # [B, AGENT_NUM, PARAM_DIM]
+            next_envs,  # [B, 3, W, D, H]
+            mixed_rewards,  # [B, AGENT_NUM]
+            system_rewards,  # [B]
+            all_terminated,  # [B]
+        )
+    """
+    cur_observations: List[List[Tuple[array, array, array]]] = transitions[
+        "cur_observation"
+    ]  # [B, AGENT_NUM, Tuple]
+    # [B, AGENT_NUM, ACTION_DIM]
+    cur_actions: List[List[array]] = transitions["cur_action"]
+    # [B, AGENT_NUM, ACTION_DIM]
+    cur_action_masks: List[List[array]] = transitions["cur_action_mask"]
+    cur_critic_inputs: List[Tuple[array, array]] = transitions["cur_critic_input"]
+    next_critic_inputs: List[Tuple[array, array]] = transitions["next_critic_input"]
+    rewards: List[float] = transitions["reward"]
+    terminated: List[bool] = transitions["terminated"]
+
+    actor_inputs = reformat_actor_input(
+        agent_num,
+        device,
+        cur_observations,
+        cur_actions,
+        cur_action_masks,
+    )
+
+    critic_inputs = reformat_critic_input(
+        device,
+        cur_critic_inputs,
+        next_critic_inputs,
+        rewards,
+        terminated,
+    )
+
+    return actor_inputs, critic_inputs

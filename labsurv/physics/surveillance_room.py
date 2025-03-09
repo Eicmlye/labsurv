@@ -659,7 +659,13 @@ class SurveillanceRoom:
                 fpkl,
             )
 
-    def visualize(self, save_path: str, mode: str = "occupancy", heatmap: bool = False):
+    def visualize(
+        self,
+        save_path: str,
+        mode: str = "occupancy",
+        heatmap: bool = False,
+        emphasis: Optional[Tensor] = None,
+    ):
         """
         ## Description:
 
@@ -681,7 +687,7 @@ class SurveillanceRoom:
         if mode == "occupancy":
             points_with_color = self._visualize_occupancy()
         elif mode == "camera":
-            points_with_color = self._visualize_camera(heatmap)
+            points_with_color = self._visualize_camera(heatmap, emphasis)
         else:
             raise ValueError(f"Unsupported mode {mode}.")
 
@@ -728,7 +734,9 @@ class SurveillanceRoom:
 
         return points_with_color
 
-    def _visualize_camera(self, heatmap: bool = False) -> Tensor:
+    def _visualize_camera(
+        self, heatmap: bool = False, emphasis: Optional[Tensor] = None
+    ) -> Tensor:
         """
         ## Description:
 
@@ -814,7 +822,18 @@ class SurveillanceRoom:
             )
             points_with_color = torch.cat(to_be_visualized, 0)
 
-        return points_with_color
+        if emphasis is None:
+            return points_with_color
+        
+        emphasis_shifted = shift(emphasis.unsqueeze(0).to(self.device), CENTER_SHIFT)
+        emphasis_with_color = torch.cat(
+            (
+                emphasis_shifted,
+                torch.tensor([[255.0, 140.0, 0.0]], device=self.device),
+            ),
+            dim=1,
+        )
+        return torch.cat((points_with_color, emphasis_with_color), dim=0)
 
     def get_info(self) -> array:
         """
