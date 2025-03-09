@@ -1,5 +1,6 @@
-import torch
 from typing import Optional
+
+import torch
 from labsurv.builders import IMITATORS
 
 

@@ -824,7 +824,7 @@ class SurveillanceRoom:
 
         if emphasis is None:
             return points_with_color
-        
+
         emphasis_shifted = shift(emphasis.unsqueeze(0).to(self.device), CENTER_SHIFT)
         emphasis_with_color = torch.cat(
             (

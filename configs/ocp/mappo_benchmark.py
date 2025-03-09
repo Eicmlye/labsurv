@@ -1,12 +1,8 @@
 from configs.ocp._base_.agents import mappo_benchmark_agent
 from configs.ocp._base_.envs import mappo_benchmark_env
 from configs.ocp._base_.experts import gail_expert
+from configs.ocp._base_.params_benchmark import AGENT_NUM, BENCHMARK_NAME, MANUAL
 from labsurv.utils import get_time_stamp
-from configs.ocp._base_.params_benchmark import (
-    AGENT_NUM,
-    BENCHMARK_NAME,
-    MANUAL,
-)
 
 agent_type = "MAPPO_PointNet2"
 

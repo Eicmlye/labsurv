@@ -320,7 +320,11 @@ class PointNet2Discriminator(Module):
 
         # out
         self.out = Sequential(
-            Linear(2 * hidden_dim + neigh_out_dim + action_dim, hidden_dim, device=self.device),
+            Linear(
+                2 * hidden_dim + neigh_out_dim + action_dim,
+                hidden_dim,
+                device=self.device,
+            ),
             ReLU(),
             Linear(hidden_dim, 1, device=self.device),
         )
@@ -391,8 +395,10 @@ class PointNet2Discriminator(Module):
         )  # [B, NEIGH_OUT_DIM]
 
         # out
-        merged_feats: Tensor = torch.concatenate(  # [B, 2*HIDDEN_DIM + NEIGH_OUT_DIM + ACTION_DIM]
-            (self_embedding, comm_feats, neigh_feats, actions), dim=1
+        merged_feats: Tensor = (
+            torch.concatenate(  # [B, 2*HIDDEN_DIM + NEIGH_OUT_DIM + ACTION_DIM]
+                (self_embedding, comm_feats, neigh_feats, actions), dim=1
+            )
         )
         out: Tensor = sigmoid(self.out(merged_feats))
 

@@ -7,5 +7,5 @@ __all__ = [
     "reinforce_agent",
     "multi_agent_ppo_agent",
     "mappo_pointnet2_agent",
-    "mappo_benchmark_agent"
+    "mappo_benchmark_agent",
 ]

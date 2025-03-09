@@ -203,7 +203,7 @@ class OCPMultiAgentPPO(BaseAgent):
             return self.manual_take_action(room, cam_params, **kwargs)
         else:
             return self.train_take_action(room, cam_params, **kwargs)
-        
+
     def manual_take_action(
         self, room, cam_params: array, **kwargs
     ) -> Tuple[List[Tuple[array, array, array]], List[array], List[array]]:
@@ -224,7 +224,7 @@ class OCPMultiAgentPPO(BaseAgent):
             action_masks (List[array]): [AGENT_NUM, ACTION_DIM].
         """
 
-        logger: LoggerHook = kwargs["logger"]
+        # logger: LoggerHook = kwargs["logger"]
         with torch.no_grad():  # if grad, memory leaks
             observations: List[Tuple[array, array, array]] = []
             actions: List[array] = []
@@ -249,7 +249,7 @@ class OCPMultiAgentPPO(BaseAgent):
                         kwargs["save_dir"],
                         "pointcloud",
                         "manual",
-                        f"agent{agent_index + 1}_full_room.ply"
+                        f"agent{agent_index + 1}_full_room.ply",
                     ),
                     "camera",
                     heatmap=True,
@@ -267,9 +267,7 @@ class OCPMultiAgentPPO(BaseAgent):
                     len(input_action) == 0 or input_action[0].upper() not in "ADSWEQFR"
                 ):
                     input_action = input("Illegal input. Your action: ")
-                input_dict = dict(
-                    A=0, D=1, S=2, W=3, E=6, Q=7, F=8, R=9
-                )
+                input_dict = dict(A=0, D=1, S=2, W=3, E=6, Q=7, F=8, R=9)
 
                 actions.append(
                     np.eye(self.actor.out[2].out_features)[

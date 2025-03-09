@@ -1,18 +1,18 @@
-from typing import Dict, List, Optional, Tuple
 import os
 import os.path as osp
 import pickle
 import random
+from typing import Dict, List, Optional, Tuple
 
+import numpy as np
+import torch
 from labsurv.builders import IMITATORS, STRATEGIES
 from labsurv.models.imitators import BaseImitator
-import torch
-from torch import Tensor
-import numpy as np
-from torch.nn import Module, BCELoss
-from numpy import ndarray as array
 from labsurv.utils.surveillance import reformat_input
 from mmcv.utils import ProgressBar
+from numpy import ndarray as array
+from torch import Tensor
+from torch.nn import BCELoss, Module
 
 
 @IMITATORS.register_module()
@@ -48,7 +48,7 @@ class GAIL(BaseImitator):
             raise ValueError(
                 "`load_from` and `resume_from` should not be both specified."
             )
-        
+
         super().__init__(device)
         self._random = random.Random(seed)
 
@@ -88,7 +88,9 @@ class GAIL(BaseImitator):
     def load(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        self.discriminator.load_state_dict(checkpoint["discriminator"]["model_state_dict"])
+        self.discriminator.load_state_dict(
+            checkpoint["discriminator"]["model_state_dict"]
+        )
         # One shall not load params of the optimizers, because learning rate
         # is contained in the state_dict of the optimizers, and loading
         # optimizer params will ignore the new learning rate.
@@ -96,7 +98,9 @@ class GAIL(BaseImitator):
     def resume(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        self.discriminator.load_state_dict(checkpoint["discriminator"]["model_state_dict"])
+        self.discriminator.load_state_dict(
+            checkpoint["discriminator"]["model_state_dict"]
+        )
         self.opt.load_state_dict(checkpoint["discriminator"]["optimizer_state_dict"])
         self.start_episode = checkpoint["episode"] + 1
 
@@ -159,7 +163,7 @@ class GAIL(BaseImitator):
         batch_size: int = cur_self_and_neigh_params.shape[1]
         param_dim: int = cur_self_and_neigh_params.shape[3]
         neigh_side_length: int = cur_neigh.shape[3]
-        
+
         (
             expert_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
             expert_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
@@ -176,7 +180,7 @@ class GAIL(BaseImitator):
 
         rewards: List[float] = []
         self.opt.zero_grad()
-        print(f"\nGradient accumulation for GAIL...")
+        print("\nGradient accumulation for GAIL...")
         prog_bar = ProgressBar(gradient_accumulation_batchnum)
         for ga_step in range(gradient_accumulation_batchnum):
             lower_index = ga_step * self.gradient_accumulation_batchsize
@@ -198,16 +202,16 @@ class GAIL(BaseImitator):
                 neigh_side_length,
                 neigh_side_length,
             )[lower_index:upper_index_excluded]
-            ga_cur_all_actions = cur_all_actions.view(
-                batch_size * self.agent_num, -1
-            )[lower_index:upper_index_excluded]
+            ga_cur_all_actions = cur_all_actions.view(batch_size * self.agent_num, -1)[
+                lower_index:upper_index_excluded
+            ]
 
             ga_expert_self_and_neigh_params = expert_self_and_neigh_params.view(
                 batch_size * self.agent_num, -1, param_dim
             )[lower_index:upper_index_excluded]
-            ga_expert_self_mask = expert_self_mask.view(batch_size * self.agent_num, -1)[
-                lower_index:upper_index_excluded
-            ]
+            ga_expert_self_mask = expert_self_mask.view(
+                batch_size * self.agent_num, -1
+            )[lower_index:upper_index_excluded]
             ga_expert_neigh = expert_neigh.view(
                 batch_size * self.agent_num,
                 3,
@@ -218,7 +222,7 @@ class GAIL(BaseImitator):
             ga_expert_all_actions = expert_all_actions.view(
                 batch_size * self.agent_num, -1
             )[lower_index:upper_index_excluded]
-            
+
             agent_disc_prob = self.discriminator(
                 ga_cur_self_and_neigh_params,
                 ga_cur_self_mask,
@@ -234,9 +238,7 @@ class GAIL(BaseImitator):
 
             discriminator_loss: Tensor = BCELoss()(
                 agent_disc_prob, torch.ones_like(agent_disc_prob)
-            ) + BCELoss()(
-                expert_disc_prob, torch.zeros_like(expert_disc_prob)
-            )
+            ) + BCELoss()(expert_disc_prob, torch.zeros_like(expert_disc_prob))
 
             discriminator_loss.backward()
 
@@ -247,15 +249,13 @@ class GAIL(BaseImitator):
 
         self.opt.step()
 
-        transitions["reward"] = (  # [B, AGENT_NUM + 1]
-            torch.cat(
-                (
-                    torch.tensor(rewards).view(self.agent_num, -1).permute(1, 0),
-                    torch.zeros((batch_size, 1)),  # fake system reward
-                ),
-                dim=1,
-            ).tolist()
-        )
+        transitions["reward"] = torch.cat(  # [B, AGENT_NUM + 1]
+            (
+                torch.tensor(rewards).view(self.agent_num, -1).permute(1, 0),
+                torch.zeros((batch_size, 1)),  # fake system reward
+            ),
+            dim=1,
+        ).tolist()
 
         return transitions
 

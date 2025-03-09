@@ -2,8 +2,8 @@ import os
 import os.path as osp
 from typing import List
 
-from labsurv.utils.string import CLEAR_FORMAT, INDENT
 import numpy as np
+from labsurv.utils.string import CLEAR_FORMAT, INDENT
 from numpy import ndarray as array
 
 

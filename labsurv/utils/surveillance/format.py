@@ -215,7 +215,8 @@ def apply_movement_on_agent(
             (
                 round(((cur_params[4] - tilt_lower_bound) / tilt_step)[0]) == 0
                 and abs(tilt_lower_bound - (-PI / 2)) < 1e-5
-            ) or (
+            )
+            or (
                 round(((tilt_upper_bound - cur_params[4]) / tilt_step)[0]) == 0
                 and abs(tilt_upper_bound - PI / 2) < 1e-5
             )
@@ -692,7 +693,7 @@ def reformat_input(
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
         )
-        
+
         critic_inputs:
         (
             cur_cam_params,  # [B, AGENT_NUM, PARAM_DIM]

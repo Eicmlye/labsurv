@@ -1,17 +1,16 @@
-import pickle
 import os
 import os.path as osp
+import pickle
 from copy import deepcopy
 from typing import Dict, Optional
 
-import numpy as np
-from labsurv.builders import AGENTS, ENVIRONMENTS, IMITATORS, HOOKS, RUNNERS
+from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, IMITATORS, RUNNERS
 from labsurv.models.agents import BaseAgent
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
+from labsurv.utils.string import get_time_stamp, readable_action, readable_param
 from mmcv import Config
 from numpy import ndarray as array
-from labsurv.utils.string import readable_param, readable_action, get_time_stamp
 
 
 @RUNNERS.register_module()
@@ -38,7 +37,7 @@ class OCPMultiAgentOnPolicyRunner:
             self.start_episode = self.agent.start_episode
             if "resume_from" in cfg.agent.keys() and cfg.agent.resume_from is not None:
                 self.logger.set_cur_episode_index(self.start_episode - 1)
-            
+
             if hasattr(cfg, "expert") and cfg.expert is not None:
                 self.expert = IMITATORS.build(cfg.expert)
                 if not self.agent.mixed_reward:
@@ -128,18 +127,16 @@ class OCPMultiAgentOnPolicyRunner:
                         point_cloud_path, "camera", heatmap=True
                     )
                     break
-            
+
             if hasattr(self, "expert"):
                 expert_transitions = self.expert.sample()
                 transitions = self.expert.train(transitions, expert_transitions)
             if self.agent.manual:
-                expert_save_path = osp.join(
-                    self.logger.save_dir, "expert"
-                )
+                expert_save_path = osp.join(self.logger.save_dir, "expert")
                 os.makedirs(expert_save_path, exist_ok=True)
                 with open(
                     osp.join(
-                        expert_save_path, 
+                        expert_save_path,
                         f"{get_time_stamp()}_episode{episode + 1}_step{step + 1}.pkl",
                     ),
                     "wb",
@@ -289,4 +286,3 @@ def _readable_action(actions: array):
             readable += ", "
 
     return readable
-
