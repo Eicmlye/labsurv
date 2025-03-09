@@ -40,5 +40,5 @@ env_cfg = dict(
     ],
     terminate_goal=1.0,
     reset_weight=4,
-    # individual_reward_alpha=0.8,  # must enable `mixed_reward` of agent
+    individual_reward_alpha=0.8,  # must enable `mixed_reward` of agent
 )

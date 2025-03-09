@@ -180,7 +180,11 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             [
                 [
                     self.tilt_range[0] + tilt_index * tilt_step
-                    for tilt_index in range(1, self.tilt_section_num)
+                    for tilt_index in range(
+                        0 if self.allow_polar else 1,
+                        self.tilt_section_num + 1
+                        if self.allow_polar else self.tilt_section_num,
+                    )
                 ]
             ]
         ).transpose()
@@ -381,10 +385,16 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
 
         if self.individual_reward_alpha > 0:
             for vismask in new_vismasks:
-                cov_without_agent: float = (
-                    np.sum((vis_count - vismask) > 0) / total_target_num
+                agent_cov: float = (
+                    (
+                        np.sum(1 / vis_count[vismask > 0])
+                        if len(vis_count[vismask > 0]) > 0
+                        else 1e-8
+                    ) / total_target_num
                 )
-                individual_rewards.append((cur_coverage - cov_without_agent) * 100)
+                individual_rewards.append(
+                    (agent_cov if total_reward > 0 else 1 / agent_cov) + 1e-8
+                )
             individual_rewards = (
                 np.array(individual_rewards)
                 / sum(individual_rewards)

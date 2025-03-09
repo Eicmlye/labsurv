@@ -1,9 +1,11 @@
 from configs.ocp._base_.agents import mappo_benchmark_agent
 from configs.ocp._base_.envs import mappo_benchmark_env
+from configs.ocp._base_.experts import gail_expert
 from labsurv.utils import get_time_stamp
 from configs.ocp._base_.params_benchmark import (
     AGENT_NUM,
     BENCHMARK_NAME,
+    MANUAL,
 )
 
 agent_type = "MAPPO_PointNet2"
@@ -13,7 +15,8 @@ steps = 20
 
 work_dir = (
     f"./output/ocp/{agent_type.lower()}_benchmark/"
-    f"ma{AGENT_NUM}_{steps}steps_{BENCHMARK_NAME}"
+    f"ma{AGENT_NUM}_{steps}steps_{BENCHMARK_NAME}_32melt_gail"
+    + ("_MANUAL" if MANUAL else "")
 )
 exp_name = get_time_stamp()
 
@@ -32,6 +35,8 @@ if agent_cfg["multi_agent"]:
 
 if "replay_buffer" in agent_cfg.keys():
     replay_buffer = agent_cfg["replay_buffer"]
+
+expert = gail_expert
 
 save_checkpoint_interval = 100
 
