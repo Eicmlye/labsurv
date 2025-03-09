@@ -1,15 +1,17 @@
+import pickle
+import os
 import os.path as osp
 from copy import deepcopy
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import numpy as np
-from labsurv.builders import AGENTS, ENVIRONMENTS, HOOKS, RUNNERS
+from labsurv.builders import AGENTS, ENVIRONMENTS, IMITATORS, HOOKS, RUNNERS
 from labsurv.models.agents import BaseAgent
 from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.runners.hooks import LoggerHook
-from labsurv.utils.string import INDENT
 from mmcv import Config
 from numpy import ndarray as array
+from labsurv.utils.string import readable_param, readable_action, get_time_stamp
 
 
 @RUNNERS.register_module()
@@ -36,6 +38,14 @@ class OCPMultiAgentOnPolicyRunner:
             self.start_episode = self.agent.start_episode
             if "resume_from" in cfg.agent.keys() and cfg.agent.resume_from is not None:
                 self.logger.set_cur_episode_index(self.start_episode - 1)
+            
+            if hasattr(cfg, "expert") and cfg.expert is not None:
+                self.expert = IMITATORS.build(cfg.expert)
+                if not self.agent.mixed_reward:
+                    raise RuntimeError(
+                        "GAIL enabled and fake system reward is built. "
+                        "Mixed rewards must be used. "
+                    )
 
     def run(self):
         if self.test_mode:
@@ -90,16 +100,16 @@ class OCPMultiAgentOnPolicyRunner:
                 episode_return["reward"] += cur_transition["reward"][-1]
                 episode_return["coverage"] = cur_coverage
 
-                for key, item in transitions.items():
-                    item.append(cur_transition[key])
+                for key, item in cur_transition.items():
+                    transitions[key].append(item)
 
                 self.logger.show_log(
                     f"[Episode {episode + 1:>4} Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
                     f"| step reward {cur_transition["reward"][-1]:.4f} "
                     f"| total reward {episode_return["reward"]:.4f} "
-                    f"\nPREVIOUS {readable_param(cur_params)} "
-                    f"\nACTION   {readable_action(cur_action)} "
-                    f"\nCURRENT  {readable_param(new_params)} ",
+                    f"\nPREVIOUS {_readable_param(cur_params)} "
+                    f"\nACTION   {_readable_action(cur_action)} "
+                    f"\nCURRENT  {_readable_param(new_params)} ",
                     with_time=True,
                 )
 
@@ -118,19 +128,36 @@ class OCPMultiAgentOnPolicyRunner:
                         point_cloud_path, "camera", heatmap=True
                     )
                     break
-
-            (
-                episode_return["critic_loss"],
-                episode_return["actor_loss"],
-                episode_return["entropy_loss"],
-            ) = self.agent.update(transitions, self.logger)
-            self.logger.show_log(
-                f"episode reward {episode_return["reward"]:.4f} "
-                f"| loss: C {episode_return["critic_loss"]:.6f} "
-                f"A {episode_return["actor_loss"]:.6f} "
-                f"E {episode_return["entropy_loss"]:.6f} ",
-                with_time=True,
-            )
+            
+            if hasattr(self, "expert"):
+                expert_transitions = self.expert.sample()
+                transitions = self.expert.train(transitions, expert_transitions)
+            if self.agent.manual:
+                expert_save_path = osp.join(
+                    self.logger.save_dir, "expert"
+                )
+                os.makedirs(expert_save_path, exist_ok=True)
+                with open(
+                    osp.join(
+                        expert_save_path, 
+                        f"{get_time_stamp()}_episode{episode + 1}_step{step + 1}.pkl",
+                    ),
+                    "wb",
+                ) as f:
+                    pickle.dump(transitions, f)
+            else:
+                (
+                    episode_return["critic_loss"],
+                    episode_return["actor_loss"],
+                    episode_return["entropy_loss"],
+                ) = self.agent.update(transitions, self.logger)
+                self.logger.show_log(
+                    f"episode reward {episode_return["reward"]:.4f} "
+                    f"| loss: C {episode_return["critic_loss"]:.6f} "
+                    f"A {episode_return["actor_loss"]:.6f} "
+                    f"E {episode_return["entropy_loss"]:.6f} ",
+                    with_time=True,
+                )
 
             log_dict = (
                 dict(
@@ -196,9 +223,9 @@ class OCPMultiAgentOnPolicyRunner:
                 f"[Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
                 f"| step reward {cur_transition["reward"][-1]:.4f} "
                 f"| total reward {episode_return["reward"]:.4f} "
-                f"\nCURRENT  {readable_param(cur_params)} "
-                f"\nACTION   {readable_action(cur_action)} "
-                f"\nPREVIOUS {readable_param(new_params)} ",
+                f"\nCURRENT  {_readable_param(cur_params)} "
+                f"\nACTION   {_readable_action(cur_action)} "
+                f"\nPREVIOUS {_readable_param(new_params)} ",
                 with_time=True,
             )
 
@@ -222,7 +249,7 @@ class OCPMultiAgentOnPolicyRunner:
                 break
 
 
-def readable_param(params: array) -> str:
+def _readable_param(params: array) -> str:
     """
     ## Arguments:
 
@@ -236,46 +263,14 @@ def readable_param(params: array) -> str:
     readable: str = ""
 
     for index, param in enumerate(params):
-        readable += _readable_param(param)
+        readable += readable_param(param)
         if index < len(params) - 1:
             readable += ", "
 
     return readable
 
 
-def _readable_param(param: array) -> str:
-    """
-    ## Arguments:
-
-        param (np.ndarray): [PARAM_DIM]
-
-    ## Returns:
-
-        readable (str)
-    """
-    cache: List[array] = [
-        param[:3].astype(np.int64),
-        param[3:5].astype(np.float32),
-        param[5:].nonzero()[0].astype(np.int64),
-    ]
-
-    cache[1] = cache[1] / np.pi * 180
-
-    readable_list: List = []
-    for i in range(len(cache)):
-        readable_list += cache[i].tolist()
-
-    readable: str = "["
-    for i in range(3):
-        readable += f"{readable_list[i]:>3d}" + INDENT
-    for i in range(3, 5):
-        readable += f"{readable_list[i]:>7.2f}" + INDENT
-    readable += str(readable_list[-1]) + "]"
-
-    return readable
-
-
-def readable_action(actions: array):
+def _readable_action(actions: array):
     """
     ## Arguments:
 
@@ -289,36 +284,9 @@ def readable_action(actions: array):
     readable: str = ""
 
     for index, action in enumerate(actions):
-        readable += _readable_action(action)
+        readable += readable_action(action)
         if index < len(actions) - 1:
             readable += ", "
 
     return readable
 
-
-def _readable_action(action: array):
-    """
-    ## Arguments:
-
-        action (np.ndarray): [ACTION_DIM]
-
-    ## Returns:
-
-        readable (str)
-    """
-    action_index: int = action.nonzero()[0].astype(np.int64)[0]
-
-    if action_index < 2:
-        readable = " " * 2 + ("-" if action_index % 2 == 0 else "+") + "x" + " " * 32
-    elif action_index < 4:
-        readable = " " * 7 + ("-" if action_index % 2 == 0 else "+") + "y" + " " * 27
-    elif action_index < 6:
-        readable = " " * 12 + ("-" if action_index % 2 == 0 else "+") + "z" + " " * 22
-    elif action_index < 8:
-        readable = " " * 21 + ("-" if action_index % 2 == 0 else "+") + "p" + " " * 13
-    elif action_index < 10:
-        readable = " " * 30 + ("-" if action_index % 2 == 0 else "+") + "t" + " " * 4
-    else:
-        readable = " " * 32 + "->" + str(action_index - 10)
-
-    return readable

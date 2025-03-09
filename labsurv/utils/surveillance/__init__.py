@@ -15,6 +15,9 @@ from .format import (
     observation2input,
     pack_observation2transition,
     pos_index2coord,
+    reformat_actor_input,
+    reformat_critic_input,
+    reformat_input,
 )
 from .transform import rotate, shift
 from .visibility import compute_single_cam_visibility
@@ -45,6 +48,9 @@ __all__ = [
     "observation2input",
     "pack_observation2transition",
     "pos_index2coord",
+    "reformat_actor_input",
+    "reformat_critic_input",
+    "reformat_input",
     # transform
     "rotate",
     "shift",

@@ -2,7 +2,9 @@ import os
 import os.path as osp
 from typing import List
 
-from labsurv.utils.string import CLEAR_FORMAT
+from labsurv.utils.string import CLEAR_FORMAT, INDENT
+import numpy as np
+from numpy import ndarray as array
 
 
 def color_str(color: str, content: List[str], seperator: str = " "):
@@ -82,3 +84,63 @@ def to_filename(path: str, expected_extension: str, default_filename: str) -> st
         result = path
 
     return result
+
+
+def readable_param(param: array) -> str:
+    """
+    ## Arguments:
+
+        param (np.ndarray): [PARAM_DIM]
+
+    ## Returns:
+
+        readable (str)
+    """
+    cache: List[array] = [
+        param[:3].astype(np.int64),
+        param[3:5].astype(np.float32),
+        param[5:].nonzero()[0].astype(np.int64),
+    ]
+
+    cache[1] = cache[1] / np.pi * 180
+
+    readable_list: List = []
+    for i in range(len(cache)):
+        readable_list += cache[i].tolist()
+
+    readable: str = "["
+    for i in range(3):
+        readable += f"{readable_list[i]:>3d}" + INDENT
+    for i in range(3, 5):
+        readable += f"{readable_list[i]:>7.2f}" + INDENT
+    readable += str(readable_list[-1]) + "]"
+
+    return readable
+
+
+def readable_action(action: array):
+    """
+    ## Arguments:
+
+        action (np.ndarray): [ACTION_DIM]
+
+    ## Returns:
+
+        readable (str)
+    """
+    action_index: int = action.nonzero()[0].astype(np.int64)[0]
+
+    if action_index < 2:
+        readable = " " * 2 + ("-" if action_index % 2 == 0 else "+") + "x" + " " * 32
+    elif action_index < 4:
+        readable = " " * 7 + ("-" if action_index % 2 == 0 else "+") + "y" + " " * 27
+    elif action_index < 6:
+        readable = " " * 12 + ("-" if action_index % 2 == 0 else "+") + "z" + " " * 22
+    elif action_index < 8:
+        readable = " " * 21 + ("-" if action_index % 2 == 0 else "+") + "p" + " " * 13
+    elif action_index < 10:
+        readable = " " * 30 + ("-" if action_index % 2 == 0 else "+") + "t" + " " * 4
+    else:
+        readable = " " * 32 + "->" + str(action_index - 10)
+
+    return readable

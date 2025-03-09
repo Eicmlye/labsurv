@@ -9,8 +9,12 @@ import torch.nn.functional as F
 from labsurv.builders import AGENTS, STRATEGIES
 from labsurv.models.agents import BaseAgent
 from labsurv.runners.hooks import LoggerHook
-from labsurv.utils.string import INDENT
-from labsurv.utils.surveillance import generate_action_mask, info_room2actor_input
+from labsurv.utils.string import INDENT, readable_param
+from labsurv.utils.surveillance import (
+    generate_action_mask,
+    info_room2actor_input,
+    reformat_input,
+)
 from mmcv.utils import ProgressBar
 from numpy import ndarray as array
 from numpy import pi as PI
@@ -36,7 +40,7 @@ class OCPMultiAgentPPO(BaseAgent):
         advantage_param: float = 0.95,
         clip_epsilon: float = 0.2,
         entropy_loss_coef: float = 0.01,
-        agent_num: int = 1,
+        agent_num: int = 2,
         pan_section_num: int = 360,
         tilt_section_num: int = 180,
         pan_range: List[float] = [-PI, PI],
@@ -49,6 +53,7 @@ class OCPMultiAgentPPO(BaseAgent):
         load_from: Optional[str] = None,
         resume_from: Optional[str] = None,
         test_mode: bool = False,
+        manual: bool = False,
     ):
         """
         The following combinations to specify arguments are allowed:
@@ -93,6 +98,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
         self.actor: Module = STRATEGIES.build(actor_cfg).to(self.device)
         self.critic: Module = STRATEGIES.build(critic_cfg).to(self.device)
+        self.manual = manual
 
         if not self.test_mode:
             self.gradient_accumulation_batchsize = (
@@ -193,8 +199,87 @@ class OCPMultiAgentPPO(BaseAgent):
 
         if self.test_mode:
             return self.test_take_action(room, cam_params, **kwargs)
+        elif self.manual:
+            return self.manual_take_action(room, cam_params, **kwargs)
         else:
             return self.train_take_action(room, cam_params, **kwargs)
+        
+    def manual_take_action(
+        self, room, cam_params: array, **kwargs
+    ) -> Tuple[List[Tuple[array, array, array]], List[array], List[array]]:
+        """
+        ## Arguments:
+
+            room (SurveillanceRoom).
+
+            cam_params (np.ndarray): [AGENT_NUM, PARAM_DIM]. Absolute params of agents.
+
+        ## Returns:
+
+            observations (List[Tuple[array, array, array]]): [AGENT_NUM, Tuple], actor
+            inputs.
+
+            actions (List[array]): [AGENT_NUM, ACTION_DIM].
+
+            action_masks (List[array]): [AGENT_NUM, ACTION_DIM].
+        """
+
+        logger: LoggerHook = kwargs["logger"]
+        with torch.no_grad():  # if grad, memory leaks
+            observations: List[Tuple[array, array, array]] = []
+            actions: List[array] = []
+            action_masks: List[array] = []
+
+            for agent_index, cam_param in enumerate(cam_params):
+                actor_inputs = info_room2actor_input(room, self.agent_num, cam_param)
+                observations.append(actor_inputs)
+
+                action_mask = 1 - generate_action_mask(
+                    room,
+                    cam_param,
+                    self.pan_section_num,
+                    self.tilt_section_num,
+                    self.pan_range,
+                    self.tilt_range,
+                    allow_polar=self.allow_polar,
+                )
+
+                room.visualize(
+                    osp.join(
+                        kwargs["save_dir"],
+                        "pointcloud",
+                        "manual",
+                        f"agent{agent_index + 1}_full_room.ply"
+                    ),
+                    "camera",
+                    heatmap=True,
+                    emphasis=torch.tensor(cam_param[:3]),
+                )
+
+                input_action: str = input(
+                    f"Agent {agent_index + 1}: {readable_param(cam_param)}"
+                    "\nChoose action:  x  y  z  p  t"
+                    "\n             -  A  S  .  E  F"
+                    "\n             +  D  W  .  Q  R"
+                    "\nYour action: "
+                )
+                while (
+                    len(input_action) == 0 or input_action[0].upper() not in "ADSWEQFR"
+                ):
+                    input_action = input("Illegal input. Your action: ")
+                input_dict = dict(
+                    A=0, D=1, S=2, W=3, E=6, Q=7, F=8, R=9
+                )
+
+                actions.append(
+                    np.eye(self.actor.out[2].out_features)[
+                        input_dict[input_action[0].upper()]
+                    ].reshape(-1)
+                )
+                action_masks.append(action_mask)
+
+        # [AGENT_NUM, Tuple], [AGENT_NUM, ACTION_DIM], [AGENT_NUM, ACTION_DIM]
+        return observations, actions, action_masks
 
     def train_take_action(
         self, room, cam_params: array, **kwargs
@@ -376,17 +461,9 @@ class OCPMultiAgentPPO(BaseAgent):
         transitions: Dict[str, List[bool | float | array | Tuple[int, array]]],
         logger: LoggerHook,
     ) -> Tuple[float]:
-        cur_observations: List[List[Tuple[array, array, array]]] = transitions[
-            "cur_observation"
-        ]  # [B, AGENT_NUM, Tuple]
-        # [B, AGENT_NUM, ACTION_DIM]
-        cur_actions: List[List[array]] = transitions["cur_action"]
-        # [B, AGENT_NUM, ACTION_DIM]
-        cur_action_masks: List[List[array]] = transitions["cur_action_mask"]
-        cur_critic_inputs: List[Tuple[array, array]] = transitions["cur_critic_input"]
-        next_critic_inputs: List[Tuple[array, array]] = transitions["next_critic_input"]
-        rewards: List[float] = transitions["reward"]
-        terminated: List[bool] = transitions["terminated"]
+        actor_inputs, critic_inputs = reformat_input(
+            self.agent_num, self.device, transitions
+        )
 
         # actor inputs
         (
@@ -395,13 +472,7 @@ class OCPMultiAgentPPO(BaseAgent):
             cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
-        ) = _reformat_actor_input(
-            self.agent_num,
-            self.device,
-            cur_observations,
-            cur_actions,
-            cur_action_masks,
-        )
+        ) = actor_inputs
 
         batch_size: int = cur_self_and_neigh_params.shape[1]
         param_dim: int = cur_self_and_neigh_params.shape[3]
@@ -416,13 +487,7 @@ class OCPMultiAgentPPO(BaseAgent):
             mixed_rewards,  # [B, AGENT_NUM]
             system_rewards,  # [B]
             all_terminated,  # [B]
-        ) = _reformat_critic_input(
-            self.device,
-            cur_critic_inputs,
-            next_critic_inputs,
-            rewards,
-            terminated,
-        )
+        ) = critic_inputs
 
         value_predict: Tensor = self.critic(next_cam_params, next_envs).view(-1)  # [B]
         critic_td_target: Tensor = system_rewards + self.gamma * value_predict * (
@@ -698,112 +763,6 @@ def _print_readable_action_dist(
         return out_log
     else:
         print(out_log, end="")
-
-
-def _reformat_actor_input(
-    agent_num: int,
-    device: torch.cuda.device,
-    cur_observations: List[List[Tuple[array, array, array]]],
-    cur_actions: List[List[array]],
-    cur_action_masks: List[List[array]],
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-    ## permute batch channel and agent channel for actor inputs
-    batch_size = len(cur_observations)
-    cur_self_and_neigh_params_list: List[List[array]] = [[] for i in range(agent_num)]
-    cur_self_mask_list: List[List[array]] = [[] for i in range(agent_num)]
-    cur_neigh_list: List[List[array]] = [[] for i in range(agent_num)]
-    cur_all_actions_list: List[List[array]] = [[] for i in range(agent_num)]
-    cur_all_action_masks_list: List[List[array]] = [[] for i in range(agent_num)]
-    for batch_index in range(batch_size):
-        for agent_index in range(agent_num):
-            cur_self_and_neigh_params_list[agent_index].append(
-                cur_observations[batch_index][agent_index][0]
-            )
-            cur_self_mask_list[agent_index].append(
-                cur_observations[batch_index][agent_index][1]
-            )
-            cur_neigh_list[agent_index].append(
-                cur_observations[batch_index][agent_index][2]
-            )
-            cur_all_actions_list[agent_index].append(
-                cur_actions[batch_index][agent_index]
-            )
-            cur_all_action_masks_list[agent_index].append(
-                cur_action_masks[batch_index][agent_index]
-            )
-    # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
-    cur_self_and_neigh_params: Tensor = torch.tensor(
-        np.array(cur_self_and_neigh_params_list),
-        dtype=torch.float,
-        device=device,
-    )
-    cur_self_mask: Tensor = torch.tensor(  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
-        np.array(cur_self_mask_list), dtype=torch.bool, device=device
-    )
-    cur_neigh: Tensor = torch.tensor(  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
-        np.array(cur_neigh_list), dtype=torch.float, device=device
-    )
-    cur_all_actions: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
-        np.array(cur_all_actions_list), dtype=torch.float, device=device
-    )
-    cur_all_action_masks: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
-        np.array(cur_all_action_masks_list), dtype=torch.bool, device=device
-    )
-
-    return (
-        cur_self_and_neigh_params,
-        cur_self_mask,
-        cur_neigh,
-        cur_all_actions,
-        cur_all_action_masks,
-    )
-
-
-def _reformat_critic_input(
-    device: torch.cuda.device,
-    cur_critic_inputs: List[Tuple[array, array]],
-    next_critic_inputs: List[Tuple[array, array]],
-    rewards: List[float],
-    terminated: List[bool],
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
-    cur_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
-        np.array([cur_critic_input[0] for cur_critic_input in cur_critic_inputs]),
-        dtype=torch.float,
-        device=device,
-    )
-    cur_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
-        np.array([cur_critic_input[1] for cur_critic_input in cur_critic_inputs]),
-        dtype=torch.float,
-        device=device,
-    )
-    next_cam_params: Tensor = torch.tensor(  # [B, AGENT_NUM, PARAM_DIM]
-        np.array([next_critic_input[0] for next_critic_input in next_critic_inputs]),
-        dtype=torch.float,
-        device=device,
-    )
-    next_envs: Tensor = torch.tensor(  # [B, 3, W, D, H]
-        np.array([next_critic_input[1] for next_critic_input in next_critic_inputs]),
-        dtype=torch.float,
-        device=device,
-    )
-    all_rewards: Tensor = torch.tensor(  # [B, AGENT_NUM + 1]
-        rewards, dtype=torch.float, device=device
-    )
-    mixed_rewards: Tensor = all_rewards[:, :-1]  # [B, AGENT_NUM]
-    system_rewards: Tensor = all_rewards[:, -1]  # [B]
-    all_terminated: Tensor = torch.tensor(  # [B]
-        terminated, dtype=torch.int64, device=device
-    )
-
-    return (
-        cur_cam_params,
-        cur_envs,
-        next_cam_params,
-        next_envs,
-        mixed_rewards,
-        system_rewards,
-        all_terminated,
-    )
 
 
 def _compute_advantage(
