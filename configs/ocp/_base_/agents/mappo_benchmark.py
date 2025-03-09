@@ -1,13 +1,13 @@
 from configs.ocp._base_.params_benchmark import (
     AGENT_NUM,
+    ALLOW_POLAR,
     CAM_TYPE_NUM,
+    MANUAL,
     PAN_RANGE,
     PAN_SEC_NUM,
     TILT_RANGE,
     TILT_SEC_NUM,
     VOXEL_LENGTH,
-    ALLOW_POLAR,
-    MANUAL,
 )
 from configs.runtime import DEVICE
 

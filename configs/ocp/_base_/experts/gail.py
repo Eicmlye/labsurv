@@ -1,9 +1,5 @@
+from configs.ocp._base_.params_benchmark import AGENT_NUM, CAM_TYPE_NUM, VOXEL_LENGTH
 from configs.runtime import DEVICE
-from configs.ocp._base_.params_benchmark import (
-    AGENT_NUM,
-    CAM_TYPE_NUM,
-    VOXEL_LENGTH,
-)
 
 expert = dict(
     type="GAIL",

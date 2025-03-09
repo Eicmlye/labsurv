@@ -6,7 +6,6 @@ import torch
 from configs.runtime import DEVICE as DEVICE_STR
 from labsurv.physics import SurveillanceRoom
 
-
 DEVICE = torch.device(DEVICE_STR)
 
 
