@@ -13,7 +13,7 @@ setup(
     python_requires=">=3.12",
     install_requires=[
         "numpy>=1.26.3",
-        "mmcv>=2.2.0",
+        "mmcv==1.7.2",
         "gym>=0.26.2",
         "torch>=2.3.0",
         "black>=24.4.2",
