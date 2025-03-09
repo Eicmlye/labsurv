@@ -1,18 +1,14 @@
 import argparse
-from typing import List, Optional, Tuple
 import os.path as osp
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 from configs.runtime import DEVICE as DEVICE_STR
 from labsurv.physics import SurveillanceRoom
-from torch import pi as PI
+from labsurv.utils.surveillance import concat_points_with_color, save_visualized_points
 from torch import Tensor
-
-from labsurv.utils.surveillance import (
-    concat_points_with_color,
-    save_visualized_points,
-)
+from torch import pi as PI
 
 DEVICE = torch.device(DEVICE_STR)
 
@@ -30,7 +26,7 @@ def parse_args():
         "--cam",
         type=float,
         nargs="+",
-        help="Positional and directional indices of the camera."
+        help="Positional and directional indices of the camera.",
     )
 
     args = parser.parse_args()
@@ -123,14 +119,13 @@ def _get_cam_covering_samples(
         camera_covering_samples (List[int]): a list of sample indices covered by the
         camera.
     """
-    
+
     sample_num: Optional[int] = None
     candidate_num: Optional[int] = None
 
     with open(cover_path, "r") as f:
         count_line = -1
         sample_index = None
-        covering_candidate_num = None
         covering_candidates = []
         cam_index = _cam_params2index(room_shape, cam_params)
         camera_covering_samples: List[int] = []
@@ -141,7 +136,8 @@ def _get_cam_covering_samples(
             elif count_line % 3 == 0:
                 sample_index = int(line.strip())
             elif count_line % 3 == 1:
-                covering_candidate_num = int(line.strip())
+                # covering_candidate_num = int(line.strip())
+                pass
             elif count_line % 3 == 2:
                 covering_candidates = list(map(int, line.strip().split()))
 
@@ -164,7 +160,7 @@ def _sample_index2coords(room_shape: List[int], room_h: int, sample_indices: Lis
         room_shape (List[int])
 
         sample_indices (List[int])
-    
+
     ## Returns:
 
         sample_coords (Tensor): [N, 3]
@@ -215,7 +211,7 @@ def _build_room(
         displacement=np.array([0, 0, 0]),
         **resol_requirement,
     )
-    
+
     print("Adding cameras...")
     room.add_cam(
         cam_params[:3],
@@ -235,7 +231,7 @@ def main(sample_name: str, data_path: str, cam_params: List[int]):
     camera_covering_samples, cam_index = _get_cam_covering_samples(
         osp.join(data_path, f"{sample_name}_cover.txt"), room_shape, cam_params
     )
-    
+
     sample_coords: Tensor = _sample_index2coords(
         room_shape, room_h, camera_covering_samples
     )
@@ -247,7 +243,7 @@ def main(sample_name: str, data_path: str, cam_params: List[int]):
     ] = 1
 
     if sample_category == "AC":
-        spec_path = osp.join(data_path, "AC_specs.txt")
+        # spec_path = osp.join(data_path, "AC_specs.txt")
         if sample_id in [f"{i + 1:02d}" for i in range(9)]:
             cfg_path = "configs/ocp/_base_/std_surveil_AC_01to09.py"
         else:
@@ -268,19 +264,23 @@ def main(sample_name: str, data_path: str, cam_params: List[int]):
     save_visualized_points(
         torch.cat(
             (
-                visible_points_coords,
-                benchmark_visible_points_coords,
-                intersection,
-            ) if intersection is not None else (
-                visible_points_coords,
-                benchmark_visible_points_coords,
+                (
+                    visible_points_coords,
+                    benchmark_visible_points_coords,
+                    intersection,
+                )
+                if intersection is not None
+                else (
+                    visible_points_coords,
+                    benchmark_visible_points_coords,
+                )
             ),
             dim=0,
         ),
         save_path=f"output/data_check/{sample_name}/",
         default_filename=f"cam_{cam_index}",
     )
-                
+
 
 if __name__ == "__main__":
     args = parse_args()
