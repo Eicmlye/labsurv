@@ -131,7 +131,7 @@ class OCPMultiAgentOnPolicyRunner:
 
             if hasattr(self, "expert"):
                 transitions, episode_return["disc_loss"] = self.expert.train(
-                    transitions
+                    transitions, logger=self.logger
                 )
             if self.agent.manual:
                 expert_save_path = osp.join(self.logger.save_dir, "expert")
@@ -176,6 +176,9 @@ class OCPMultiAgentOnPolicyRunner:
                 self.logger.show_log(f"Checkpoint saved at episode {episode + 1}.")
                 self.env.save(episode, osp.join(self.work_dir, "envs"))
                 self.logger.show_log(f"Environment saved at episode {episode + 1}.")
+                if hasattr(self, "expert"):
+                    self.expert.save(episode, osp.join(self.work_dir, "imitators"))
+                    self.logger.show_log(f"Imitator checkpoint saved at episode {episode + 1}.")
             if (episode + 1) % self.eval_interval == 0:
                 self.agent.eval()
                 self.test(episode)

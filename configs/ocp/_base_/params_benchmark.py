@@ -12,3 +12,5 @@ TILT_RANGE = [-PI / 2, 0]
 VOXEL_LENGTH = voxel_length
 ALLOW_POLAR = True
 MANUAL = False
+BACKBONE_PATH="labsurv/checkpoint/pointnet2backbone_32melt.pth"
+FREEZE_BACKBONE=[0, 1]

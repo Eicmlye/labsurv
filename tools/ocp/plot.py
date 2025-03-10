@@ -74,11 +74,12 @@ def get_latest_log(dir_name: str):
 
 def ocp_get_y_axis(
     log_filename: str, shrink: Optional[str] = None
-) -> Tuple[List[float], List[float], List[List[float]], int, bool]:
+) -> Tuple[List[float], List[float], List[List[float]], int, bool, Optional[List[List[float]]]]:
     # load y axis
     train_reward = []
     eval_reward = []
     loss: List[Optional[List[float]]] = []
+    disc_output = None
     eval_step = None
     found_episode_line = False
     start_episode: int = 1
@@ -108,13 +109,14 @@ def ocp_get_y_axis(
                 if shrink is not None:
                     new_log.write(line)
 
+            # loss line
             if "episode" in word_list:
                 y_flag = word_list.index("episode")
             else:
                 y_flag = -1
 
             if (
-                y_flag > 0
+                y_flag >= 0
                 and y_flag < len(word_list) - 5
                 and word_list[y_flag + 1] == "reward"
             ):
@@ -152,21 +154,42 @@ def ocp_get_y_axis(
                 else:
                     loss.append(float(word_list[y_flag + 5]))
 
+            # reward line
             if "evaluation" in word_list:
                 reward_flag = word_list.index("evaluation")
             else:
                 reward_flag = -1
 
-            if reward_flag > 0 and reward_flag < len(word_list) - 3:
+            if reward_flag >= 0 and reward_flag < len(word_list) - 3:
                 if shrink is not None:
                     new_log.write(line)
 
                 eval_reward.append(float(word_list[reward_flag + 3]))
 
+            # discriminator performance line
+            if "Discriminator" in word_list:
+                disc_flag = word_list.index("Discriminator")
+            else:
+                disc_flag = -1
+
+            if disc_flag >= 0:
+                if shrink is not None:
+                    new_log.write(line)
+
+                acc = float(word_list[disc_flag + 3])
+                prec = float(word_list[disc_flag + 7])
+                recall = float(word_list[disc_flag + 11])
+                if disc_output is None:
+                    disc_output = [[acc], [prec], [recall]]
+                else:
+                    disc_output[0].append(acc)
+                    disc_output[1].append(prec)
+                    disc_output[2].append(recall)
+
     if shrink is not None:
         new_log.close()
 
-    return train_reward, eval_reward, loss, eval_step, is_ac
+    return train_reward, eval_reward, loss, eval_step, is_ac, disc_output
 
 
 def plot_subfig(
@@ -180,9 +203,11 @@ def plot_subfig(
     sma: int = 1,
     reward_sma: int = 1,
     drop_abnormal: bool = False,
+    disc_output: Optional[List[List[float]]] = None,
 ):
     if is_ac:
         actor_loss, critic_loss, entropy_loss, disc_loss = loss
+        disc_acc, disc_prec, disc_recall = disc_output
         _plot_ac_subfig(
             train_reward,
             eval_reward,
@@ -196,6 +221,9 @@ def plot_subfig(
             reward_sma=reward_sma,
             drop_abnormal=drop_abnormal,
             disc_loss=disc_loss,
+            disc_acc=disc_acc,
+            disc_prec=disc_prec,
+            disc_recall=disc_recall,
         )
     else:
         _plot_non_ac_subfig(eval_reward, loss, eval_step, save_path, tick_step)
@@ -214,31 +242,32 @@ def _plot_ac_subfig(
     reward_sma: int = 1,
     drop_abnormal: bool = False,
     disc_loss: Optional[List[float]] = None,
+    disc_acc: Optional[List[float]] = None,
+    disc_prec: Optional[List[float]] = None,
+    disc_recall: Optional[List[float]] = None,
 ):
     # figure settings
     if sma > 1:
         fig = plt.figure(figsize=(40, 20))
-        ax1 = fig.add_subplot(3, 4, 1)  # train_reward
-        ax2 = fig.add_subplot(3, 4, 2)  # train_reward sma
-        ax3 = fig.add_subplot(3, 4, 3)  # eval_reward
+        ax_train = fig.add_subplot(3, 5, 1)  # train_reward
+        ax_train_sma = fig.add_subplot(3, 5, 2)  # train_reward sma
+        ax_eval = fig.add_subplot(3, 5, 3)  # eval_reward
         if reward_sma > 1:
-            ax4 = fig.add_subplot(3, 4, 4)  # eval_reward sma
-        ax5 = fig.add_subplot(3, 4, 5)  # entropy loss
-        ax6 = fig.add_subplot(3, 4, 6)  # entropy loss sma
-        ax7 = fig.add_subplot(3, 4, 7)  # critic loss
-        ax8 = fig.add_subplot(3, 4, 8)  # critic loss sma
-        ax9 = fig.add_subplot(3, 4, 9)  # actor loss
-        ax10 = fig.add_subplot(3, 4, 10)  # actor loss sma
-        ax11 = fig.add_subplot(3, 4, 11)  # disc loss
-        ax12 = fig.add_subplot(3, 4, 12)  # disc loss sma
+            ax_eval_sma = fig.add_subplot(3, 5, 4)  # eval_reward sma
+        ax_ent = fig.add_subplot(3, 5, 6)  # entropy loss
+        ax_ent_sma = fig.add_subplot(3, 5, 7)  # entropy loss sma
+        ax_critic = fig.add_subplot(3, 5, 8)  # critic loss
+        ax_critic_sma = fig.add_subplot(3, 5, 9)  # critic loss sma
+        ax_actor = fig.add_subplot(3, 5, 11)  # actor loss
+        ax_actor_sma = fig.add_subplot(3, 5, 12)  # actor loss sma
+        ax_disc = fig.add_subplot(3, 5, 13)  # disc loss
+        ax_disc_sma = fig.add_subplot(3, 5, 14)  # disc loss sma
+
+        ax_disc_acc = fig.add_subplot(3, 5, 5)  # disc accuracy
+        ax_disc_prec = fig.add_subplot(3, 5, 10)  # disc precision
+        ax_disc_recall = fig.add_subplot(3, 5, 15)  # disc recall
     else:
         raise NotImplementedError()
-
-        # fig = plt.figure(figsize=(20, 10))
-        # ax1 = fig.add_subplot(2, 2, 1)
-        # ax2 = fig.add_subplot(2, 2, 2)
-        # ax3 = fig.add_subplot(2, 2, 3)
-        # ax4 = fig.add_subplot(2, 2, 4)
 
     # plot graph
     valid_episode = min(len(actor_loss), len(critic_loss), len(entropy_loss))
@@ -246,7 +275,7 @@ def _plot_ac_subfig(
     x_loss = [(epi + 1) for epi in range(valid_episode)]
 
     _plot_subfig(
-        ax1,
+        ax_train,
         x_loss,
         train_reward,
         line_style="-",
@@ -255,7 +284,7 @@ def _plot_ac_subfig(
         tick_step=tick_step,
     )
     _plot_subfig(
-        ax3,
+        ax_eval,
         x_reward,
         eval_reward,
         line_style="-",
@@ -264,7 +293,7 @@ def _plot_ac_subfig(
         tick_step=tick_step,
     )
     _plot_subfig(
-        ax5,
+        ax_ent,
         x_loss,
         entropy_loss,
         line_style="-",
@@ -275,7 +304,7 @@ def _plot_ac_subfig(
         drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
-        ax7,
+        ax_critic,
         x_loss,
         critic_loss,
         line_style="-",
@@ -286,7 +315,7 @@ def _plot_ac_subfig(
         drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
-        ax9,
+        ax_actor,
         x_loss,
         actor_loss,
         line_style="-",
@@ -297,7 +326,7 @@ def _plot_ac_subfig(
     )
     if disc_loss is not None:
         _plot_subfig(
-            ax11,
+            ax_disc,
             x_loss,
             disc_loss,
             line_style="-",
@@ -306,9 +335,42 @@ def _plot_ac_subfig(
             tick_step=tick_step,
             drop_abnormal=drop_abnormal,
         )
+        _plot_subfig(
+            ax_disc_acc,
+            x_loss,
+            disc_acc,
+            line_style="-",
+            color="m",
+            title="discriminator accuracy",
+            tick_step=tick_step,
+            drop_abnormal=drop_abnormal,
+            label="actual",
+        )
+        _plot_subfig(
+            ax_disc_prec,
+            x_loss,
+            disc_prec,
+            line_style="-",
+            color="m",
+            title="discriminator precision",
+            tick_step=tick_step,
+            drop_abnormal=drop_abnormal,
+            label="actual",
+        )
+        _plot_subfig(
+            ax_disc_recall,
+            x_loss,
+            disc_recall,
+            line_style="-",
+            color="m",
+            title="discriminator recall",
+            tick_step=tick_step,
+            drop_abnormal=drop_abnormal,
+            label="actual",
+        )
     if sma > 1:
         _plot_subfig(
-            ax2,
+            ax_train_sma,
             x_loss,
             simple_moving_average(train_reward, window=sma),
             line_style="-",
@@ -318,7 +380,7 @@ def _plot_ac_subfig(
         )
         if reward_sma > 1:
             _plot_subfig(
-                ax4,
+                ax_eval_sma,
                 x_reward,
                 simple_moving_average(eval_reward, window=reward_sma),
                 line_style="-",
@@ -327,7 +389,7 @@ def _plot_ac_subfig(
                 tick_step=tick_step,
             )
         _plot_subfig(
-            ax6,
+            ax_ent_sma,
             x_loss,
             simple_moving_average(entropy_loss, window=sma),
             line_style="-",
@@ -338,7 +400,7 @@ def _plot_ac_subfig(
             drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
-            ax8,
+            ax_critic_sma,
             x_loss,
             simple_moving_average(critic_loss, window=sma),
             line_style="-",
@@ -349,7 +411,7 @@ def _plot_ac_subfig(
             drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
-            ax10,
+            ax_actor_sma,
             x_loss,
             simple_moving_average(actor_loss, window=sma),
             line_style="-",
@@ -360,7 +422,7 @@ def _plot_ac_subfig(
         )
         if disc_loss is not None:
             _plot_subfig(
-                ax12,
+                ax_disc_sma,
                 x_loss,
                 simple_moving_average(disc_loss, window=sma),
                 line_style="-",
@@ -369,6 +431,39 @@ def _plot_ac_subfig(
                 tick_step=tick_step,
                 drop_abnormal=drop_abnormal,
             )
+            _plot_subfig(
+                ax_disc_acc,
+                x_loss,
+                simple_moving_average(disc_acc, window=sma),
+                line_style="-",
+                color="black",
+                tick_step=tick_step,
+                drop_abnormal=drop_abnormal,
+                label=f"SMA{sma}",
+            )
+            ax_disc_acc.legend()
+            _plot_subfig(
+                ax_disc_prec,
+                x_loss,
+                simple_moving_average(disc_prec, window=sma),
+                line_style="-",
+                color="black",
+                tick_step=tick_step,
+                drop_abnormal=drop_abnormal,
+                label=f"SMA{sma}",
+            )
+            ax_disc_prec.legend()
+            _plot_subfig(
+                ax_disc_recall,
+                x_loss,
+                simple_moving_average(disc_recall, window=sma),
+                line_style="-",
+                color="black",
+                tick_step=tick_step,
+                drop_abnormal=drop_abnormal,
+                label=f"SMA{sma}",
+            )
+            ax_disc_recall.legend()
 
     # plt.show()
     fig.subplots_adjust(left=0.05, right=0.95, wspace=0.4, hspace=0.5)
@@ -423,10 +518,11 @@ def _plot_subfig(
     y: List[float],
     line_style: str = "-",
     color: str = "r",
-    title: str = "loss",
+    title: Optional[str] = None,
     tick_step: int = 20,
     log_if_needed: bool = False,
     drop_abnormal: bool = False,
+    label: Optional[str] = None,
 ):
     log_scale = False
     if log_if_needed and np.abs((max(y) + 1e-8) / (min(y) + 1e-8)) > 100:
@@ -439,12 +535,13 @@ def _plot_subfig(
             x, y, [-9, -8] if "actor" not in title and log_scale else [2000, 1e8]
         )
 
-    ax.plot(x, y, line_style, color=color, label=title)
-    ax.set_title(
-        ("log10 " if log_scale else "")
-        + title
-        + (f" dropped {dropped}" if dropped > 0 else "")
-    )
+    ax.plot(x, y, line_style, color=color, label=label)
+    if title is not None:
+        ax.set_title(
+            ("log10 " if log_scale else "")
+            + title
+            + (f" dropped {dropped}" if dropped > 0 else "")
+        )
     ax.set_xticks(
         generate_absolute_ticks(1, max(x) if len(x) > 0 else 1, step=tick_step)
     )
@@ -499,7 +596,7 @@ def main():
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    train_reward, eval_reward, loss, eval_step, is_ac = ocp_get_y_axis(
+    train_reward, eval_reward, loss, eval_step, is_ac, disc_output = ocp_get_y_axis(
         log_filename, filename_shrink_to
     )
 
@@ -514,6 +611,7 @@ def main():
         sma=args.sma,
         reward_sma=args.reward_sma,
         drop_abnormal=args.drop_abnormal,
+        disc_output=disc_output,
     )
 
 

@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from labsurv.builders import IMITATORS, STRATEGIES
 from labsurv.models.imitators import BaseImitator
+from labsurv.runners.hooks import LoggerHook
 from labsurv.utils.surveillance import reformat_input
 from mmcv.utils import ProgressBar
 from numpy import ndarray as array
@@ -32,6 +33,8 @@ class GAIL(BaseImitator):
         backbone_path: Optional[str] = None,
         freeze_backbone: List[int] = [],
         expert_data_path: Optional[str] = None,
+        do_reward_change: bool = True,
+        truth_threshold: float = 0.2,
         seed: Optional[int] = None,
     ):
         """
@@ -53,6 +56,8 @@ class GAIL(BaseImitator):
 
         self.agent_num = agent_num
         self.lr = lr
+        self.do_reward_change = do_reward_change
+        self.truth_threshold = truth_threshold
 
         self.discriminator: Module = STRATEGIES.build(discriminator_cfg).to(self.device)
         self.opt = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr)
@@ -145,7 +150,10 @@ class GAIL(BaseImitator):
     def train(
         self,
         transitions: Dict[str, List[bool | float | array | Tuple[int, array]]],
+        **kwargs,
     ):
+        logger: LoggerHook = kwargs["logger"]
+
         (
             cur_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
             cur_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
@@ -172,7 +180,9 @@ class GAIL(BaseImitator):
         for param_group in self.opt.param_groups:
             param_group["lr"] = self.lr / gradient_accumulation_batchnum
 
-        rewards: List[float] = []
+        rewards_list: List[float] = []
+        agent_probs: List[float] = []
+        expert_probs: List[float] = []
         self.opt.zero_grad()
         print("\nGradient accumulation for GAIL...")
         prog_bar = ProgressBar(gradient_accumulation_batchnum)
@@ -217,13 +227,13 @@ class GAIL(BaseImitator):
                 batch_size * self.agent_num, -1
             )[lower_index:upper_index_excluded]
 
-            agent_disc_prob = self.discriminator(
+            agent_disc_prob: Tensor = self.discriminator(
                 ga_cur_self_and_neigh_params,
                 ga_cur_self_mask,
                 ga_cur_neigh,
                 ga_cur_all_actions,
             )
-            expert_disc_prob = self.discriminator(
+            expert_disc_prob: Tensor = self.discriminator(
                 ga_expert_self_and_neigh_params,
                 ga_expert_self_mask,
                 ga_expert_neigh,
@@ -236,20 +246,33 @@ class GAIL(BaseImitator):
 
             discriminator_loss.backward()
 
-            rewards += (-torch.log(agent_disc_prob)).tolist()
+            rewards_list += (-torch.log(agent_disc_prob)).tolist()
+            agent_probs += agent_disc_prob.view(-1).tolist()
+            expert_probs += expert_disc_prob.view(-1).tolist()
 
             prog_bar.update()
         print("\r\033[K\033[1A\033[K", end="")
 
         self.opt.step()
 
-        transitions["reward"] = torch.cat(  # [B, AGENT_NUM + 1]
-            (
-                torch.tensor(rewards).view(self.agent_num, -1).permute(1, 0),
-                torch.zeros((batch_size, 1)),  # fake system reward
-            ),
-            dim=1,
-        ).tolist()
+        accuracy, precision, recall = _compute_precision_recall(
+            agent_probs, expert_probs, self.truth_threshold
+        )
+
+        logger.show_log(
+            f"Discriminator acc = {accuracy:.6f} | prec = {precision:.6f} "
+            f"| recall = {recall:.6f} | threshold {self.truth_threshold:.4f}",
+            with_time=True,
+        )
+
+        if self.do_reward_change:
+            transitions["reward"] = torch.cat(  # [B, AGENT_NUM + 1]
+                (
+                    torch.tensor(rewards_list).view(self.agent_num, -1).permute(1, 0),
+                    torch.zeros((batch_size, 1)),  # fake system reward
+                ),
+                dim=1,
+            ).tolist()
 
         return transitions, discriminator_loss.item()
 
@@ -296,3 +319,20 @@ class GAIL(BaseImitator):
             save_path = osp.join(save_path, f"episode_{episode}.pth")
 
         torch.save(checkpoint, save_path)
+
+
+def _compute_precision_recall(agent_probs: List[float], expert_probs: List[float], threshold: float = 0.2):
+    total_num = len(agent_probs) + len(expert_probs)
+
+    agent_samples: array = np.array(agent_probs)
+    expert_samples: array = np.array(expert_probs)
+    TP = int((agent_samples > 1 - threshold).sum())
+    FP = int((agent_samples <= 1 - threshold).sum())
+    TN = int((expert_samples < threshold).sum())
+    FN = int((expert_samples >= threshold).sum())
+
+    accuracy = (TP + TN) / total_num
+    precision = (TP / (TP + FP)) if TP + FP > 0 else 0.0
+    recall = (TP / (TP + FN)) if TP + FN > 0 else 0.0
+
+    return accuracy, precision, recall
