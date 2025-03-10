@@ -11,7 +11,7 @@ steps = 20
 
 work_dir = (
     f"./output/ocp/{agent_type.lower()}_benchmark/"
-    f"ma{AGENT_NUM}_{steps}steps_{BENCHMARK_NAME}_32melt_gail"
+    f"ma{AGENT_NUM}_{steps}steps_{BENCHMARK_NAME}_32melt_load1k_gail_32melt_keepreward"
     + ("_MANUAL" if MANUAL else "")
 )
 exp_name = get_time_stamp()
