@@ -74,7 +74,9 @@ def get_latest_log(dir_name: str):
 
 def ocp_get_y_axis(
     log_filename: str, shrink: Optional[str] = None
-) -> Tuple[List[float], List[float], List[List[float]], int, bool, Optional[List[List[float]]]]:
+) -> Tuple[
+    List[float], List[float], List[List[float]], int, bool, Optional[List[List[float]]]
+]:
     # load y axis
     train_reward = []
     eval_reward = []
@@ -207,7 +209,9 @@ def plot_subfig(
 ):
     if is_ac:
         actor_loss, critic_loss, entropy_loss, disc_loss = loss
-        disc_acc, disc_prec, disc_recall = disc_output
+        disc_acc, disc_prec, disc_recall = (
+            disc_output if disc_output is not None else (None, None, None)
+        )
         _plot_ac_subfig(
             train_reward,
             eval_reward,
@@ -270,9 +274,15 @@ def _plot_ac_subfig(
         raise NotImplementedError()
 
     # plot graph
-    valid_episode = min(len(actor_loss), len(critic_loss), len(entropy_loss))
+    loss_valid_episode = min(len(actor_loss), len(critic_loss), len(entropy_loss))
+    if disc_loss is not None:
+        loss_valid_episode = min(loss_valid_episode, len(disc_loss))
+        disc_valid_episode = min(len(disc_acc), len(disc_prec), len(disc_recall))
+
     x_reward = [(i + 1) * eval_step for i in range(len(eval_reward))]
-    x_loss = [(epi + 1) for epi in range(valid_episode)]
+    x_loss = [(epi + 1) for epi in range(loss_valid_episode)]
+    if disc_loss is not None:
+        x_disc = [(epi + 1) for epi in range(disc_valid_episode)]
 
     _plot_subfig(
         ax_train,
@@ -337,7 +347,7 @@ def _plot_ac_subfig(
         )
         _plot_subfig(
             ax_disc_acc,
-            x_loss,
+            x_disc,
             disc_acc,
             line_style="-",
             color="m",
@@ -348,7 +358,7 @@ def _plot_ac_subfig(
         )
         _plot_subfig(
             ax_disc_prec,
-            x_loss,
+            x_disc,
             disc_prec,
             line_style="-",
             color="m",
@@ -359,7 +369,7 @@ def _plot_ac_subfig(
         )
         _plot_subfig(
             ax_disc_recall,
-            x_loss,
+            x_disc,
             disc_recall,
             line_style="-",
             color="m",
@@ -368,102 +378,110 @@ def _plot_ac_subfig(
             drop_abnormal=drop_abnormal,
             label="actual",
         )
+
     if sma > 1:
         _plot_subfig(
             ax_train_sma,
             x_loss,
-            simple_moving_average(train_reward, window=sma),
+            train_reward,
             line_style="-",
             color="r",
-            title=f"SMA{sma} train reward",
+            title="train reward",
             tick_step=tick_step,
+            sma=sma,
         )
         if reward_sma > 1:
             _plot_subfig(
                 ax_eval_sma,
                 x_reward,
-                simple_moving_average(eval_reward, window=reward_sma),
+                eval_reward,
                 line_style="-",
                 color="r",
-                title=f"SMA{reward_sma * eval_step} eval reward",
+                title="eval reward",
                 tick_step=tick_step,
+                sma=reward_sma,
+                sma_tick_extend_factor=eval_step,
             )
         _plot_subfig(
             ax_ent_sma,
             x_loss,
-            simple_moving_average(entropy_loss, window=sma),
+            entropy_loss,
             line_style="-",
             color="y",
-            title=f"SMA{sma} entropy loss",
+            title="entropy loss",
             tick_step=tick_step,
             log_if_needed=True,
             drop_abnormal=drop_abnormal,
+            sma=sma,
         )
         _plot_subfig(
             ax_critic_sma,
             x_loss,
-            simple_moving_average(critic_loss, window=sma),
+            critic_loss,
             line_style="-",
             color="g",
-            title=f"SMA{sma} critic loss",
+            title="critic loss",
             tick_step=tick_step,
             log_if_needed=True,
             drop_abnormal=drop_abnormal,
+            sma=sma,
         )
         _plot_subfig(
             ax_actor_sma,
             x_loss,
-            simple_moving_average(actor_loss, window=sma),
+            actor_loss,
             line_style="-",
             color="b",
-            title=f"SMA{sma} actor loss",
+            title="actor loss",
             tick_step=tick_step,
             drop_abnormal=drop_abnormal,
+            sma=sma,
         )
         if disc_loss is not None:
             _plot_subfig(
                 ax_disc_sma,
                 x_loss,
-                simple_moving_average(disc_loss, window=sma),
+                disc_loss,
                 line_style="-",
                 color="orange",
-                title=f"SMA{sma} discriminator loss",
+                title="discriminator loss",
                 tick_step=tick_step,
                 drop_abnormal=drop_abnormal,
+                sma=sma,
             )
             _plot_subfig(
                 ax_disc_acc,
-                x_loss,
-                simple_moving_average(disc_acc, window=sma),
+                x_disc,
+                disc_acc,
                 line_style="-",
                 color="black",
                 tick_step=tick_step,
                 drop_abnormal=drop_abnormal,
                 label=f"SMA{sma}",
+                sma=sma,
             )
-            ax_disc_acc.legend()
             _plot_subfig(
                 ax_disc_prec,
-                x_loss,
-                simple_moving_average(disc_prec, window=sma),
+                x_disc,
+                disc_prec,
                 line_style="-",
                 color="black",
                 tick_step=tick_step,
                 drop_abnormal=drop_abnormal,
                 label=f"SMA{sma}",
+                sma=sma,
             )
-            ax_disc_prec.legend()
             _plot_subfig(
                 ax_disc_recall,
-                x_loss,
-                simple_moving_average(disc_recall, window=sma),
+                x_disc,
+                disc_recall,
                 line_style="-",
                 color="black",
                 tick_step=tick_step,
                 drop_abnormal=drop_abnormal,
                 label=f"SMA{sma}",
+                sma=sma,
             )
-            ax_disc_recall.legend()
 
     # plt.show()
     fig.subplots_adjust(left=0.05, right=0.95, wspace=0.4, hspace=0.5)
@@ -515,7 +533,7 @@ def _plot_non_ac_subfig(
 def _plot_subfig(
     ax: Axes,
     x: List[int],
-    y: List[float],
+    input_y: List[float],
     line_style: str = "-",
     color: str = "r",
     title: Optional[str] = None,
@@ -523,7 +541,17 @@ def _plot_subfig(
     log_if_needed: bool = False,
     drop_abnormal: bool = False,
     label: Optional[str] = None,
+    sma: Optional[int] = None,
+    sma_tick_extend_factor: int = 1,
 ):
+    if sma is not None:
+        assert isinstance(sma, int) and sma > 0
+        y = simple_moving_average(input_y, window=sma)
+        if title is not None:
+            title = f"SMA{sma * sma_tick_extend_factor} " + title
+    else:
+        y = input_y
+
     log_scale = False
     if log_if_needed and np.abs((max(y) + 1e-8) / (min(y) + 1e-8)) > 100:
         log_scale = True
@@ -536,15 +564,24 @@ def _plot_subfig(
         )
 
     ax.plot(x, y, line_style, color=color, label=label)
+    x_ticks = generate_absolute_ticks(1, max(x) if len(x) > 0 else 1, step=tick_step)
+
+    if label is not None:
+        ax.legend(loc="upper left")
     if title is not None:
         ax.set_title(
             ("log10 " if log_scale else "")
             + title
             + (f" dropped {dropped}" if dropped > 0 else "")
         )
-    ax.set_xticks(
-        generate_absolute_ticks(1, max(x) if len(x) > 0 else 1, step=tick_step)
-    )
+    if sma is not None:
+        ax.axvline(sma * sma_tick_extend_factor, linestyle="--", color="black")
+
+        x_ticks = set(x_ticks)
+        x_ticks.add(sma * sma_tick_extend_factor)
+        x_ticks = sorted(x_ticks)
+
+    ax.set_xticks(x_ticks)
 
 
 def simple_moving_average(vals: List[float], window: int = 10) -> List[float]:
