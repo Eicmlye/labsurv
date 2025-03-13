@@ -60,19 +60,11 @@ class GAIL(BaseImitator):
         self.truth_threshold = truth_threshold
 
         self.discriminator: Module = STRATEGIES.build(discriminator_cfg).to(self.device)
-        self.opt = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr)
         self.gradient_accumulation_batchsize = (
             gradient_accumulation_batchsize
             if gradient_accumulation_batchsize is not None
             else self.agent_num
         )
-
-        if resume_from is not None:
-            self.resume(resume_from)
-        elif load_from is not None:
-            self.load(load_from)
-        elif backbone_path is not None:
-            self.load_backbone(backbone_path)
 
         if len(freeze_backbone) > 0:
             freeze_name = tuple(
@@ -86,15 +78,28 @@ class GAIL(BaseImitator):
                 filter(lambda p: p.requires_grad, self.discriminator.parameters()),
                 lr=self.lr,
             )
+        else:
+            self.opt = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr)
+
+        if resume_from is not None:
+            self.resume(resume_from)
+        elif load_from is not None:
+            self.load(load_from)
+        elif backbone_path is not None:
+            self.load_backbone(backbone_path)
 
         self.load_data(expert_data_path)
 
     def load(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        self.discriminator.load_state_dict(
-            checkpoint["discriminator"]["model_state_dict"]
+        missing_keys, unexpected_keys = self.discriminator.load_state_dict(
+            checkpoint["discriminator"]["model_state_dict"], strict=False
         )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in discriminator checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in discriminator checkpoint: \n{unexpected_keys}")
         # One shall not load params of the optimizers, because learning rate
         # is contained in the state_dict of the optimizers, and loading
         # optimizer params will ignore the new learning rate.
@@ -102,10 +107,27 @@ class GAIL(BaseImitator):
     def resume(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        self.discriminator.load_state_dict(
-            checkpoint["discriminator"]["model_state_dict"]
+        missing_keys, unexpected_keys = self.discriminator.load_state_dict(
+            checkpoint["discriminator"]["model_state_dict"], strict=False
         )
-        self.opt.load_state_dict(checkpoint["discriminator"]["optimizer_state_dict"])
+        if len(missing_keys) > 0:
+            print(f"Missing keys in discriminator checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in discriminator checkpoint: \n{unexpected_keys}")
+
+        missing_keys, unexpected_keys = self.opt.load_state_dict(
+            checkpoint["discriminator"]["optimizer_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(
+                f"Missing keys in discriminator optimizer checkpoint: \n{missing_keys}"
+            )
+        if len(unexpected_keys) > 0:
+            print(
+                "Unexpected keys in discriminator optimizer checkpoint: "
+                f"\n{unexpected_keys}"
+            )
+
         self.start_episode = checkpoint["episode"] + 1
 
     def load_backbone(self, backbone_path: str):
