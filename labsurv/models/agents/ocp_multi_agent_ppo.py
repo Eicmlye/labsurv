@@ -107,8 +107,6 @@ class OCPMultiAgentPPO(BaseAgent):
                 else self.agent_num
             )
             self.lr = [actor_lr, critic_lr]
-            self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr[0])
-            self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr[1])
 
             self.start_episode = 0
             self.update_step = update_step
@@ -116,32 +114,39 @@ class OCPMultiAgentPPO(BaseAgent):
             self.clip_epsilon = clip_epsilon
             self.entropy_loss_coef = entropy_loss_coef
 
+            if len(freeze_backbone) > 0:
+                freeze_name = tuple(
+                    [f"set_abstraction.{index}" for index in freeze_backbone]
+                )
+                for name, parameter in self.actor.backbone.named_parameters():
+                    if name.startswith(freeze_name):
+                        parameter.requires_grad = False
+                for name, parameter in self.critic.backbone.named_parameters():
+                    if name.startswith(freeze_name):
+                        parameter.requires_grad = False
+
+                self.actor_opt = torch.optim.Adam(
+                    filter(lambda p: p.requires_grad, self.actor.parameters()),
+                    lr=self.lr[0],
+                )
+                self.critic_opt = torch.optim.Adam(
+                    filter(lambda p: p.requires_grad, self.critic.parameters()),
+                    lr=self.lr[1],
+                )
+            else:
+                self.actor_opt = torch.optim.Adam(
+                    self.actor.parameters(), lr=self.lr[0]
+                )
+                self.critic_opt = torch.optim.Adam(
+                    self.critic.parameters(), lr=self.lr[1]
+                )
+
         if resume_from is not None:
             self.resume(resume_from)
         elif load_from is not None:
             self.load(load_from)
         elif backbone_path is not None:
             self.load_backbone(backbone_path)
-
-        if len(freeze_backbone) > 0:
-            freeze_name = tuple(
-                [f"set_abstraction.{index}" for index in freeze_backbone]
-            )
-            for name, parameter in self.actor.backbone.named_parameters():
-                if name.startswith(freeze_name):
-                    parameter.requires_grad = False
-            for name, parameter in self.critic.backbone.named_parameters():
-                if name.startswith(freeze_name):
-                    parameter.requires_grad = False
-
-            self.actor_opt = torch.optim.Adam(
-                filter(lambda p: p.requires_grad, self.actor.parameters()),
-                lr=self.lr[0],
-            )
-            self.critic_opt = torch.optim.Adam(
-                filter(lambda p: p.requires_grad, self.critic.parameters()),
-                lr=self.lr[1],
-            )
 
     def eval(self):
         self.test_mode = True
@@ -154,8 +159,21 @@ class OCPMultiAgentPPO(BaseAgent):
     def load(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        self.actor.load_state_dict(checkpoint["actor"]["model_state_dict"])
-        self.critic.load_state_dict(checkpoint["critic"]["model_state_dict"])
+        missing_keys, unexpected_keys = self.actor.load_state_dict(
+            checkpoint["actor"]["model_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in actor checkpoint: {missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in actor checkpoint: {unexpected_keys}")
+
+        missing_keys, unexpected_keys = self.critic.load_state_dict(
+            checkpoint["critic"]["model_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in critic checkpoint: {missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in critic checkpoint: {unexpected_keys}")
         # One shall not load params of the optimizers, because learning rate
         # is contained in the state_dict of the optimizers, and loading
         # optimizer params will ignore the new learning rate.
@@ -163,10 +181,40 @@ class OCPMultiAgentPPO(BaseAgent):
     def resume(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        self.actor.load_state_dict(checkpoint["actor"]["model_state_dict"])
-        self.critic.load_state_dict(checkpoint["critic"]["model_state_dict"])
-        self.actor_opt.load_state_dict(checkpoint["actor"]["optimizer_state_dict"])
-        self.critic_opt.load_state_dict(checkpoint["critic"]["optimizer_state_dict"])
+        missing_keys, unexpected_keys = self.actor.load_state_dict(
+            checkpoint["actor"]["model_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in actor checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in actor checkpoint: \n{unexpected_keys}")
+
+        missing_keys, unexpected_keys = self.critic.load_state_dict(
+            checkpoint["critic"]["model_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in critic checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in critic checkpoint: \n{unexpected_keys}")
+
+        missing_keys, unexpected_keys = self.actor_opt.load_state_dict(
+            checkpoint["actor"]["optimizer_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in actor optimizer checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in actor optimizer checkpoint: \n{unexpected_keys}")
+
+        missing_keys, unexpected_keys = self.critic_opt.load_state_dict(
+            checkpoint["critic"]["optimizer_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in critic optimizer checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(
+                f"Unexpected keys in critic optimizer checkpoint: \n{unexpected_keys}"
+            )
+
         self.start_episode = checkpoint["episode"] + 1
 
     def load_backbone(self, backbone_path: str):
