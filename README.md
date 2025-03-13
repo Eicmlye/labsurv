@@ -96,7 +96,8 @@ To use shell on `Windows` OS, add your `Git` installation directory `git/bin/` t
 To format changed files, run
 
 ```bash
-sh infra/scripts/format.sh --git
+sh infra/scripts/format.sh --git  # Windows
+bash infra/scripts/format.sh --git  # Linux
 ```
 
 And find more formatting options with `--help`.
@@ -184,7 +185,7 @@ We use the [Benchmark testbed on the Optimal Camera Placement Problem (OCP) and 
 
 We suggest adding the size of the room to `xx_specs.txt` for easier data loading.
 
-For `AC_specs.txt`, 
+For `AC_specs.txt`,
 
 ```
 AC_01 5 5 2 2.5 100 1920 1080 65 0.5 4
