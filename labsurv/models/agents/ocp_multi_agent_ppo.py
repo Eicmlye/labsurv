@@ -518,6 +518,9 @@ class OCPMultiAgentPPO(BaseAgent):
             cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+            _,
+            _,
+            _,
         ) = actor_inputs
 
         batch_size: int = cur_self_and_neigh_params.shape[1]

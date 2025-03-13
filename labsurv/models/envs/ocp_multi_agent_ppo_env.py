@@ -11,6 +11,7 @@ from labsurv.models.envs import BaseSurveillanceEnv
 from labsurv.utils.surveillance import (
     apply_movement_on_agent,
     array_is_in,
+    info_room2actor_input,
     info_room2critic_input,
 )
 from mmcv.utils import ProgressBar
@@ -326,11 +327,18 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
 
         cur_coverage: float = self.info_room.coverage
 
+        next_observations = []
+        for agent_index, param in enumerate(new_params):
+            next_observations.append(
+                info_room2actor_input(self.info_room, self.agent_num, param)
+            )
+
         output_transition = dict(
             cur_observation=observations,  # [AGENT_NUM, Tuple]
             cur_action=actions,  # [AGENT_NUM, ACTION_DIM]
             cur_action_mask=action_masks,  # [AGENT_NUM, ACTION_DIM]
             cur_critic_input=cur_critic_input,
+            next_observation=next_observations,  # [AGENT_NUM, Tuple]
             next_critic_input=info_room2critic_input(self.info_room, self.agent_num),
             reward=self.compute_reward(  # [AGENT_NUM + 1]
                 cur_coverage,
