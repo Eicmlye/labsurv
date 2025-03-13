@@ -9,9 +9,13 @@ agent_type = "MAPPO_PointNet2"
 episodes = 1000
 steps = 20
 
+task_name = "TASK_NAME"
+task_conditions = "TASK_CONDITIONS"
 work_dir = (
     f"./output/ocp/{agent_type.lower()}_benchmark/"
-    f"ma{AGENT_NUM}_{steps}steps_{BENCHMARK_NAME}_32melt_load1k_gail_32melt_keepreward"
+    + f"{task_name}/"
+    + f"ma{AGENT_NUM}_{steps}steps_{BENCHMARK_NAME}"
+    + f"_{task_conditions}"
     + ("_MANUAL" if MANUAL else "")
 )
 exp_name = get_time_stamp()
