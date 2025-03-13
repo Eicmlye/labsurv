@@ -178,7 +178,9 @@ class OCPMultiAgentOnPolicyRunner:
                 self.logger.show_log(f"Environment saved at episode {episode + 1}.")
                 if hasattr(self, "expert"):
                     self.expert.save(episode, osp.join(self.work_dir, "imitators"))
-                    self.logger.show_log(f"Imitator checkpoint saved at episode {episode + 1}.")
+                    self.logger.show_log(
+                        f"Imitator checkpoint saved at episode {episode + 1}."
+                    )
             if (episode + 1) % self.eval_interval == 0:
                 self.agent.eval()
                 self.test(episode)

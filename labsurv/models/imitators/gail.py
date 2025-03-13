@@ -343,7 +343,9 @@ class GAIL(BaseImitator):
         torch.save(checkpoint, save_path)
 
 
-def _compute_precision_recall(agent_probs: List[float], expert_probs: List[float], threshold: float = 0.2):
+def _compute_precision_recall(
+    agent_probs: List[float], expert_probs: List[float], threshold: float = 0.2
+):
     total_num = len(agent_probs) + len(expert_probs)
 
     agent_samples: array = np.array(agent_probs)
