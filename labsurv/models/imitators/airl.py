@@ -61,8 +61,12 @@ class AIRL(BaseImitator):
         self.do_reward_change = do_reward_change
         self.truth_threshold = truth_threshold
 
-        self.reward_approximator: Module = STRATEGIES.build(reward_approximator_cfg).to(self.device)
-        self.reward_shaping: Module = STRATEGIES.build(reward_shaping_cfg).to(self.device)
+        self.reward_approximator: Module = STRATEGIES.build(reward_approximator_cfg).to(
+            self.device
+        )
+        self.reward_shaping: Module = STRATEGIES.build(reward_shaping_cfg).to(
+            self.device
+        )
         self.gradient_accumulation_batchsize = (
             gradient_accumulation_batchsize
             if gradient_accumulation_batchsize is not None
@@ -81,7 +85,9 @@ class AIRL(BaseImitator):
                     parameter.requires_grad = False
 
             self.appr_opt = torch.optim.Adam(
-                filter(lambda p: p.requires_grad, self.reward_approximator.parameters()),
+                filter(
+                    lambda p: p.requires_grad, self.reward_approximator.parameters()
+                ),
                 lr=self.lr[0],
             )
             self.shaping_opt = torch.optim.Adam(
@@ -89,8 +95,12 @@ class AIRL(BaseImitator):
                 lr=self.lr[1],
             )
         else:
-            self.appr_opt = torch.optim.Adam(self.reward_approximator.parameters(), lr=self.lr[0])
-            self.shaping_opt = torch.optim.Adam(self.reward_shaping.parameters(), lr=self.lr[1])
+            self.appr_opt = torch.optim.Adam(
+                self.reward_approximator.parameters(), lr=self.lr[0]
+            )
+            self.shaping_opt = torch.optim.Adam(
+                self.reward_shaping.parameters(), lr=self.lr[1]
+            )
 
         if resume_from is not None:
             self.resume(resume_from)
@@ -110,7 +120,9 @@ class AIRL(BaseImitator):
         if len(missing_keys) > 0:
             print(f"Missing keys in reward_approximator checkpoint: \n{missing_keys}")
         if len(unexpected_keys) > 0:
-            print(f"Unexpected keys in reward_approximator checkpoint: \n{unexpected_keys}")
+            print(
+                f"Unexpected keys in reward_approximator checkpoint: \n{unexpected_keys}"
+            )
 
         missing_keys, unexpected_keys = self.reward_shaping.load_state_dict(
             checkpoint["reward_shaping"]["model_state_dict"], strict=False
@@ -132,7 +144,9 @@ class AIRL(BaseImitator):
         if len(missing_keys) > 0:
             print(f"Missing keys in reward_approximator checkpoint: \n{missing_keys}")
         if len(unexpected_keys) > 0:
-            print(f"Unexpected keys in reward_approximator checkpoint: \n{unexpected_keys}")
+            print(
+                f"Unexpected keys in reward_approximator checkpoint: \n{unexpected_keys}"
+            )
         missing_keys, unexpected_keys = self.reward_shaping.load_state_dict(
             checkpoint["reward_shaping"]["model_state_dict"], strict=False
         )
@@ -310,9 +324,11 @@ class AIRL(BaseImitator):
             ga_expert_all_actions = expert_all_actions.view(
                 batch_size * self.agent_num, -1
             )[lower_index:upper_index_excluded]
-            ga_expert_next_self_and_neigh_params = expert_next_self_and_neigh_params.view(
-                batch_size * self.agent_num, -1, param_dim
-            )[lower_index:upper_index_excluded]
+            ga_expert_next_self_and_neigh_params = (
+                expert_next_self_and_neigh_params.view(
+                    batch_size * self.agent_num, -1, param_dim
+                )[lower_index:upper_index_excluded]
+            )
             ga_expert_next_self_mask = expert_next_self_mask.view(
                 batch_size * self.agent_num, -1
             )[lower_index:upper_index_excluded]
@@ -374,7 +390,9 @@ class AIRL(BaseImitator):
                 ga_cur_neigh,
             ).detach()
             expert_advantage = (
-                expert_rew_appr + gamma * expert_next_rew_shaping - expert_cur_rew_shaping
+                expert_rew_appr
+                + gamma * expert_next_rew_shaping
+                - expert_cur_rew_shaping
             )
             expert_disc_prob = torch.exp(expert_advantage) / (
                 torch.exp(expert_advantage) + expert_act_prob
@@ -474,7 +492,9 @@ class AIRL(BaseImitator):
         torch.save(checkpoint, save_path)
 
 
-def _compute_precision_recall(agent_probs: List[float], expert_probs: List[float], threshold: float = 0.2):
+def _compute_precision_recall(
+    agent_probs: List[float], expert_probs: List[float], threshold: float = 0.2
+):
     total_num = len(agent_probs) + len(expert_probs)
 
     agent_samples: array = np.array(agent_probs)
