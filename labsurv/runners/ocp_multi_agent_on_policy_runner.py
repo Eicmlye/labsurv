@@ -75,6 +75,7 @@ class OCPMultiAgentOnPolicyRunner:
                 cur_action=[],
                 cur_action_mask=[],
                 cur_critic_input=[],
+                next_observation=[],
                 next_critic_input=[],
                 reward=[],
                 terminated=[],
@@ -130,9 +131,16 @@ class OCPMultiAgentOnPolicyRunner:
                     break
 
             if hasattr(self, "expert"):
+                # TODO(eric): separate expert training data buffer and input
+                # transition modification, to allow independent batch size of expert
+                # training.
                 transitions, episode_return["disc_loss"] = self.expert.train(
-                    transitions, logger=self.logger
+                    transitions,
+                    logger=self.logger,
+                    actor=deepcopy(self.agent.actor),
+                    gamma=self.agent.gamma,
                 )
+
             if self.agent.manual:
                 expert_save_path = osp.join(self.logger.save_dir, "expert")
                 os.makedirs(expert_save_path, exist_ok=True)

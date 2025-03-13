@@ -577,14 +577,32 @@ def reformat_actor_input(
     cur_observations: List[List[Tuple[array, array, array]]],
     cur_actions: List[List[array]],
     cur_action_masks: List[List[array]],
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    next_observations: Optional[List[List[array]]] = None,
+) -> Tuple[
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Optional[Tensor],
+    Optional[Tensor],
+    Optional[Tensor],
+]:
     ## permute batch channel and agent channel for actor inputs
     batch_size = len(cur_observations)
+
     cur_self_and_neigh_params_list: List[List[array]] = [[] for i in range(agent_num)]
     cur_self_mask_list: List[List[array]] = [[] for i in range(agent_num)]
     cur_neigh_list: List[List[array]] = [[] for i in range(agent_num)]
     cur_all_actions_list: List[List[array]] = [[] for i in range(agent_num)]
     cur_all_action_masks_list: List[List[array]] = [[] for i in range(agent_num)]
+    if next_observations is not None:
+        next_self_and_neigh_params_list: List[List[array]] = [
+            [] for i in range(agent_num)
+        ]
+        next_self_mask_list: List[List[array]] = [[] for i in range(agent_num)]
+        next_neigh_list: List[List[array]] = [[] for i in range(agent_num)]
+
     for batch_index in range(batch_size):
         for agent_index in range(agent_num):
             cur_self_and_neigh_params_list[agent_index].append(
@@ -602,6 +620,17 @@ def reformat_actor_input(
             cur_all_action_masks_list[agent_index].append(
                 cur_action_masks[batch_index][agent_index]
             )
+            if next_observations is not None:
+                next_self_and_neigh_params_list[agent_index].append(
+                    next_observations[batch_index][agent_index][0]
+                )
+                next_self_mask_list[agent_index].append(
+                    next_observations[batch_index][agent_index][1]
+                )
+                next_neigh_list[agent_index].append(
+                    next_observations[batch_index][agent_index][2]
+                )
+
     # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
     cur_self_and_neigh_params: Tensor = torch.tensor(
         np.array(cur_self_and_neigh_params_list),
@@ -620,6 +649,23 @@ def reformat_actor_input(
     cur_all_action_masks: Tensor = torch.tensor(  # [AGENT_NUM, B, ACTION_DIM]
         np.array(cur_all_action_masks_list), dtype=torch.bool, device=device
     )
+    if next_observations is not None:
+        # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+        next_self_and_neigh_params: Tensor = torch.tensor(
+            np.array(next_self_and_neigh_params_list),
+            dtype=torch.float,
+            device=device,
+        )
+        next_self_mask: Tensor = torch.tensor(  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            np.array(next_self_mask_list), dtype=torch.bool, device=device
+        )
+        next_neigh: Tensor = torch.tensor(  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
+            np.array(next_neigh_list), dtype=torch.float, device=device
+        )
+    else:
+        next_self_and_neigh_params = None
+        next_self_mask = None
+        next_neigh = None
 
     return (
         cur_self_and_neigh_params,
@@ -627,6 +673,9 @@ def reformat_actor_input(
         cur_neigh,
         cur_all_actions,
         cur_all_action_masks,
+        next_self_and_neigh_params,
+        next_self_mask,
+        next_neigh,
     )
 
 
@@ -692,6 +741,9 @@ def reformat_input(
             cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+            next_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+            next_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         )
 
         critic_inputs:
@@ -713,6 +765,12 @@ def reformat_input(
     # [B, AGENT_NUM, ACTION_DIM]
     cur_action_masks: List[List[array]] = transitions["cur_action_mask"]
     cur_critic_inputs: List[Tuple[array, array]] = transitions["cur_critic_input"]
+    if "next_observation" in transitions.keys():
+        next_observations: List[List[Tuple[array, array, array]]] = transitions[
+            "next_observation"
+        ]  # [B, AGENT_NUM, Tuple]
+    else:
+        next_observations = None
     next_critic_inputs: List[Tuple[array, array]] = transitions["next_critic_input"]
     rewards: List[float] = transitions["reward"]
     terminated: List[bool] = transitions["terminated"]
@@ -723,6 +781,7 @@ def reformat_input(
         cur_observations,
         cur_actions,
         cur_action_masks,
+        next_observations,
     )
 
     critic_inputs = reformat_critic_input(

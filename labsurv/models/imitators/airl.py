@@ -17,15 +17,17 @@ from torch.nn import BCELoss, Module
 
 
 @IMITATORS.register_module()
-class GAIL(BaseImitator):
+class AIRL(BaseImitator):
     INT = torch.int64
     FLOAT = torch.float
 
     def __init__(
         self,
-        discriminator_cfg: Dict,
+        reward_approximator_cfg: Dict,
+        reward_shaping_cfg: Dict,
         device: Optional[str] = None,
-        lr: float = 1e-4,
+        appr_lr: float = 1e-4,
+        shaping_lr: float = 1e-4,
         gradient_accumulation_batchsize: Optional[int] = None,
         agent_num: int = 2,
         load_from: Optional[str] = None,
@@ -55,11 +57,12 @@ class GAIL(BaseImitator):
         self._random = random.Random(seed)
 
         self.agent_num = agent_num
-        self.lr = lr
+        self.lr = [appr_lr, shaping_lr]
         self.do_reward_change = do_reward_change
         self.truth_threshold = truth_threshold
 
-        self.discriminator: Module = STRATEGIES.build(discriminator_cfg).to(self.device)
+        self.reward_approximator: Module = STRATEGIES.build(reward_approximator_cfg).to(self.device)
+        self.reward_shaping: Module = STRATEGIES.build(reward_shaping_cfg).to(self.device)
         self.gradient_accumulation_batchsize = (
             gradient_accumulation_batchsize
             if gradient_accumulation_batchsize is not None
@@ -70,16 +73,24 @@ class GAIL(BaseImitator):
             freeze_name = tuple(
                 [f"set_abstraction.{index}" for index in freeze_backbone]
             )
-            for name, parameter in self.discriminator.backbone.named_parameters():
+            for name, parameter in self.reward_approximator.backbone.named_parameters():
+                if name.startswith(freeze_name):
+                    parameter.requires_grad = False
+            for name, parameter in self.reward_shaping.backbone.named_parameters():
                 if name.startswith(freeze_name):
                     parameter.requires_grad = False
 
-            self.opt = torch.optim.Adam(
-                filter(lambda p: p.requires_grad, self.discriminator.parameters()),
-                lr=self.lr,
+            self.appr_opt = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, self.reward_approximator.parameters()),
+                lr=self.lr[0],
+            )
+            self.shaping_opt = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, self.reward_shaping.parameters()),
+                lr=self.lr[1],
             )
         else:
-            self.opt = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr)
+            self.appr_opt = torch.optim.Adam(self.reward_approximator.parameters(), lr=self.lr[0])
+            self.shaping_opt = torch.optim.Adam(self.reward_shaping.parameters(), lr=self.lr[1])
 
         if resume_from is not None:
             self.resume(resume_from)
@@ -93,13 +104,21 @@ class GAIL(BaseImitator):
     def load(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        missing_keys, unexpected_keys = self.discriminator.load_state_dict(
-            checkpoint["discriminator"]["model_state_dict"], strict=False
+        missing_keys, unexpected_keys = self.reward_approximator.load_state_dict(
+            checkpoint["reward_approximator"]["model_state_dict"], strict=False
         )
         if len(missing_keys) > 0:
-            print(f"Missing keys in discriminator checkpoint: \n{missing_keys}")
+            print(f"Missing keys in reward_approximator checkpoint: \n{missing_keys}")
         if len(unexpected_keys) > 0:
-            print(f"Unexpected keys in discriminator checkpoint: \n{unexpected_keys}")
+            print(f"Unexpected keys in reward_approximator checkpoint: \n{unexpected_keys}")
+
+        missing_keys, unexpected_keys = self.reward_shaping.load_state_dict(
+            checkpoint["reward_shaping"]["model_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in reward_shaping checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in reward_shaping checkpoint: \n{unexpected_keys}")
         # One shall not load params of the optimizers, because learning rate
         # is contained in the state_dict of the optimizers, and loading
         # optimizer params will ignore the new learning rate.
@@ -107,24 +126,43 @@ class GAIL(BaseImitator):
     def resume(self, checkpoint_path: str):
         checkpoint = torch.load(checkpoint_path)
 
-        missing_keys, unexpected_keys = self.discriminator.load_state_dict(
-            checkpoint["discriminator"]["model_state_dict"], strict=False
+        missing_keys, unexpected_keys = self.reward_approximator.load_state_dict(
+            checkpoint["reward_approximator"]["model_state_dict"], strict=False
         )
         if len(missing_keys) > 0:
-            print(f"Missing keys in discriminator checkpoint: \n{missing_keys}")
+            print(f"Missing keys in reward_approximator checkpoint: \n{missing_keys}")
         if len(unexpected_keys) > 0:
-            print(f"Unexpected keys in discriminator checkpoint: \n{unexpected_keys}")
+            print(f"Unexpected keys in reward_approximator checkpoint: \n{unexpected_keys}")
+        missing_keys, unexpected_keys = self.reward_shaping.load_state_dict(
+            checkpoint["reward_shaping"]["model_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(f"Missing keys in reward_shaping checkpoint: \n{missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys in reward_shaping checkpoint: \n{unexpected_keys}")
 
-        missing_keys, unexpected_keys = self.opt.load_state_dict(
-            checkpoint["discriminator"]["optimizer_state_dict"], strict=False
+        missing_keys, unexpected_keys = self.appr_opt.load_state_dict(
+            checkpoint["reward_approximator"]["optimizer_state_dict"], strict=False
         )
         if len(missing_keys) > 0:
             print(
-                f"Missing keys in discriminator optimizer checkpoint: \n{missing_keys}"
+                f"Missing keys in reward_approximator optimizer checkpoint: \n{missing_keys}"
             )
         if len(unexpected_keys) > 0:
             print(
-                "Unexpected keys in discriminator optimizer checkpoint: "
+                "Unexpected keys in reward_approximator optimizer checkpoint: "
+                f"\n{unexpected_keys}"
+            )
+        missing_keys, unexpected_keys = self.shaping_opt.load_state_dict(
+            checkpoint["reward_shaping"]["optimizer_state_dict"], strict=False
+        )
+        if len(missing_keys) > 0:
+            print(
+                f"Missing keys in reward_shaping optimizer checkpoint: \n{missing_keys}"
+            )
+        if len(unexpected_keys) > 0:
+            print(
+                "Unexpected keys in reward_shaping optimizer checkpoint: "
                 f"\n{unexpected_keys}"
             )
 
@@ -137,7 +175,7 @@ class GAIL(BaseImitator):
             Load pretrained params for PointNet++ backbone module.
         """
         backbone = torch.load(backbone_path)
-        self.discriminator.backbone.load_state_dict(backbone)
+        self.reward_approximator.backbone.load_state_dict(backbone)
 
     def load_data(self, expert_data_path: str):
         self._buffer: List[
@@ -175,6 +213,8 @@ class GAIL(BaseImitator):
         **kwargs,
     ):
         logger: LoggerHook = kwargs["logger"]
+        actor: Module = kwargs["actor"]
+        gamma: float = kwargs["gamma"]
 
         (
             cur_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
@@ -182,6 +222,9 @@ class GAIL(BaseImitator):
             cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+            next_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+            next_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         ) = self._reformat_input(transitions)
         batch_size: int = cur_self_and_neigh_params.shape[1]
         param_dim: int = cur_self_and_neigh_params.shape[3]
@@ -194,19 +237,25 @@ class GAIL(BaseImitator):
             expert_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             expert_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             expert_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+            expert_next_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+            expert_next_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            expert_next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         ) = self._reformat_input(expert_transitions)
 
         gradient_accumulation_batchnum = int(
             np.ceil(batch_size * self.agent_num / self.gradient_accumulation_batchsize)
         )
-        for param_group in self.opt.param_groups:
-            param_group["lr"] = self.lr / gradient_accumulation_batchnum
+        for param_group in self.appr_opt.param_groups:
+            param_group["lr"] = self.lr[0] / gradient_accumulation_batchnum
+        for param_group in self.shaping_opt.param_groups:
+            param_group["lr"] = self.lr[1] / gradient_accumulation_batchnum
 
         rewards_list: List[float] = []
         agent_probs: List[float] = []
         expert_probs: List[float] = []
-        self.opt.zero_grad()
-        print("\nGradient accumulation for GAIL...")
+        self.appr_opt.zero_grad()
+        self.shaping_opt.zero_grad()
+        print("\nGradient accumulation for AIRL...")
         prog_bar = ProgressBar(gradient_accumulation_batchnum)
         for ga_step in range(gradient_accumulation_batchnum):
             lower_index = ga_step * self.gradient_accumulation_batchsize
@@ -231,6 +280,19 @@ class GAIL(BaseImitator):
             ga_cur_all_actions = cur_all_actions.view(batch_size * self.agent_num, -1)[
                 lower_index:upper_index_excluded
             ]
+            ga_next_self_and_neigh_params = next_self_and_neigh_params.view(
+                batch_size * self.agent_num, -1, param_dim
+            )[lower_index:upper_index_excluded]
+            ga_next_self_mask = next_self_mask.view(batch_size * self.agent_num, -1)[
+                lower_index:upper_index_excluded
+            ]
+            ga_next_neigh = next_neigh.view(
+                batch_size * self.agent_num,
+                3,
+                neigh_side_length,
+                neigh_side_length,
+                neigh_side_length,
+            )[lower_index:upper_index_excluded]
 
             ga_expert_self_and_neigh_params = expert_self_and_neigh_params.view(
                 batch_size * self.agent_num, -1, param_dim
@@ -248,18 +310,74 @@ class GAIL(BaseImitator):
             ga_expert_all_actions = expert_all_actions.view(
                 batch_size * self.agent_num, -1
             )[lower_index:upper_index_excluded]
+            ga_expert_next_self_and_neigh_params = expert_next_self_and_neigh_params.view(
+                batch_size * self.agent_num, -1, param_dim
+            )[lower_index:upper_index_excluded]
+            ga_expert_next_self_mask = expert_next_self_mask.view(
+                batch_size * self.agent_num, -1
+            )[lower_index:upper_index_excluded]
+            ga_expert_next_neigh = expert_next_neigh.view(
+                batch_size * self.agent_num,
+                3,
+                neigh_side_length,
+                neigh_side_length,
+                neigh_side_length,
+            )[lower_index:upper_index_excluded]
 
-            agent_disc_prob: Tensor = self.discriminator(
+            agent_rew_appr: Tensor = self.reward_approximator(
                 ga_cur_self_and_neigh_params,
                 ga_cur_self_mask,
                 ga_cur_neigh,
                 ga_cur_all_actions,
             )
-            expert_disc_prob: Tensor = self.discriminator(
+            agent_cur_rew_shaping: Tensor = self.reward_shaping(
+                ga_cur_self_and_neigh_params,
+                ga_cur_self_mask,
+                ga_cur_neigh,
+            )
+            agent_next_rew_shaping: Tensor = self.reward_shaping(
+                ga_next_self_and_neigh_params,
+                ga_next_self_mask,
+                ga_next_neigh,
+            )
+            agent_act_prob: Tensor = actor(
+                ga_cur_self_and_neigh_params,
+                ga_cur_self_mask,
+                ga_cur_neigh,
+            ).detach()
+            agent_advantage = (
+                agent_rew_appr + gamma * agent_next_rew_shaping - agent_cur_rew_shaping
+            )
+            agent_disc_prob = torch.exp(agent_advantage) / (
+                torch.exp(agent_advantage) + agent_act_prob
+            )
+
+            expert_rew_appr: Tensor = self.reward_approximator(
                 ga_expert_self_and_neigh_params,
                 ga_expert_self_mask,
                 ga_expert_neigh,
                 ga_expert_all_actions,
+            )
+            expert_cur_rew_shaping: Tensor = self.reward_shaping(
+                ga_expert_self_and_neigh_params,
+                ga_expert_self_mask,
+                ga_expert_neigh,
+            )
+            expert_next_rew_shaping: Tensor = self.reward_shaping(
+                ga_expert_next_self_and_neigh_params,
+                ga_expert_next_self_mask,
+                ga_expert_next_neigh,
+            )
+            expert_act_prob: Tensor = actor(
+                ga_cur_self_and_neigh_params,
+                ga_cur_self_mask,
+                ga_cur_neigh,
+            ).detach()
+            expert_advantage = (
+                expert_rew_appr + gamma * expert_next_rew_shaping - expert_cur_rew_shaping
+            )
+            expert_disc_prob = torch.exp(expert_advantage) / (
+                torch.exp(expert_advantage) + expert_act_prob
             )
 
             discriminator_loss: Tensor = BCELoss()(
@@ -268,14 +386,17 @@ class GAIL(BaseImitator):
 
             discriminator_loss.backward()
 
-            rewards_list += (-torch.log(agent_disc_prob)).tolist()
+            rewards_list += (
+                torch.log(agent_disc_prob) - torch.log(1 - agent_disc_prob)
+            ).tolist()
             agent_probs += agent_disc_prob.view(-1).tolist()
             expert_probs += expert_disc_prob.view(-1).tolist()
 
             prog_bar.update()
         print("\r\033[K\033[1A\033[K", end="")
 
-        self.opt.step()
+        self.appr_opt.step()
+        self.shaping_opt.step()
 
         accuracy, precision, recall = _compute_precision_recall(
             agent_probs, expert_probs, self.truth_threshold
@@ -313,9 +434,9 @@ class GAIL(BaseImitator):
             cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
-            _,
-            _,
-            _,
+            next_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+            next_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         ) = actor_inputs
 
         return (
@@ -324,13 +445,20 @@ class GAIL(BaseImitator):
             cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+            next_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
+            next_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
+            next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         )
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
-            discriminator=dict(
-                model_state_dict=self.discriminator.state_dict(),
-                optimizer_state_dict=self.opt.state_dict(),
+            reward_approximator=dict(
+                model_state_dict=self.reward_approximator.state_dict(),
+                optimizer_state_dict=self.appr_opt.state_dict(),
+            ),
+            reward_shaping=dict(
+                model_state_dict=self.reward_shaping.state_dict(),
+                optimizer_state_dict=self.shaping_opt.state_dict(),
             ),
             episode=episode_index,
         )
@@ -346,9 +474,7 @@ class GAIL(BaseImitator):
         torch.save(checkpoint, save_path)
 
 
-def _compute_precision_recall(
-    agent_probs: List[float], expert_probs: List[float], threshold: float = 0.2
-):
+def _compute_precision_recall(agent_probs: List[float], expert_probs: List[float], threshold: float = 0.2):
     total_num = len(agent_probs) + len(expert_probs)
 
     agent_samples: array = np.array(agent_probs)
