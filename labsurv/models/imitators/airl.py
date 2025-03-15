@@ -318,8 +318,9 @@ class AIRL(BaseImitator):
             discriminator_loss.backward()
 
             rewards_list += (
-                torch.log(agent_disc_prob) - torch.log(1 - agent_disc_prob)
+                torch.log(1 - agent_disc_prob) - torch.log(agent_disc_prob)
             ).tolist()
+
             agent_probs += agent_disc_prob.view(-1).tolist()
             expert_probs += expert_disc_prob.view(-1).tolist()
 
