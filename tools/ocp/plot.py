@@ -343,6 +343,7 @@ def _plot_ac_subfig(
             color="orange",
             title="discriminator loss",
             tick_step=tick_step,
+            log_if_needed=True,
             drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
@@ -446,6 +447,7 @@ def _plot_ac_subfig(
                 color="orange",
                 title="discriminator loss",
                 tick_step=tick_step,
+                log_if_needed=True,
                 drop_abnormal=drop_abnormal,
                 sma=sma,
             )
@@ -553,14 +555,14 @@ def _plot_subfig(
         y = input_y
 
     log_scale = False
-    if log_if_needed and np.abs((max(y) + 1e-8) / (min(y) + 1e-8)) > 100:
+    if log_if_needed and np.abs((max(y) + 1e-12) / (min(y) + 1e-12)) > 100:
         log_scale = True
-        y = np.array(np.log10(np.array(y) + 1e-8)).tolist()
+        y = np.array(np.log10(np.array(y) + 1e-12)).tolist()
 
     dropped = 0
     if drop_abnormal:
         x, y, dropped = _drop_abnormal(
-            x, y, [-9, -8] if "actor" not in title and log_scale else [2000, 1e8]
+            x, y, [-13, -12] if "actor" not in title and log_scale else [5000, 1e8]
         )
 
     ax.plot(x, y, line_style, color=color, label=label)
