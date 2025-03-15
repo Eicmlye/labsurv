@@ -1,5 +1,9 @@
-from configs.ocp._base_.params_benchmark import (
-    AGENT_NUM, CAM_TYPE_NUM, VOXEL_LENGTH, BACKBONE_PATH, FREEZE_BACKBONE
+from configs.ocp._base_.params_benchmark import (  # noqa: F401
+    AGENT_NUM,
+    BACKBONE_PATH,
+    CAM_TYPE_NUM,
+    FREEZE_BACKBONE,
+    VOXEL_LENGTH,
 )
 from configs.runtime import DEVICE
 
@@ -15,7 +19,7 @@ expert = dict(
         voxel_length=VOXEL_LENGTH,
     ),
     reward_shaping_cfg=dict(
-        type="PointNet2Actor",
+        type="PointNet2Shaping",
         device=DEVICE,
         hidden_dim=128,
         cam_types=CAM_TYPE_NUM,

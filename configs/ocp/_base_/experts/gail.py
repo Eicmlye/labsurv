@@ -1,4 +1,4 @@
-from configs.ocp._base_.params_benchmark import (
+from configs.ocp._base_.params_benchmark import (  # noqa: F401
     AGENT_NUM,
     BACKBONE_PATH,
     CAM_TYPE_NUM,
