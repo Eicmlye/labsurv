@@ -106,6 +106,7 @@ class OCPMultiAgentPPO(BaseAgent):
                 if gradient_accumulation_batchsize is not None
                 else self.agent_num
             )
+            self.start_lr = [actor_lr, critic_lr]
             self.lr = [actor_lr, critic_lr]
 
             self.start_episode = 0
@@ -700,6 +701,19 @@ class OCPMultiAgentPPO(BaseAgent):
             )
 
         return critic_loss.item(), actor_loss.item(), entropy_loss.item()
+
+    def update_scheduler(self, cur_episode: int, total_episode: int):
+        """
+        ## Description:
+
+            Linear one-cycle scheduler.
+        """
+        cur_episode = min(cur_episode, total_episode - 1)
+        for index in range(len(self.lr)):
+            self.lr[index] = (
+                self.start_lr[index]
+                - cur_episode / (total_episode - 1) * (1 - 1e-2) * self.start_lr[index]
+            )
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(

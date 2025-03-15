@@ -55,6 +55,7 @@ class GAIL(BaseImitator):
         self._random = random.Random(seed)
 
         self.agent_num = agent_num
+        self.start_lr = lr
         self.lr = lr
         self.do_reward_change = do_reward_change
         self.truth_threshold = truth_threshold
@@ -324,6 +325,18 @@ class GAIL(BaseImitator):
             cur_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
+        )
+
+    def update_scheduler(self, cur_episode: int, total_episode: int):
+        """
+        ## Description:
+
+            Linear one-cycle scheduler.
+        """
+        cur_episode = min(cur_episode, total_episode - 1)
+        self.lr = (
+            self.start_lr
+            - cur_episode / (total_episode - 1) * (1 - 1e-2) * self.start_lr
         )
 
     def save(self, episode_index: int, save_path: str):
