@@ -105,9 +105,9 @@ class OCPMultiAgentOnPolicyRunner:
                     transitions[key].append(item)
 
                 self.logger.show_log(
-                    f"[Episode {episode + 1:>4} Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
-                    f"| step reward {cur_transition["reward"][-1]:.4f} "
-                    f"| total reward {episode_return["reward"]:.4f} "
+                    f"[Episode {episode + 1:>4} Step {step + 1:>3}]  {cur_coverage * 100:.4f}% "
+                    f"| step reward {cur_transition["reward"][-1]:.8f} "
+                    f"| total reward {episode_return["reward"]:.8f} "
                     f"\nPREVIOUS {_readable_param(cur_params)} "
                     f"\nACTION   {_readable_action(cur_action)} "
                     f"\nCURRENT  {_readable_param(new_params)} ",
@@ -159,11 +159,11 @@ class OCPMultiAgentOnPolicyRunner:
                     episode_return["entropy_loss"],
                 ) = self.agent.update(transitions, self.logger)
                 self.logger.show_log(
-                    f"episode reward {episode_return["reward"]:.4f} "
-                    f"| loss: C {episode_return["critic_loss"]:.6f} "
-                    f"A {episode_return["actor_loss"]:.6f} "
-                    f"E {episode_return["entropy_loss"]:.6f} "
-                    f"D {episode_return["disc_loss"]:.6f} ",
+                    f"episode reward {episode_return["reward"]:.8f} "
+                    f"| loss: C {episode_return["critic_loss"]:.10f} "
+                    f"A {episode_return["actor_loss"]:.10f} "
+                    f"E {episode_return["entropy_loss"]:.10f} "
+                    f"D {episode_return["disc_loss"]:.10f} ",
                     with_time=True,
                 )
 
@@ -233,9 +233,9 @@ class OCPMultiAgentOnPolicyRunner:
             episode_return["coverage"] = cur_coverage
 
             self.logger.show_log(
-                f"[Step {step + 1:>3}]  {cur_coverage * 100:.2f}% "
-                f"| step reward {cur_transition["reward"][-1]:.4f} "
-                f"| total reward {episode_return["reward"]:.4f} "
+                f"[Step {step + 1:>3}]  {cur_coverage * 100:.4f}% "
+                f"| step reward {cur_transition["reward"][-1]:.8f} "
+                f"| total reward {episode_return["reward"]:.8f} "
                 f"\nCURRENT  {_readable_param(cur_params)} "
                 f"\nACTION   {_readable_action(cur_action)} "
                 f"\nPREVIOUS {_readable_param(new_params)} ",
@@ -256,7 +256,7 @@ class OCPMultiAgentOnPolicyRunner:
 
             if terminated or truncated:
                 self.logger.show_log(
-                    f"evaluation final reward {episode_return["reward"]:.4f}",
+                    f"evaluation final reward {episode_return["reward"]:.8f}",
                     with_time=True,
                 )
                 break

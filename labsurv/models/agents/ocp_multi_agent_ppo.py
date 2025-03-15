@@ -694,8 +694,8 @@ class OCPMultiAgentPPO(BaseAgent):
 
             logger.show_log(
                 f"[Update step {step + 1:>3}]  "
-                f"loss: C {critic_loss.item():.6f} "
-                f"A {actor_loss.item():.6f} E {entropy_loss.item():.6f}",
+                f"loss: C {critic_loss.item():.10f} "
+                f"A {actor_loss.item():.10f} E {entropy_loss.item():.10f}",
                 with_time=True,
             )
 

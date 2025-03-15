@@ -421,8 +421,8 @@ class AIRL(BaseImitator):
         )
 
         logger.show_log(
-            f"Discriminator acc = {accuracy:.6f} | prec = {precision:.6f} "
-            f"| recall = {recall:.6f} | threshold {self.truth_threshold:.4f}",
+            f"Discriminator acc = {accuracy:.10f} | prec = {precision:.10f} "
+            f"| recall = {recall:.10f} | threshold {self.truth_threshold:.8f}",
             with_time=True,
         )
 
