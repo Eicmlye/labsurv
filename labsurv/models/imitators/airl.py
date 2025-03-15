@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from labsurv.builders import IMITATORS, STRATEGIES
 from labsurv.models.imitators import BaseImitator
 from labsurv.runners.hooks import LoggerHook
@@ -241,8 +242,6 @@ class AIRL(BaseImitator):
             next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         ) = self._reformat_input(transitions)
         batch_size: int = cur_self_and_neigh_params.shape[1]
-        param_dim: int = cur_self_and_neigh_params.shape[3]
-        neigh_side_length: int = cur_neigh.shape[3]
 
         expert_transitions = self.sample(batch_size)
         (
@@ -278,124 +277,37 @@ class AIRL(BaseImitator):
                 batch_size * self.agent_num,
             )
 
-            ga_cur_self_and_neigh_params = cur_self_and_neigh_params.view(
-                batch_size * self.agent_num, -1, param_dim
-            )[lower_index:upper_index_excluded]
-            ga_cur_self_mask = cur_self_mask.view(batch_size * self.agent_num, -1)[
-                lower_index:upper_index_excluded
-            ]
-            ga_cur_neigh = cur_neigh.view(
-                batch_size * self.agent_num,
-                3,
-                neigh_side_length,
-                neigh_side_length,
-                neigh_side_length,
-            )[lower_index:upper_index_excluded]
-            ga_cur_all_actions = cur_all_actions.view(batch_size * self.agent_num, -1)[
-                lower_index:upper_index_excluded
-            ]
-            ga_next_self_and_neigh_params = next_self_and_neigh_params.view(
-                batch_size * self.agent_num, -1, param_dim
-            )[lower_index:upper_index_excluded]
-            ga_next_self_mask = next_self_mask.view(batch_size * self.agent_num, -1)[
-                lower_index:upper_index_excluded
-            ]
-            ga_next_neigh = next_neigh.view(
-                batch_size * self.agent_num,
-                3,
-                neigh_side_length,
-                neigh_side_length,
-                neigh_side_length,
-            )[lower_index:upper_index_excluded]
-
-            ga_expert_self_and_neigh_params = expert_self_and_neigh_params.view(
-                batch_size * self.agent_num, -1, param_dim
-            )[lower_index:upper_index_excluded]
-            ga_expert_self_mask = expert_self_mask.view(
-                batch_size * self.agent_num, -1
-            )[lower_index:upper_index_excluded]
-            ga_expert_neigh = expert_neigh.view(
-                batch_size * self.agent_num,
-                3,
-                neigh_side_length,
-                neigh_side_length,
-                neigh_side_length,
-            )[lower_index:upper_index_excluded]
-            ga_expert_all_actions = expert_all_actions.view(
-                batch_size * self.agent_num, -1
-            )[lower_index:upper_index_excluded]
-            ga_expert_next_self_and_neigh_params = (
-                expert_next_self_and_neigh_params.view(
-                    batch_size * self.agent_num, -1, param_dim
-                )[lower_index:upper_index_excluded]
+            agent_disc_prob = _compute_disc_prob(
+                lower_index,
+                upper_index_excluded,
+                cur_self_and_neigh_params,
+                cur_self_mask,
+                cur_neigh,
+                cur_all_actions,
+                cur_all_action_masks,
+                next_self_and_neigh_params,
+                next_self_mask,
+                next_neigh,
+                self.reward_approximator,
+                self.reward_shaping,
+                actor,
+                gamma,
             )
-            ga_expert_next_self_mask = expert_next_self_mask.view(
-                batch_size * self.agent_num, -1
-            )[lower_index:upper_index_excluded]
-            ga_expert_next_neigh = expert_next_neigh.view(
-                batch_size * self.agent_num,
-                3,
-                neigh_side_length,
-                neigh_side_length,
-                neigh_side_length,
-            )[lower_index:upper_index_excluded]
-
-            agent_rew_appr: Tensor = self.reward_approximator(
-                ga_cur_self_and_neigh_params,
-                ga_cur_self_mask,
-                ga_cur_neigh,
-                ga_cur_all_actions,
-            )
-            agent_cur_rew_shaping: Tensor = self.reward_shaping(
-                ga_cur_self_and_neigh_params,
-                ga_cur_self_mask,
-                ga_cur_neigh,
-            )
-            agent_next_rew_shaping: Tensor = self.reward_shaping(
-                ga_next_self_and_neigh_params,
-                ga_next_self_mask,
-                ga_next_neigh,
-            )
-            agent_act_prob: Tensor = actor(
-                ga_cur_self_and_neigh_params,
-                ga_cur_self_mask,
-                ga_cur_neigh,
-            ).detach()
-            agent_advantage = (
-                agent_rew_appr + gamma * agent_next_rew_shaping - agent_cur_rew_shaping
-            )
-            agent_disc_prob = torch.exp(agent_advantage) / (
-                torch.exp(agent_advantage) + agent_act_prob
-            )
-
-            expert_rew_appr: Tensor = self.reward_approximator(
-                ga_expert_self_and_neigh_params,
-                ga_expert_self_mask,
-                ga_expert_neigh,
-                ga_expert_all_actions,
-            )
-            expert_cur_rew_shaping: Tensor = self.reward_shaping(
-                ga_expert_self_and_neigh_params,
-                ga_expert_self_mask,
-                ga_expert_neigh,
-            )
-            expert_next_rew_shaping: Tensor = self.reward_shaping(
-                ga_expert_next_self_and_neigh_params,
-                ga_expert_next_self_mask,
-                ga_expert_next_neigh,
-            )
-            expert_act_prob: Tensor = actor(
-                ga_cur_self_and_neigh_params,
-                ga_cur_self_mask,
-                ga_cur_neigh,
-            ).detach()
-            expert_advantage = (
-                expert_rew_appr
-                + gamma * expert_next_rew_shaping
-                - expert_cur_rew_shaping
-            )
-            expert_disc_prob = torch.exp(expert_advantage) / (
-                torch.exp(expert_advantage) + expert_act_prob
+            expert_disc_prob = _compute_disc_prob(
+                lower_index,
+                upper_index_excluded,
+                expert_self_and_neigh_params,
+                expert_self_mask,
+                expert_neigh,
+                expert_all_actions,
+                expert_all_action_masks,
+                expert_next_self_and_neigh_params,
+                expert_next_self_mask,
+                expert_next_neigh,
+                self.reward_approximator,
+                self.reward_shaping,
+                actor,
+                gamma,
             )
 
             discriminator_loss: Tensor = BCELoss()(
@@ -490,6 +402,94 @@ class AIRL(BaseImitator):
             save_path = osp.join(save_path, f"episode_{episode}.pth")
 
         torch.save(checkpoint, save_path)
+
+
+def _compute_disc_prob(
+    lower_index: int,
+    upper_index_excluded: int,
+    cur_self_and_neigh_params: Tensor,
+    cur_self_mask: Tensor,
+    cur_neigh: Tensor,
+    cur_all_actions: Tensor,
+    cur_all_action_masks: Tensor,
+    next_self_and_neigh_params: Tensor,
+    next_self_mask: Tensor,
+    next_neigh: Tensor,
+    reward_approximator: Module,
+    reward_shaping: Module,
+    actor: Module,
+    gamma: float,
+) -> Tensor:
+    agent_num, batch_size, _, param_dim = cur_self_and_neigh_params.shape
+    neigh_side_length: int = cur_neigh.shape[3]
+
+    ga_cur_self_and_neigh_params = cur_self_and_neigh_params.view(
+        batch_size * agent_num, -1, param_dim
+    )[lower_index:upper_index_excluded]
+    ga_cur_self_mask = cur_self_mask.view(batch_size * agent_num, -1)[
+        lower_index:upper_index_excluded
+    ]
+    ga_cur_neigh = cur_neigh.view(
+        batch_size * agent_num,
+        3,
+        neigh_side_length,
+        neigh_side_length,
+        neigh_side_length,
+    )[lower_index:upper_index_excluded]
+    ga_cur_all_actions = cur_all_actions.view(batch_size * agent_num, -1)[
+        lower_index:upper_index_excluded
+    ]
+    ga_cur_all_action_masks = cur_all_action_masks.view(batch_size * agent_num, -1)[
+        lower_index:upper_index_excluded
+    ]
+    ga_next_self_and_neigh_params = next_self_and_neigh_params.view(
+        batch_size * agent_num, -1, param_dim
+    )[lower_index:upper_index_excluded]
+    ga_next_self_mask = next_self_mask.view(batch_size * agent_num, -1)[
+        lower_index:upper_index_excluded
+    ]
+    ga_next_neigh = next_neigh.view(
+        batch_size * agent_num,
+        3,
+        neigh_side_length,
+        neigh_side_length,
+        neigh_side_length,
+    )[lower_index:upper_index_excluded]
+
+    rew_appr: Tensor = reward_approximator(
+        ga_cur_self_and_neigh_params,
+        ga_cur_self_mask,
+        ga_cur_neigh,
+        ga_cur_all_actions,
+    )
+    cur_rew_shaping: Tensor = reward_shaping(
+        ga_cur_self_and_neigh_params,
+        ga_cur_self_mask,
+        ga_cur_neigh,
+    )
+    next_rew_shaping: Tensor = reward_shaping(
+        ga_next_self_and_neigh_params,
+        ga_next_self_mask,
+        ga_next_neigh,
+    )
+
+    action_logits: Tensor = actor(
+        ga_cur_self_and_neigh_params,
+        ga_cur_self_mask,
+        ga_cur_neigh,
+    )
+    action_logits[ga_cur_all_action_masks == 1] = float("-inf")
+    action_dist = F.softmax(action_logits, dim=-1)
+    action_prob = torch.gather(
+        action_dist,
+        dim=1,
+        index=ga_cur_all_actions.nonzero()[:, -1].view(-1, 1),
+    )
+
+    advantage = rew_appr + gamma * next_rew_shaping - cur_rew_shaping
+    disc_prob = torch.exp(advantage) / (torch.exp(advantage) + action_prob)
+
+    return disc_prob
 
 
 def _compute_precision_recall(

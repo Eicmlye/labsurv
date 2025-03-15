@@ -1,4 +1,4 @@
-from configs.ocp._base_.params_benchmark import (
+from configs.ocp._base_.params_benchmark import (  # noqa: F401
     AGENT_NUM,
     ALLOW_POLAR,
     BACKBONE_PATH,
