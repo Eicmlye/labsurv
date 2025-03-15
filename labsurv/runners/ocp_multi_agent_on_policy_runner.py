@@ -175,6 +175,17 @@ class OCPMultiAgentOnPolicyRunner:
                 if isinstance(self.agent.lr, list)
                 else dict(lr=self.agent.lr)
             )
+            self.agent.update_scheduler(episode + 1, self.episodes)
+            if hasattr(self, "expert"):
+                log_dict.update(
+                    dict(
+                        reward_appr_lr=self.expert.lr[0],
+                        reward_shaping_lr=self.expert.lr[1],
+                    )
+                    if isinstance(self.expert.lr, list)
+                    else dict(discriminator_lr=self.expert.lr)
+                )
+                self.expert.update_scheduler(episode + 1, self.episodes)
 
             self.logger.update(episode_return)
             self.logger(self.episodes, **log_dict)

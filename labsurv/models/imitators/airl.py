@@ -58,6 +58,7 @@ class AIRL(BaseImitator):
         self._random = random.Random(seed)
 
         self.agent_num = agent_num
+        self.start_lr = [appr_lr, shaping_lr]
         self.lr = [appr_lr, shaping_lr]
         self.do_reward_change = do_reward_change
         self.truth_threshold = truth_threshold
@@ -379,6 +380,19 @@ class AIRL(BaseImitator):
             next_self_mask,  # [AGENT_NUM, B, AGENT_NUM(NEIGH)]
             next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         )
+
+    def update_scheduler(self, cur_episode: int, total_episode: int):
+        """
+        ## Description:
+
+            Linear one-cycle scheduler.
+        """
+        cur_episode = min(cur_episode, total_episode - 1)
+        for index in range(len(self.lr)):
+            self.lr[index] = (
+                self.start_lr[index]
+                - cur_episode / (total_episode - 1) * (1 - 1e-2) * self.start_lr[index]
+            )
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
