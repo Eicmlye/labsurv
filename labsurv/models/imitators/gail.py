@@ -1,3 +1,4 @@
+import math
 import os
 import os.path as osp
 import pickle
@@ -13,6 +14,7 @@ from labsurv.utils.surveillance import reformat_input
 from mmcv.utils import ProgressBar
 from numpy import ndarray as array
 from torch import Tensor
+from torch import pi as PI
 from torch.nn import BCELoss, Module
 
 
@@ -55,7 +57,7 @@ class GAIL(BaseImitator):
         self._random = random.Random(seed)
 
         self.agent_num = agent_num
-        self.start_lr = lr
+        self.max_lr = lr
         self.lr = lr
         self.do_reward_change = do_reward_change
         self.truth_threshold = truth_threshold
@@ -269,7 +271,9 @@ class GAIL(BaseImitator):
 
             discriminator_loss.backward()
 
-            rewards_list += (-torch.log(agent_disc_prob)).tolist()
+            rewards_list += (
+                torch.log(1 - agent_disc_prob) - torch.log(agent_disc_prob)
+            ).tolist()
             agent_probs += agent_disc_prob.view(-1).tolist()
             expert_probs += expert_disc_prob.view(-1).tolist()
 
@@ -278,13 +282,24 @@ class GAIL(BaseImitator):
 
         self.opt.step()
 
-        accuracy, precision, recall = _compute_precision_recall(
+        accuracy, precision, recall, TP, FP, TN, FN = _compute_precision_recall(
             agent_probs, expert_probs, self.truth_threshold
         )
 
         logger.show_log(
             f"Discriminator acc = {accuracy:.10f} | prec = {precision:.10f} "
             f"| recall = {recall:.10f} | threshold {self.truth_threshold:.8f}",
+            with_time=True,
+        )
+
+        # DEBUG(eric):
+        logger.show_log(
+            f"TP = {TP} | FP = {FP} | TN = {TN} | FN = {FN} | "
+            f"agent_prob range [{min(agent_probs):.6f}, "
+            f"{max(agent_probs):.6f}] | "
+            f"expert_prob range [{min(expert_probs):.6f}, "
+            f"{max(expert_probs):.6f}] | "
+            f"Expert prec = {TN / (TN + FN):.10f} | recall = {TN / (TN + FP):.10f} ",
             with_time=True,
         )
 
@@ -327,17 +342,22 @@ class GAIL(BaseImitator):
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
         )
 
-    def update_scheduler(self, cur_episode: int, total_episode: int):
+    def update_scheduler(self, cur_episode: int, total_episode: int, mode: str = "cos"):
         """
         ## Description:
 
-            Linear one-cycle scheduler.
+            Cosine one-cycle scheduler.
         """
         cur_episode = min(cur_episode, total_episode - 1)
-        self.lr = (
-            self.start_lr
-            - cur_episode / (total_episode - 1) * (1 - 1e-2) * self.start_lr
-        )
+
+        if mode == "cos":
+            time_index = PI / 4 + PI * 5 / 4 * cur_episode / (total_episode - 1)
+            min_lr = 1e-2 * self.max_lr
+            amplification = (self.max_lr - min_lr) / 2
+
+            self.lr = amplification * (math.sin(time_index) + 1) + min_lr
+        else:
+            raise NotImplementedError()
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
@@ -375,4 +395,4 @@ def _compute_precision_recall(
     precision = (TP / (TP + FP)) if TP + FP > 0 else 0.0
     recall = (TP / (TP + FN)) if TP + FN > 0 else 0.0
 
-    return accuracy, precision, recall
+    return accuracy, precision, recall, TP, FP, TN, FN

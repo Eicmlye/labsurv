@@ -1,3 +1,4 @@
+import math
 import os
 import os.path as osp
 from copy import deepcopy
@@ -106,7 +107,7 @@ class OCPMultiAgentPPO(BaseAgent):
                 if gradient_accumulation_batchsize is not None
                 else self.agent_num
             )
-            self.start_lr = [actor_lr, critic_lr]
+            self.max_lr = [actor_lr, critic_lr]
             self.lr = [actor_lr, critic_lr]
 
             self.start_episode = 0
@@ -702,18 +703,23 @@ class OCPMultiAgentPPO(BaseAgent):
 
         return critic_loss.item(), actor_loss.item(), entropy_loss.item()
 
-    def update_scheduler(self, cur_episode: int, total_episode: int):
+    def update_scheduler(self, cur_episode: int, total_episode: int, mode: str = "cos"):
         """
         ## Description:
 
-            Linear one-cycle scheduler.
+            Cosine one-cycle scheduler.
         """
         cur_episode = min(cur_episode, total_episode - 1)
-        for index in range(len(self.lr)):
-            self.lr[index] = (
-                self.start_lr[index]
-                - cur_episode / (total_episode - 1) * (1 - 1e-2) * self.start_lr[index]
-            )
+
+        if mode == "cos":
+            for index in range(len(self.lr)):
+                time_index = PI / 4 + PI * 5 / 4 * cur_episode / (total_episode - 1)
+                min_lr = 1e-2 * self.max_lr[index]
+                amplification = (self.max_lr[index] - min_lr) / 2
+
+                self.lr[index] = amplification * (math.sin(time_index) + 1) + min_lr
+        else:
+            raise NotImplementedError()
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
