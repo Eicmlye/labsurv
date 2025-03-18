@@ -1,3 +1,4 @@
+import math
 import os
 import os.path as osp
 import pickle
@@ -8,12 +9,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from labsurv.builders import IMITATORS, STRATEGIES
+
+# from labsurv.loss import BinaryFocalLoss
 from labsurv.models.imitators import BaseImitator
 from labsurv.runners.hooks import LoggerHook
 from labsurv.utils.surveillance import reformat_input
 from mmcv.utils import ProgressBar
 from numpy import ndarray as array
 from torch import Tensor
+from torch import pi as PI
 from torch.nn import BCELoss, Module
 
 
@@ -58,7 +62,7 @@ class AIRL(BaseImitator):
         self._random = random.Random(seed)
 
         self.agent_num = agent_num
-        self.start_lr = [appr_lr, shaping_lr]
+        self.max_lr = [appr_lr, shaping_lr]
         self.lr = [appr_lr, shaping_lr]
         self.do_reward_change = do_reward_change
         self.truth_threshold = truth_threshold
@@ -314,8 +318,14 @@ class AIRL(BaseImitator):
             discriminator_loss: Tensor = BCELoss()(
                 agent_disc_prob, torch.ones_like(agent_disc_prob)
             ) + BCELoss()(expert_disc_prob, torch.zeros_like(expert_disc_prob))
+            discriminator_loss /= gradient_accumulation_batchnum
 
-            discriminator_loss.backward()
+            try:
+                discriminator_loss.backward()
+            except RuntimeError:
+                import pdb
+
+                pdb.set_trace()
 
             rewards_list += (
                 torch.log(1 - agent_disc_prob) - torch.log(agent_disc_prob)
@@ -330,13 +340,29 @@ class AIRL(BaseImitator):
         self.appr_opt.step()
         self.shaping_opt.step()
 
-        accuracy, precision, recall = _compute_precision_recall(
+        accuracy, precision, recall, TP, FP, TN, FN = _compute_precision_recall(
             agent_probs, expert_probs, self.truth_threshold
         )
+
+        # DEBUG(eric):
+        # print(torch.tensor(agent_probs).view(self.agent_num, -1))
+        # print(torch.tensor(expert_probs).view(self.agent_num, -1))
+        # import pdb; pdb.set_trace()
 
         logger.show_log(
             f"Discriminator acc = {accuracy:.10f} | prec = {precision:.10f} "
             f"| recall = {recall:.10f} | threshold {self.truth_threshold:.8f}",
+            with_time=True,
+        )
+
+        # DEBUG(eric):
+        logger.show_log(
+            f"TP = {TP} | FP = {FP} | TN = {TN} | FN = {FN} | "
+            f"agent_prob range [{min(agent_probs):.6f}, "
+            f"{max(agent_probs):.6f}] | "
+            f"expert_prob range [{min(expert_probs):.6f}, "
+            f"{max(expert_probs):.6f}] | "
+            f"Expert prec = {TN / (TN + FN):.10f} | recall = {TN / (TN + FP):.10f} ",
             with_time=True,
         )
 
@@ -382,18 +408,23 @@ class AIRL(BaseImitator):
             next_neigh,  # [AGENT_NUM, B, 3, 2L+1, 2L+1, 2L+1]
         )
 
-    def update_scheduler(self, cur_episode: int, total_episode: int):
+    def update_scheduler(self, cur_episode: int, total_episode: int, mode: str = "cos"):
         """
         ## Description:
 
-            Linear one-cycle scheduler.
+            Cosine one-cycle scheduler.
         """
         cur_episode = min(cur_episode, total_episode - 1)
-        for index in range(len(self.lr)):
-            self.lr[index] = (
-                self.start_lr[index]
-                - cur_episode / (total_episode - 1) * (1 - 1e-2) * self.start_lr[index]
-            )
+
+        if mode == "cos":
+            for index in range(len(self.lr)):
+                time_index = PI / 4 + PI * 5 / 4 * cur_episode / (total_episode - 1)
+                min_lr = 1e-2 * self.max_lr[index]
+                amplification = (self.max_lr[index] - min_lr) / 2
+
+                self.lr[index] = amplification * (math.sin(time_index) + 1) + min_lr
+        else:
+            raise NotImplementedError()
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
@@ -499,10 +530,12 @@ def _compute_disc_prob(
         action_dist,
         dim=1,
         index=ga_cur_all_actions.nonzero()[:, -1].view(-1, 1),
-    )
+    ).detach()
 
-    advantage = rew_appr + gamma * next_rew_shaping - cur_rew_shaping
-    disc_prob = torch.exp(advantage) / (torch.exp(advantage) + action_prob)
+    exp_advantage = torch.clamp(
+        rew_appr * next_rew_shaping**gamma / cur_rew_shaping, 0, 1
+    )
+    disc_prob = exp_advantage / (exp_advantage + action_prob)
 
     return disc_prob
 
@@ -523,4 +556,4 @@ def _compute_precision_recall(
     precision = (TP / (TP + FP)) if TP + FP > 0 else 0.0
     recall = (TP / (TP + FN)) if TP + FN > 0 else 0.0
 
-    return accuracy, precision, recall
+    return accuracy, precision, recall, TP, FP, TN, FN
