@@ -10,7 +10,7 @@ from configs.runtime import DEVICE
 expert = dict(
     type="AIRL",
     reward_approximator_cfg=dict(
-        type="PointNet2Discriminator",
+        type="PointNet2Approx",
         device=DEVICE,
         hidden_dim=128,
         cam_types=CAM_TYPE_NUM,
@@ -28,14 +28,19 @@ expert = dict(
         voxel_length=VOXEL_LENGTH,
     ),
     device=DEVICE,
-    appr_lr=5e-4,
-    shaping_lr=5e-4,
+    appr_lr=1e-3,
+    shaping_lr=1e-3,
     agent_num=AGENT_NUM,
-    gradient_accumulation_batchsize=20,
+    gradient_accumulation_batchsize=25,
     backbone_path=BACKBONE_PATH,
     freeze_backbone=FREEZE_BACKBONE,
     expert_data_path="output/expert",
-    do_reward_change=True,
+    do_reward_change=False,
     truth_threshold=0.3,
-    # load_from="output/ocp/mappo_pointnet2_benchmark/ma5_AC_03_gail_task/ma5_20steps_AC_03_32melt_load1k_gail_32melt_keepreward_expertencodeaction_load200/imitators/episode_1000.pth",
+    # load_from=(
+    #     "output/ocp/mappo_pointnet2_benchmark/"
+    #     "ma5_AC_03_airl_melt/"
+    #     "ma5_20steps_AC_03_32melt_airl_keepreward/"
+    #     "imitators/episode_100.pth"
+    # ),
 )
