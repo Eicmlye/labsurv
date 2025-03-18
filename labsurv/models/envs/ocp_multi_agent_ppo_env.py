@@ -383,9 +383,9 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         individual_rewards = []
         cov_delta = cur_coverage - pred_coverage
 
-        total_reward: float = cov_delta * 100
+        total_reward: float = cov_delta
         if cur_coverage >= self.terminate_goal:
-            total_reward += self.terminate_goal * 100
+            total_reward += self.terminate_goal
 
         # subgoals
         for goal, bonus in self.subgoals:
