@@ -161,30 +161,12 @@ class AIRL(BaseImitator):
         if len(unexpected_keys) > 0:
             print(f"Unexpected keys in reward_shaping checkpoint: \n{unexpected_keys}")
 
-        missing_keys, unexpected_keys = self.appr_opt.load_state_dict(
-            checkpoint["reward_approximator"]["optimizer_state_dict"], strict=False
+        self.appr_opt.load_state_dict(
+            checkpoint["reward_approximator"]["optimizer_state_dict"]
         )
-        if len(missing_keys) > 0:
-            print(
-                f"Missing keys in reward_approximator optimizer checkpoint: \n{missing_keys}"
-            )
-        if len(unexpected_keys) > 0:
-            print(
-                "Unexpected keys in reward_approximator optimizer checkpoint: "
-                f"\n{unexpected_keys}"
-            )
-        missing_keys, unexpected_keys = self.shaping_opt.load_state_dict(
-            checkpoint["reward_shaping"]["optimizer_state_dict"], strict=False
+        self.shaping_opt.load_state_dict(
+            checkpoint["reward_shaping"]["optimizer_state_dict"]
         )
-        if len(missing_keys) > 0:
-            print(
-                f"Missing keys in reward_shaping optimizer checkpoint: \n{missing_keys}"
-            )
-        if len(unexpected_keys) > 0:
-            print(
-                "Unexpected keys in reward_shaping optimizer checkpoint: "
-                f"\n{unexpected_keys}"
-            )
 
         self.start_episode = checkpoint["episode"] + 1
 

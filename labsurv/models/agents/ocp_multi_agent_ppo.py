@@ -199,23 +199,8 @@ class OCPMultiAgentPPO(BaseAgent):
         if len(unexpected_keys) > 0:
             print(f"Unexpected keys in critic checkpoint: \n{unexpected_keys}")
 
-        missing_keys, unexpected_keys = self.actor_opt.load_state_dict(
-            checkpoint["actor"]["optimizer_state_dict"], strict=False
-        )
-        if len(missing_keys) > 0:
-            print(f"Missing keys in actor optimizer checkpoint: \n{missing_keys}")
-        if len(unexpected_keys) > 0:
-            print(f"Unexpected keys in actor optimizer checkpoint: \n{unexpected_keys}")
-
-        missing_keys, unexpected_keys = self.critic_opt.load_state_dict(
-            checkpoint["critic"]["optimizer_state_dict"], strict=False
-        )
-        if len(missing_keys) > 0:
-            print(f"Missing keys in critic optimizer checkpoint: \n{missing_keys}")
-        if len(unexpected_keys) > 0:
-            print(
-                f"Unexpected keys in critic optimizer checkpoint: \n{unexpected_keys}"
-            )
+        self.actor_opt.load_state_dict(checkpoint["actor"]["optimizer_state_dict"])
+        self.critic_opt.load_state_dict(checkpoint["critic"]["optimizer_state_dict"])
 
         self.start_episode = checkpoint["episode"] + 1
 
