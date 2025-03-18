@@ -1,6 +1,7 @@
 from configs.ocp._base_.params_benchmark import (  # noqa: F401
     AGENT_NUM,
     BACKBONE_PATH,
+    BACKBONE_RADIUS,
     CAM_TYPE_NUM,
     FREEZE_BACKBONE,
     VOXEL_LENGTH,
@@ -17,6 +18,7 @@ expert = dict(
         comm_attn_head_num=4,
         neigh_out_dim=64,
         voxel_length=VOXEL_LENGTH,
+        min_radius=BACKBONE_RADIUS,
     ),
     device=DEVICE,
     lr=5e-4,

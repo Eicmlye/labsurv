@@ -118,18 +118,7 @@ class GAIL(BaseImitator):
         if len(unexpected_keys) > 0:
             print(f"Unexpected keys in discriminator checkpoint: \n{unexpected_keys}")
 
-        missing_keys, unexpected_keys = self.opt.load_state_dict(
-            checkpoint["discriminator"]["optimizer_state_dict"], strict=False
-        )
-        if len(missing_keys) > 0:
-            print(
-                f"Missing keys in discriminator optimizer checkpoint: \n{missing_keys}"
-            )
-        if len(unexpected_keys) > 0:
-            print(
-                "Unexpected keys in discriminator optimizer checkpoint: "
-                f"\n{unexpected_keys}"
-            )
+        self.opt.load_state_dict(checkpoint["discriminator"]["optimizer_state_dict"])
 
         self.start_episode = checkpoint["episode"] + 1
 
