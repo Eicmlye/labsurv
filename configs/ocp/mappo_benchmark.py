@@ -1,6 +1,6 @@
 from configs.ocp._base_.agents import mappo_benchmark_agent
 from configs.ocp._base_.envs import mappo_benchmark_env
-from configs.ocp._base_.experts import airl_expert, gail_expert  # noqa: F401
+from configs.ocp._base_.experts import gail_expert  # noqa: F401
 from configs.ocp._base_.params_benchmark import AGENT_NUM, BENCHMARK_NAME, MANUAL
 from labsurv.utils import get_time_stamp
 
