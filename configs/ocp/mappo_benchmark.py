@@ -42,7 +42,7 @@ save_checkpoint_interval = 100
 
 logger_cfg = dict(
     type="LoggerHook",
-    log_interval=10,
+    log_interval=5,
     save_dir=work_dir,
     save_filename=exp_name,
 )
