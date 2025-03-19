@@ -1,4 +1,3 @@
-import math
 import os
 import os.path as osp
 import pickle
@@ -14,7 +13,6 @@ from labsurv.utils.surveillance import reformat_input
 from mmcv.utils import ProgressBar
 from numpy import ndarray as array
 from torch import Tensor
-from torch import pi as PI
 from torch.nn import BCELoss, Module
 
 
@@ -330,23 +328,6 @@ class GAIL(BaseImitator):
             cur_all_actions,  # [AGENT_NUM, B, ACTION_DIM]
             cur_all_action_masks,  # [AGENT_NUM, B, ACTION_DIM]
         )
-
-    def update_scheduler(self, cur_episode: int, total_episode: int, mode: str = "cos"):
-        """
-        ## Description:
-
-            Cosine one-cycle scheduler.
-        """
-        cur_episode = min(cur_episode, total_episode - 1)
-
-        if mode == "cos":
-            time_index = PI / 4 + PI * 5 / 4 * cur_episode / (total_episode - 1)
-            min_lr = 1e-2 * self.max_lr
-            amplification = (self.max_lr - min_lr) / 2
-
-            self.lr = amplification * (math.sin(time_index) + 1) + min_lr
-        else:
-            raise NotImplementedError()
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
