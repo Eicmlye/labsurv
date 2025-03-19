@@ -32,12 +32,6 @@ def parse_args():
         action="store_true",
         help="Whether to take out useful lines of the log.",
     )
-    parser.add_argument(  # --drop-abnormal
-        "--drop-abnormal",
-        "-d",
-        action="store_true",
-        help="Whether to drop abnormal values.",
-    )
 
     return parser.parse_args()
 
@@ -204,7 +198,6 @@ def plot_subfig(
     tick_step: int = 20,
     sma: int = 1,
     reward_sma: int = 1,
-    drop_abnormal: bool = False,
     disc_output: Optional[List[List[float]]] = None,
 ):
     if is_ac:
@@ -223,7 +216,6 @@ def plot_subfig(
             tick_step=tick_step,
             sma=sma,
             reward_sma=reward_sma,
-            drop_abnormal=drop_abnormal,
             disc_loss=disc_loss,
             disc_acc=disc_acc,
             disc_prec=disc_prec,
@@ -244,7 +236,6 @@ def _plot_ac_subfig(
     tick_step: int = 20,
     sma: int = 1,
     reward_sma: int = 1,
-    drop_abnormal: bool = False,
     disc_loss: Optional[List[float]] = None,
     disc_acc: Optional[List[float]] = None,
     disc_prec: Optional[List[float]] = None,
@@ -311,7 +302,6 @@ def _plot_ac_subfig(
         title="entropy loss",
         tick_step=tick_step,
         log_if_needed=True,
-        drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
         ax_critic,
@@ -322,7 +312,6 @@ def _plot_ac_subfig(
         title="critic loss",
         tick_step=tick_step,
         log_if_needed=True,
-        drop_abnormal=drop_abnormal,
     )
     _plot_subfig(
         ax_actor,
@@ -332,7 +321,6 @@ def _plot_ac_subfig(
         color="b",
         title="actor loss",
         tick_step=tick_step,
-        drop_abnormal=drop_abnormal,
     )
     if disc_loss is not None:
         _plot_subfig(
@@ -344,7 +332,6 @@ def _plot_ac_subfig(
             title="discriminator loss",
             tick_step=tick_step,
             log_if_needed=True,
-            drop_abnormal=drop_abnormal,
         )
         _plot_subfig(
             ax_disc_acc,
@@ -354,7 +341,6 @@ def _plot_ac_subfig(
             color="m",
             title="discriminator accuracy",
             tick_step=tick_step,
-            drop_abnormal=drop_abnormal,
             label="actual",
         )
         _plot_subfig(
@@ -365,7 +351,6 @@ def _plot_ac_subfig(
             color="m",
             title="discriminator precision",
             tick_step=tick_step,
-            drop_abnormal=drop_abnormal,
             label="actual",
         )
         _plot_subfig(
@@ -376,7 +361,6 @@ def _plot_ac_subfig(
             color="m",
             title="discriminator recall",
             tick_step=tick_step,
-            drop_abnormal=drop_abnormal,
             label="actual",
         )
 
@@ -412,7 +396,6 @@ def _plot_ac_subfig(
             title="entropy loss",
             tick_step=tick_step,
             log_if_needed=True,
-            drop_abnormal=drop_abnormal,
             sma=sma,
         )
         _plot_subfig(
@@ -424,7 +407,6 @@ def _plot_ac_subfig(
             title="critic loss",
             tick_step=tick_step,
             log_if_needed=True,
-            drop_abnormal=drop_abnormal,
             sma=sma,
         )
         _plot_subfig(
@@ -435,7 +417,6 @@ def _plot_ac_subfig(
             color="b",
             title="actor loss",
             tick_step=tick_step,
-            drop_abnormal=drop_abnormal,
             sma=sma,
         )
         if disc_loss is not None:
@@ -448,7 +429,6 @@ def _plot_ac_subfig(
                 title="discriminator loss",
                 tick_step=tick_step,
                 log_if_needed=True,
-                drop_abnormal=drop_abnormal,
                 sma=sma,
             )
             _plot_subfig(
@@ -458,7 +438,6 @@ def _plot_ac_subfig(
                 line_style="-",
                 color="black",
                 tick_step=tick_step,
-                drop_abnormal=drop_abnormal,
                 label=f"SMA{sma}",
                 sma=sma,
             )
@@ -469,7 +448,6 @@ def _plot_ac_subfig(
                 line_style="-",
                 color="black",
                 tick_step=tick_step,
-                drop_abnormal=drop_abnormal,
                 label=f"SMA{sma}",
                 sma=sma,
             )
@@ -480,7 +458,6 @@ def _plot_ac_subfig(
                 line_style="-",
                 color="black",
                 tick_step=tick_step,
-                drop_abnormal=drop_abnormal,
                 label=f"SMA{sma}",
                 sma=sma,
             )
@@ -541,7 +518,6 @@ def _plot_subfig(
     title: Optional[str] = None,
     tick_step: int = 20,
     log_if_needed: bool = False,
-    drop_abnormal: bool = False,
     label: Optional[str] = None,
     sma: Optional[int] = None,
     sma_tick_extend_factor: int = 1,
@@ -559,23 +535,13 @@ def _plot_subfig(
         log_scale = True
         y = np.array(np.log10(np.array(y) + 1e-12)).tolist()
 
-    dropped = 0
-    if drop_abnormal:
-        x, y, dropped = _drop_abnormal(
-            x, y, [-13, -12] if "actor" not in title and log_scale else [5000, 1e8]
-        )
-
     ax.plot(x, y, line_style, color=color, label=label)
     x_ticks = generate_absolute_ticks(1, max(x) if len(x) > 0 else 1, step=tick_step)
 
     if label is not None:
         ax.legend(loc="upper left")
     if title is not None:
-        ax.set_title(
-            ("log10 " if log_scale else "")
-            + title
-            + (f" dropped {dropped}" if dropped > 0 else "")
-        )
+        ax.set_title(("log10 " if log_scale else "") + title)
     if sma is not None:
         ax.axvline(sma * sma_tick_extend_factor, linestyle="--", color="black")
 
@@ -598,29 +564,6 @@ def simple_moving_average(vals: List[float], window: int = 10) -> List[float]:
         sma_vals.append(sum(cache) / len(cache))
 
     return sma_vals
-
-
-def _drop_abnormal(
-    x: List[float],
-    y: List[float],
-    drop_range: List[float],
-) -> Tuple[List[float], List[float], int]:
-    assert len(x) == len(y)
-    assert len(drop_range) == 2
-
-    result_x = []
-    result_y = []
-
-    dropped = 0
-
-    for index in range(len(y)):
-        if y[index] >= drop_range[0] and y[index] <= drop_range[1]:
-            dropped += 1
-        else:
-            result_x.append(x[index])
-            result_y.append(y[index])
-
-    return result_x, result_y, dropped
 
 
 def main():
@@ -649,7 +592,6 @@ def main():
         tick_step=args.step,
         sma=args.sma,
         reward_sma=args.reward_sma,
-        drop_abnormal=args.drop_abnormal,
         disc_output=disc_output,
     )
 

@@ -16,10 +16,10 @@ env_cfg = dict(
     device=DEVICE,
     agent_num=AGENT_NUM,
     # visit_count_path=(
-    #     "output/ocp/mappo_pointnet2_benchmark/"
-    #     "ma5_AC_03_airl_task/"
-    #     "ma5_20steps_AC_03_32melt_loadbackbone_airl_32melt_loadbackbone_neglogreward/"
-    #     "envs/visit_count_episode_100.pkl"
+    #     "output/ocp/AGENT_NAME_benchmark/"
+    #     "TASK_NAME/"
+    #     "WORKING_DIR/"
+    #     "envs/visit_count_episode_EPISODE.pkl"
     # ),
     pan_section_num=PAN_SEC_NUM,
     tilt_section_num=TILT_SEC_NUM,
