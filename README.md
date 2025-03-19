@@ -39,6 +39,14 @@ pip install -e .
 > 3. add `[IP] github.com` to this file, you may need to provide administor identity.
 > 4. this ip may occasionally change, so update `hosts` if the problem raises again.
 
+> If failed to install, try commenting the following lines in `requirements.txt`, and install pytorch & cudnn manually.
+>
+> ```plaintext
+> # torch==2.3.1+cu121
+> # torchaudio==2.3.1+cu121
+> # torchvision==0.18.1+cu121
+> ```
+
 ### Package Modification
 
 - `pyntcloud`
