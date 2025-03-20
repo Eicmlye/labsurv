@@ -59,6 +59,11 @@ agent_cfg = dict(
         manual=MANUAL,
         backbone_path=BACKBONE_PATH,
         freeze_backbone=FREEZE_BACKBONE,
-        # load_from="output/ocp/AGENT_NAME_benchmark/TASK_NAME/WORKING_DIR/models/episode_EPISODE.pth",
+        # load_from=(
+        #     "output/ocp/AGENT_NAME_benchmark/"
+        #     "TASK_NAME/"
+        #     "WORKING_DIR/"
+        #     "models/episode_EPISODE.pth"
+        # ),
     ),
 )

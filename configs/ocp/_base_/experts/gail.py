@@ -29,5 +29,10 @@ expert = dict(
     expert_data_path="output/expert",
     do_reward_change=False,
     truth_threshold=0.3,
-    # load_from="output/ocp/AGENT_NAME_benchmark/TASK_NAME/WORKING_DIR/imitators/episode_EPISODE.pth",
+    # load_from=(
+    #     "output/ocp/AGENT_NAME_benchmark/"
+    #     "TASK_NAME/"
+    #     "WORKING_DIR/"
+    #     "imitators/episode_EPISODE.pth"
+    # ),
 )
