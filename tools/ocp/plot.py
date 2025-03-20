@@ -537,8 +537,8 @@ def _plot_subfig(
 
     # list[None:] == list
     ax.plot(
-        x[(sma - 1) if sma is not None else 0:],
-        y[(sma - 1) if sma is not None else 0:],
+        x[(sma - 1) if sma is not None else 0 :],
+        y[(sma - 1) if sma is not None else 0 :],
         line_style,
         color=color,
         label=label,

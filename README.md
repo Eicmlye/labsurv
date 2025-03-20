@@ -47,6 +47,8 @@ pip install -e .
 > # torchvision==0.18.1+cu121
 > ```
 
+> `mmcv` wheel may take a long time to build, just wait patiently.
+
 ### Package Modification
 
 - `pyntcloud`
