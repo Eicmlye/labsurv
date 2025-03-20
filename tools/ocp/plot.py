@@ -536,7 +536,13 @@ def _plot_subfig(
         y = np.array(np.log10(np.array(y) + 1e-12)).tolist()
 
     # list[None:] == list
-    ax.plot(x[sma - 1:], y[sma - 1:], line_style, color=color, label=label)
+    ax.plot(
+        x[(sma - 1) if sma is not None else 0:],
+        y[(sma - 1) if sma is not None else 0:],
+        line_style,
+        color=color,
+        label=label,
+    )
     x_ticks = generate_absolute_ticks(1, max(x) if len(x) > 0 else 1, step=tick_step)
 
     if label is not None:
