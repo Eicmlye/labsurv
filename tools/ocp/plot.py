@@ -524,6 +524,9 @@ def _plot_subfig(
 ):
     if sma is not None:
         assert isinstance(sma, int) and sma > 0
+        assert isinstance(
+            sma_tick_extend_factor, int
+        ), "Wait until the first evaluation is done, and `plot.py` will be available."
         y = simple_moving_average(input_y, window=sma)
         if title is not None:
             title = f"SMA{sma * sma_tick_extend_factor} " + title

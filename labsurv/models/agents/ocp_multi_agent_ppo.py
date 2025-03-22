@@ -535,10 +535,9 @@ class OCPMultiAgentPPO(BaseAgent):
             advantages: Tensor = _compute_advantage(  # [AGENT_NUM * B]
                 self.gamma, self.advantage_param, critic_td_error, self.device
             ).repeat(self.agent_num)
-
-        all_agents_actor_advantages: Tensor = None  # [AGENT_NUM * B]
-        for agent_index in range(self.agent_num):
-            if self.mixed_reward:
+        else:
+            all_agents_actor_advantages: Tensor = None  # [AGENT_NUM * B]
+            for agent_index in range(self.agent_num):
                 actor_td_target: Tensor = mixed_rewards[
                     :, agent_index
                 ] + self.gamma * value_predict * (  # [B]
@@ -606,7 +605,7 @@ class OCPMultiAgentPPO(BaseAgent):
                     ]
                     == 1
                 ] = float("-inf")
-                action_dist = F.softmax(action_logits, dim=-1)  # [GA]
+                action_dist = F.softmax(action_logits, dim=-1)  # [GA, ACTION_DIM]
 
                 cur_strat_prob = torch.log(  # [GA]
                     torch.gather(
@@ -616,9 +615,9 @@ class OCPMultiAgentPPO(BaseAgent):
                     ).view(-1)
                 )
 
-                entropy: Tensor = torch.distributions.Categorical(
+                entropy: Tensor = torch.distributions.Categorical(  # [GA]
                     action_dist
-                ).entropy()  # [GA]
+                ).entropy()
 
                 pred_strat_prob = torch.log(  # [GA]
                     torch.gather(
@@ -636,14 +635,13 @@ class OCPMultiAgentPPO(BaseAgent):
                     ).view(-1)
                 ).detach()
 
-                # [GA]
-                significance = torch.exp(cur_strat_prob - pred_strat_prob)
+                significance = torch.exp(cur_strat_prob - pred_strat_prob)  # [GA]
 
-                surrogate_1 = significance * (
+                surrogate_1 = significance * (  # [GA]
                     all_agents_actor_advantages[lower_index:upper_index_excluded]
                     if self.mixed_reward
                     else advantages[lower_index:upper_index_excluded]
-                )  # [GA]
+                )
                 surrogate_2 = torch.clamp(  # [GA]
                     significance,
                     1 - self.clip_epsilon,
