@@ -32,6 +32,11 @@ def parse_args():
         action="store_true",
         help="Whether to take out useful lines of the log.",
     )
+    parser.add_argument(  # --cov
+        "--cov",
+        action="store_true",
+        help="Whether to plot final coverage.",
+    )
 
     return parser.parse_args()
 
@@ -43,7 +48,11 @@ def get_latest_log(dir_name: str):
     latest_timestamp: int = 0
     latest_log: str = None
     for filename in filenames:
-        if filename.endswith(".log") and not filename.endswith("shrink.log"):
+        if (
+            filename.endswith(".log")
+            and not filename.endswith("shrink.log")
+            and not filename.endswith("cov.log")
+        ):
             cur_timestamp = filename.split(".")[0].split("_")
             try:
                 cur_timestamp = int(cur_timestamp[0] + cur_timestamp[1])
@@ -64,6 +73,140 @@ def get_latest_log(dir_name: str):
         raise ValueError(f"No valid log file found in {dir_name}.")
 
     return osp.join(dir_name, latest_log)
+
+
+def ocp_get_cov(
+    log_filename: str, shrink: Optional[str] = None
+) -> Tuple[List[float], List[float], int]:
+    train_covs = []
+    eval_covs = []
+    eval_step = None
+    found_episode_line = False
+    start_episode: int = 1
+
+    pred_train_cov = None
+    pred_eval_cov = None
+
+    shrinked_log: bool = log_filename.endswith("cov.log")
+
+    if shrink is not None:
+        new_log = open(shrink, "w")
+
+    with open(log_filename, "r") as f:
+        for line in f:
+            word_list = line.strip().split()
+
+            if "====" in word_list and not found_episode_line:
+                found_episode_line = True
+
+                if shrink is not None:
+                    new_log.write(line)
+
+                start_episode = int(word_list[2])
+
+            if "Evaluating" in word_list and eval_step is None:
+                if len(word_list) < 4:
+                    raise ValueError(
+                        f"Current log file {log_filename} is not a training log."
+                    )
+                eval_step = int(word_list[4]) - start_episode + 1
+                if shrink is not None:
+                    new_log.write(line)
+
+            if (
+                not shrinked_log and len(word_list) >= 5 and word_list[4].endswith("%")
+            ) or (
+                shrinked_log and word_list[0] == "eval" and word_list[1].endswith("%")
+            ):
+                pred_eval_cov = eval(word_list[1 if shrinked_log else 4][:-1]) / 100
+            elif (
+                not shrinked_log and len(word_list) >= 7 and word_list[6].endswith("%")
+            ) or (
+                shrinked_log and word_list[0] == "train" and word_list[1].endswith("%")
+            ):
+                pred_train_cov = eval(word_list[1 if shrinked_log else 6][:-1]) / 100
+
+            if "evaluation" in word_list:
+                eval_covs.append(pred_eval_cov)
+                if shrink is not None:
+                    new_log.write(f"eval {100 * pred_eval_cov:.4f}%\n" + line)
+            elif "Discriminator" in word_list:
+                train_covs.append(pred_train_cov)
+                if shrink is not None:
+                    new_log.write(f"train {100 * pred_train_cov:.4f}%\n" + line)
+
+    if shrink is not None:
+        new_log.close()
+
+    return train_covs, eval_covs, eval_step
+
+
+def plot_cov(
+    train_covs: List[float],
+    eval_covs: List[float],
+    eval_step: int,
+    save_path: str,
+    tick_step: int = 20,
+    sma: int = 1,
+    eval_sma: int = 1,
+):
+    if sma > 1:
+        fig = plt.figure(figsize=(25, 10))
+        ax_train = fig.add_subplot(1, 2, 1)  # train_cov
+        ax_eval = fig.add_subplot(1, 2, 2)  # eval_cov
+    else:
+        raise NotImplementedError()
+
+    x_train = [(epi + 1) for epi in range(len(train_covs))]
+    x_eval = [(i + 1) * eval_step for i in range(len(eval_covs))]
+
+    _plot_subfig(
+        ax_train,
+        x_train,
+        train_covs,
+        line_style="-",
+        color="r",
+        title="train coverage",
+        tick_step=tick_step,
+        label="actual",
+    )
+    _plot_subfig(
+        ax_eval,
+        x_eval,
+        eval_covs,
+        line_style="-",
+        color="r",
+        title="eval coverage",
+        tick_step=tick_step,
+        label="actual",
+    )
+
+    if sma > 1:
+        _plot_subfig(
+            ax_train,
+            x_train,
+            train_covs,
+            line_style="-",
+            color="black",
+            tick_step=tick_step,
+            label=f"SMA{sma}",
+            sma=sma,
+        )
+        _plot_subfig(
+            ax_eval,
+            x_eval,
+            eval_covs,
+            line_style="-",
+            color="black",
+            tick_step=tick_step,
+            label=f"SMA{eval_sma * eval_step}",
+            sma=eval_sma,
+            sma_tick_extend_factor=eval_step,
+        )
+
+    # plt.show()
+    fig.subplots_adjust(left=0.05, right=0.95, wspace=0.4, hspace=0.5)
+    fig.savefig(save_path, dpi=300, format="png")
 
 
 def ocp_get_y_axis(
@@ -582,28 +725,45 @@ def main():
     if args.save is None:
         args.save = args.log if not args.log.endswith(".log") else osp.dirname(args.log)
 
-    filename_shrink_to = osp.join(args.save, "shrink.log") if args.shrink else None
+    filename_shrink_to = (
+        osp.join(args.save, "cov.log" if args.cov else "shrink.log")
+        if args.shrink
+        else None
+    )
 
     log_filename = (
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    train_reward, eval_reward, loss, eval_step, is_ac, disc_output = ocp_get_y_axis(
-        log_filename, filename_shrink_to
-    )
+    if args.cov:
+        train_covs, eval_covs, eval_step = ocp_get_cov(log_filename, filename_shrink_to)
 
-    plot_subfig(
-        is_ac,
-        train_reward,
-        eval_reward,
-        loss,
-        eval_step,
-        to_filename(args.save, ".png", "reward_loss_fig"),
-        tick_step=args.step,
-        sma=args.sma,
-        reward_sma=args.reward_sma,
-        disc_output=disc_output,
-    )
+        plot_cov(
+            train_covs,
+            eval_covs,
+            eval_step,
+            to_filename(args.save, ".png", "cov_fig"),
+            tick_step=args.step,
+            sma=args.sma,
+            eval_sma=args.reward_sma,
+        )
+    else:
+        train_reward, eval_reward, loss, eval_step, is_ac, disc_output = ocp_get_y_axis(
+            log_filename, filename_shrink_to
+        )
+
+        plot_subfig(
+            is_ac,
+            train_reward,
+            eval_reward,
+            loss,
+            eval_step,
+            to_filename(args.save, ".png", "reward_loss_fig"),
+            tick_step=args.step,
+            sma=args.sma,
+            reward_sma=args.reward_sma,
+            disc_output=disc_output,
+        )
 
 
 if __name__ == "__main__":
