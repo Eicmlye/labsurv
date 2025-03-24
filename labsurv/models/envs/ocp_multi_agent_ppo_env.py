@@ -301,7 +301,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
 
             print(f"\nEditing agent {agent_index + 1}/{self.agent_num}...")
             if array_is_in(new_pos, candidates):
-                self.info_room.del_cam(cur_pos)
+                pred_vismask = self.info_room.del_cam(cur_pos)
                 new_vismask = self.info_room.add_cam(
                     new_pos, new_direction, new_cam_type
                 )
