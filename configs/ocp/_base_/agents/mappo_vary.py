@@ -1,4 +1,4 @@
-from configs.ocp._base_.params_benchmark import (  # noqa: F401
+from configs.ocp._base_.params_vary import (  # noqa: F401
     ALLOW_POLAR,
     BACKBONE_PATH,
     BACKBONE_RADIUS,
@@ -9,7 +9,6 @@ from configs.ocp._base_.params_benchmark import (  # noqa: F401
     PAN_SEC_NUM,
     TILT_RANGE,
     TILT_SEC_NUM,
-    VOXEL_LENGTH,
 )
 from configs.runtime import DEVICE
 
@@ -22,20 +21,18 @@ agent_cfg = dict(
             type="PointNet2Actor",
             device=DEVICE,
             hidden_dim=128,
-            cam_types=CAM_TYPE_NUM,
+            cam_types=max(CAM_TYPE_NUM),
             comm_attn_head_num=4,
             neigh_out_dim=64,
-            voxel_length=VOXEL_LENGTH,
             min_radius=BACKBONE_RADIUS,
         ),
         critic_cfg=dict(
             type="PointNet2Critic",
             device=DEVICE,
             hidden_dim=128,
-            cam_types=CAM_TYPE_NUM,
+            cam_types=max(CAM_TYPE_NUM),
             attn_head_num=4,
             env_out_dim=64,
-            voxel_length=VOXEL_LENGTH,
             min_radius=BACKBONE_RADIUS,
         ),
         gradient_accumulation_batchsize=25,
@@ -58,10 +55,10 @@ agent_cfg = dict(
         backbone_path=BACKBONE_PATH,
         freeze_backbone=FREEZE_BACKBONE,
         # load_from=(
-        #     "output/ocp/AGENT_NAME_benchmark/"
-        #     "TASK_NAME/"
-        #     "WORKING_DIR/"
-        #     "models/episode_EPISODE.pth"
+        #     "output/ocp/mappo_pointnet2_benchmark/"
+        #     "ma5_AC_03_gail_1r/"
+        #     "ma5_20steps_AC_03_gail_keepreward_1layerdisc_3210melt/"
+        #     "models/episode_100.pth"
         # ),
     ),
 )

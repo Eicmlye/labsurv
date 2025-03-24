@@ -31,16 +31,15 @@ class OCPMultiAgentPPO(BaseAgent):
         self,
         actor_cfg: Dict,
         critic_cfg: Dict,
+        gradient_accumulation_batchsize: int,
         device: Optional[str] = None,
         gamma: float = 0.9,
-        gradient_accumulation_batchsize: Optional[int] = None,
         actor_lr: float = 1e-5,
         critic_lr: float = 1e-4,
         update_step: int = 10,
         advantage_param: float = 0.95,
         clip_epsilon: float = 0.2,
         entropy_loss_coef: float = 0.01,
-        agent_num: int = 2,
         pan_section_num: int = 360,
         tilt_section_num: int = 180,
         pan_range: List[float] = [-PI, PI],
@@ -88,7 +87,6 @@ class OCPMultiAgentPPO(BaseAgent):
         self.test_mode = test_mode
         self.mixed_reward = mixed_reward
         self.cam_types = cam_types
-        self.agent_num = agent_num
 
         self.pan_section_num = pan_section_num
         self.tilt_section_num = tilt_section_num
@@ -101,11 +99,7 @@ class OCPMultiAgentPPO(BaseAgent):
         self.manual = manual
 
         if not self.test_mode:
-            self.gradient_accumulation_batchsize = (
-                gradient_accumulation_batchsize
-                if gradient_accumulation_batchsize is not None
-                else self.agent_num
-            )
+            self.gradient_accumulation_batchsize = gradient_accumulation_batchsize
             self.max_lr = [actor_lr, critic_lr]
             self.lr = [actor_lr, critic_lr]
 
@@ -257,6 +251,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
             action_masks (List[array]): [AGENT_NUM, ACTION_DIM].
         """
+        agent_num = kwargs["agent_num"]
 
         # logger: LoggerHook = kwargs["logger"]
         with torch.no_grad():  # if grad, memory leaks
@@ -265,7 +260,7 @@ class OCPMultiAgentPPO(BaseAgent):
             action_masks: List[array] = []
 
             for agent_index, cam_param in enumerate(cam_params):
-                actor_inputs = info_room2actor_input(room, self.agent_num, cam_param)
+                actor_inputs = info_room2actor_input(room, agent_num, cam_param)
                 observations.append(actor_inputs)
 
                 action_mask = 1 - generate_action_mask(
@@ -332,6 +327,8 @@ class OCPMultiAgentPPO(BaseAgent):
 
             action_masks (List[array]): [AGENT_NUM, ACTION_DIM].
         """
+        agent_num = kwargs["agent_num"]
+        voxel_length = kwargs["voxel_length"]
 
         logger: LoggerHook = kwargs["logger"]
         with torch.no_grad():  # if grad, memory leaks
@@ -342,7 +339,7 @@ class OCPMultiAgentPPO(BaseAgent):
             log = None
 
             for agent_index, cam_param in enumerate(cam_params):
-                actor_inputs = info_room2actor_input(room, self.agent_num, cam_param)
+                actor_inputs = info_room2actor_input(room, agent_num, cam_param)
                 observations.append(actor_inputs)
 
                 self_and_neigh_params: Tensor = torch.tensor(
@@ -363,7 +360,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
                 # [ACTION_DIM]
                 action_logits: Tensor = self.actor(
-                    self_and_neigh_params, self_mask, neigh
+                    self_and_neigh_params, self_mask, neigh, voxel_length=voxel_length
                 ).view(-1)
                 action_mask = 1 - generate_action_mask(
                     room,
@@ -421,6 +418,8 @@ class OCPMultiAgentPPO(BaseAgent):
             action_masks (List[array]): [AGENT_NUM, ACTION_DIM].
         """
         logger: LoggerHook = kwargs["logger"]
+        agent_num = kwargs["agent_num"]
+        voxel_length = kwargs["voxel_length"]
 
         with torch.no_grad():  # if grad, memory leaks
             observations: List[Tuple[array, array, array]] = []
@@ -430,7 +429,7 @@ class OCPMultiAgentPPO(BaseAgent):
             log = None
 
             for agent_index, cam_param in enumerate(cam_params):
-                actor_inputs = info_room2actor_input(room, self.agent_num, cam_param)
+                actor_inputs = info_room2actor_input(room, agent_num, cam_param)
                 observations.append(actor_inputs)
 
                 self_and_neigh_params: Tensor = torch.tensor(
@@ -451,7 +450,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
                 # [ACTION_DIM]
                 action_logits: Tensor = self.actor(
-                    self_and_neigh_params, self_mask, neigh
+                    self_and_neigh_params, self_mask, neigh, voxel_length=voxel_length
                 ).view(-1)
                 action_mask = 1 - generate_action_mask(
                     room,
@@ -492,9 +491,13 @@ class OCPMultiAgentPPO(BaseAgent):
         self,
         transitions: Dict[str, List[bool | float | array | Tuple[int, array]]],
         logger: LoggerHook,
+        **kwargs,
     ) -> Tuple[float]:
+        agent_num = kwargs["agent_num"]
+        voxel_length = kwargs["voxel_length"]
+
         actor_inputs, critic_inputs = reformat_input(
-            self.agent_num, self.device, transitions
+            agent_num, self.device, transitions
         )
 
         # actor inputs
@@ -524,27 +527,31 @@ class OCPMultiAgentPPO(BaseAgent):
             all_terminated,  # [B]
         ) = critic_inputs
 
-        value_predict: Tensor = self.critic(next_cam_params, next_envs).view(-1)  # [B]
+        value_predict: Tensor = self.critic(
+            next_cam_params, next_envs, voxel_length=voxel_length
+        ).view(
+            -1
+        )  # [B]
         critic_td_target: Tensor = system_rewards + self.gamma * value_predict * (
             1 - all_terminated
         )  # [B]
         if not self.mixed_reward:
             critic_td_error: Tensor = critic_td_target - self.critic(  # [B]
-                cur_cam_params, cur_envs
+                cur_cam_params, cur_envs, voxel_length=voxel_length
             ).view(-1)
             advantages: Tensor = _compute_advantage(  # [AGENT_NUM * B]
                 self.gamma, self.advantage_param, critic_td_error, self.device
-            ).repeat(self.agent_num)
+            ).repeat(agent_num)
         else:
             all_agents_actor_advantages: Tensor = None  # [AGENT_NUM * B]
-            for agent_index in range(self.agent_num):
+            for agent_index in range(agent_num):
                 actor_td_target: Tensor = mixed_rewards[
                     :, agent_index
                 ] + self.gamma * value_predict * (  # [B]
                     1 - all_terminated
                 )
                 actor_td_error: Tensor = actor_td_target - self.critic(
-                    cur_cam_params, cur_envs
+                    cur_cam_params, cur_envs, voxel_length=voxel_length
                 ).view(-1)
                 actor_advantages: Tensor = _compute_advantage(  # [B]
                     self.gamma, self.advantage_param, actor_td_error, self.device
@@ -563,7 +570,7 @@ class OCPMultiAgentPPO(BaseAgent):
         pred_actor = deepcopy(self.actor)
 
         gradient_accumulation_batchnum = int(
-            np.ceil(batch_size * self.agent_num / self.gradient_accumulation_batchsize)
+            np.ceil(batch_size * agent_num / self.gradient_accumulation_batchsize)
         )
         for param_group in self.actor_opt.param_groups:
             param_group["lr"] = self.lr[0] / gradient_accumulation_batchnum
@@ -579,17 +586,17 @@ class OCPMultiAgentPPO(BaseAgent):
                 lower_index = ga_step * self.gradient_accumulation_batchsize
                 upper_index_excluded = min(
                     (ga_step + 1) * self.gradient_accumulation_batchsize,
-                    batch_size * self.agent_num,
+                    batch_size * agent_num,
                 )
 
                 ga_cur_self_and_neigh_params = cur_self_and_neigh_params.view(
-                    batch_size * self.agent_num, -1, param_dim
+                    batch_size * agent_num, -1, param_dim
                 )[lower_index:upper_index_excluded]
-                ga_cur_self_mask = cur_self_mask.view(batch_size * self.agent_num, -1)[
+                ga_cur_self_mask = cur_self_mask.view(batch_size * agent_num, -1)[
                     lower_index:upper_index_excluded
                 ]
                 ga_cur_neigh = cur_neigh.view(
-                    batch_size * self.agent_num,
+                    batch_size * agent_num,
                     3,
                     neigh_side_length,
                     neigh_side_length,
@@ -597,10 +604,13 @@ class OCPMultiAgentPPO(BaseAgent):
                 )[lower_index:upper_index_excluded]
 
                 action_logits: Tensor = self.actor(  # [GA, ACTION_DIM]
-                    ga_cur_self_and_neigh_params, ga_cur_self_mask, ga_cur_neigh
+                    ga_cur_self_and_neigh_params,
+                    ga_cur_self_mask,
+                    ga_cur_neigh,
+                    voxel_length=voxel_length,
                 )
                 action_logits[
-                    cur_all_action_masks.view(batch_size * self.agent_num, -1)[
+                    cur_all_action_masks.view(batch_size * agent_num, -1)[
                         lower_index:upper_index_excluded
                     ]
                     == 1
@@ -626,6 +636,7 @@ class OCPMultiAgentPPO(BaseAgent):
                                 ga_cur_self_and_neigh_params,
                                 ga_cur_self_mask,
                                 ga_cur_neigh,
+                                voxel_length=voxel_length,
                             ),
                             dim=-1,
                         )
@@ -657,7 +668,7 @@ class OCPMultiAgentPPO(BaseAgent):
                 )
                 critic_loss = torch.mean(
                     F.mse_loss(
-                        self.critic(cur_cam_params, cur_envs).view(-1),
+                        self.critic(cur_cam_params, cur_envs, voxel_length).view(-1),
                         critic_td_target.detach(),
                     )
                 )

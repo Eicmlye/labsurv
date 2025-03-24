@@ -14,6 +14,7 @@ from .cliff_walk_dqn_env import CliffWalkDQNEnv
 from .cliff_walk_env import CliffWalkEnv
 from .cliff_walk_model_free_env import CliffWalkModelFreeEnv
 from .ocp_multi_agent_ppo_env import OCPMultiAgentPPOEnv
+from .ocp_vary_env import OCPVaryEnv
 
 # isort: on
 
@@ -26,4 +27,5 @@ __all__ = [
     "CliffWalkDQNEnv",
     "CliffWalkActorCriticEnv",
     "OCPMultiAgentPPOEnv",
+    "OCPVaryEnv",
 ]
