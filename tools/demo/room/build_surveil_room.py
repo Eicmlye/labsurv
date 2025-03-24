@@ -307,7 +307,7 @@ def main(size: str, is_demo: bool):
     load_from = None
     # load_from = "output/demo/surv_room/SurveillanceRoom.pkl"
 
-    cfg_path = "configs/ocp/_base_/std_surveil.py"
+    cfg_path = f"configs/ocp/_base_/std_surveil_{size}.py"
     if load_from is not None:
         room = SurveillanceRoom(
             device=DEVICE,
@@ -382,8 +382,8 @@ def main(size: str, is_demo: bool):
         if is_demo:
             print("Adding cameras...")
             room.add_cam(
-                [10, 15, 25],
-                [PI / 4, -PI / 6],
+                [10, 5, 25],
+                [PI / 2, -PI / 6],
                 "std_cam",
             )
     elif size == "standard":
@@ -407,12 +407,7 @@ def main(size: str, is_demo: bool):
                 "std_cam",
             )
 
-    save_dir = (
-        "output/"
-        + ("demo/" if is_demo else "")
-        + "surv_room"
-        + (f"_{size}" if size not in ["standard", "tiny"] else "")
-    )
+    save_dir = "output/" + ("demo/" if is_demo else "") + f"surv_room_{size}"
     room.save(save_dir)
     room.visualize(save_dir)
     if is_demo:

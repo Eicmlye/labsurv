@@ -328,6 +328,9 @@ def ocp_get_y_axis(
     if shrink is not None:
         new_log.close()
 
+    if np.all(np.array(loss[3]) == 0):
+        loss[3] = None
+
     return train_reward, eval_reward, loss, eval_step, is_ac, disc_output
 
 
