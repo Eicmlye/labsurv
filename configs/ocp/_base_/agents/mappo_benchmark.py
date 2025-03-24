@@ -35,7 +35,7 @@ agent_cfg = dict(
             env_out_dim=64,
             min_radius=BACKBONE_RADIUS,
         ),
-        gradient_accumulation_batchsize=10,
+        gradient_accumulation_batchsize=25,
         device=DEVICE,
         gamma=0.95,
         actor_lr=1e-5,
