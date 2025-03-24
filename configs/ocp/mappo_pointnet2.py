@@ -9,10 +9,8 @@ agent_type = "MAPPO_PointNet2"
 episodes = 1000
 steps = 20
 
-# task_name = "expert_data_gen"
-# task_conditions = "trail"
-task_name = "TASK_NAME"
-task_conditions = "TASK_CONDITIONS"
+task_name = "obs_test"
+task_conditions = "01r"
 
 work_dir = (
     f"./output/ocp/{agent_type.lower()}/"
