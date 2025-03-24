@@ -9,7 +9,6 @@ from configs.ocp._base_.params_benchmark import (  # noqa: F401
     PAN_SEC_NUM,
     TILT_RANGE,
     TILT_SEC_NUM,
-    VOXEL_LENGTH,
 )
 from configs.runtime import DEVICE
 
@@ -25,7 +24,6 @@ agent_cfg = dict(
             cam_types=CAM_TYPE_NUM,
             comm_attn_head_num=4,
             neigh_out_dim=64,
-            voxel_length=VOXEL_LENGTH,
             min_radius=BACKBONE_RADIUS,
         ),
         critic_cfg=dict(
@@ -35,10 +33,9 @@ agent_cfg = dict(
             cam_types=CAM_TYPE_NUM,
             attn_head_num=4,
             env_out_dim=64,
-            voxel_length=VOXEL_LENGTH,
             min_radius=BACKBONE_RADIUS,
         ),
-        gradient_accumulation_batchsize=25,
+        gradient_accumulation_batchsize=10,
         device=DEVICE,
         gamma=0.95,
         actor_lr=1e-5,

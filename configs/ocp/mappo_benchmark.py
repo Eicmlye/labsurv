@@ -39,7 +39,7 @@ if agent_cfg["multi_agent"]:
 if "replay_buffer" in agent_cfg.keys():
     replay_buffer = agent_cfg["replay_buffer"]
 
-expert = gail_expert
+# expert = gail_expert
 
 save_checkpoint_interval = 100
 
