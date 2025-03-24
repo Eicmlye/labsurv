@@ -254,9 +254,11 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         self.action_count += 1
 
         pred_coverage: float = self.info_room.coverage
+        pred_vis_count: array = self.info_room.visible_points.cpu().numpy().copy()
 
         new_params: List[array] = []
         new_vismasks: List[array] = []
+        pred_vismasks: List[array] = []
 
         for agent_index in range(self.agent_num):
             observation: Tuple[array, array, array] = observations[agent_index]
@@ -295,6 +297,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 .copy()
             )
             new_vismask: array = None
+            pred_vismask: array = None
 
             print(f"\nEditing agent {agent_index + 1}/{self.agent_num}...")
             if array_is_in(new_pos, candidates):
@@ -305,7 +308,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             else:
                 new_param[:3] = cur_pos
                 new_pos = cur_pos.copy()
-                _, new_vismask = self.info_room.adjust_cam(
+                pred_vismask, new_vismask = self.info_room.adjust_cam(
                     cur_pos,
                     new_direction,
                     new_cam_type,
@@ -315,6 +318,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
 
             new_params.append(new_param)
             new_vismasks.append(new_vismask)
+            pred_vismasks.append(pred_vismask)
 
             new_pos_ind = np.nonzero(
                 np.all(
@@ -343,6 +347,8 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             reward=self.compute_reward(  # [AGENT_NUM + 1]
                 cur_coverage,
                 pred_coverage,
+                pred_vismasks,
+                pred_vis_count,
                 new_vismasks,
                 self.info_room.visible_points.cpu().numpy().copy(),
                 self.info_room.must_monitor[:, :, :, 0].sum().item(),
@@ -376,10 +382,14 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         self,
         cur_coverage: float,
         pred_coverage: float,
+        pred_vismasks: List[array],
+        pred_vis_count: array,
         new_vismasks: List[array],
-        vis_count: array,
+        new_vis_count: array,
         total_target_num: int,
     ) -> List[float]:
+        assert len(pred_vismasks) == len(new_vismasks)
+
         individual_rewards = []
         cov_delta = cur_coverage - pred_coverage
 
@@ -394,24 +404,25 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             elif pred_coverage >= goal and cur_coverage < goal:
                 total_reward -= bonus
 
+        # agent-wise delta coverage reward credit
         if self.individual_reward_alpha > 0:
-            for vismask in new_vismasks:
-                agent_cov: float = (
-                    np.sum(1 / vis_count[vismask > 0])
-                    if len(vis_count[vismask > 0]) > 0
-                    else 1e-8
+            for mask_index in range(len(new_vismasks)):
+                agent_new_cov: float = (
+                    np.sum(1 / new_vis_count[new_vismasks[mask_index] > 0])
+                    if len(new_vis_count[new_vismasks[mask_index] > 0]) > 0
+                    else 0.0
                 ) / total_target_num
-                individual_rewards.append(
-                    (agent_cov if total_reward > 0 else 1 / agent_cov) + 1e-8
-                )
-            individual_rewards = (
-                np.array(individual_rewards)
-                / sum(individual_rewards)
-                * total_reward
-                * self.individual_reward_alpha
-            )
+                agent_pred_cov: float = (
+                    np.sum(1 / pred_vis_count[pred_vismasks[mask_index] > 0])
+                    if len(pred_vis_count[pred_vismasks[mask_index] > 0]) > 0
+                    else 0.0
+                ) / total_target_num
+
+                individual_rewards.append(agent_new_cov - agent_pred_cov)
+
             mixed_rewards = (
-                individual_rewards + (1 - self.individual_reward_alpha) * total_reward
+                self.individual_reward_alpha * np.array(individual_rewards)
+                + (1 - self.individual_reward_alpha) * total_reward
             )
         else:
             mixed_rewards = np.zeros((self.agent_num,), dtype=np.float32)
