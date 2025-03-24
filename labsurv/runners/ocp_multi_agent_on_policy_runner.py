@@ -89,10 +89,15 @@ class OCPMultiAgentOnPolicyRunner:
                     step_index=step,
                     save_dir=self.logger.save_dir,
                     logger=self.logger,
+                    agent_num=self.env.agent_num,
+                    voxel_length=self.env.info_room.voxel_length,
                 )
 
                 cur_coverage, cur_transition, new_params = self.env.step(
-                    cur_observation, cur_action, self.steps, cur_action_mask
+                    observations=cur_observation,
+                    actions=cur_action,
+                    total_steps=self.steps,
+                    action_masks=cur_action_mask,
                 )
 
                 terminated = cur_transition["terminated"]
@@ -157,7 +162,12 @@ class OCPMultiAgentOnPolicyRunner:
                     episode_return["critic_loss"],
                     episode_return["actor_loss"],
                     episode_return["entropy_loss"],
-                ) = self.agent.update(transitions, self.logger)
+                ) = self.agent.update(
+                    transitions,
+                    self.logger,
+                    agent_num=self.env.agent_num,
+                    voxel_length=self.env.info_room.voxel_length,
+                )
                 self.logger.show_log(
                     f"episode reward {episode_return["reward"]:.8f} "
                     f"| loss: C {episode_return["critic_loss"]:.10f} "
@@ -193,7 +203,9 @@ class OCPMultiAgentOnPolicyRunner:
             if (episode + 1) % self.save_checkpoint_interval == 0:
                 self.agent.save(episode, osp.join(self.work_dir, "models"))
                 self.logger.show_log(f"Checkpoint saved at episode {episode + 1}.")
-                self.env.save(episode, osp.join(self.work_dir, "envs"))
+                self.env.save(
+                    episode_index=episode, save_path=osp.join(self.work_dir, "envs")
+                )
                 self.logger.show_log(f"Environment saved at episode {episode + 1}.")
                 if hasattr(self, "expert"):
                     self.expert.save(episode, osp.join(self.work_dir, "imitators"))
@@ -231,10 +243,14 @@ class OCPMultiAgentOnPolicyRunner:
                 step_index=step,
                 save_dir=self.logger.save_dir,
                 logger=self.logger,
+                agent_num=self.env.agent_num,
+                voxel_length=self.env.info_room.voxel_length,
             )
 
             cur_coverage, cur_transition, new_params = self.env.step(
-                cur_observation, cur_action, self.steps
+                observations=cur_observation,
+                actions=cur_action,
+                total_steps=self.steps,
             )
 
             terminated = cur_transition["terminated"]

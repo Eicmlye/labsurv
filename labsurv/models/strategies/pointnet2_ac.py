@@ -75,13 +75,11 @@ class PointNet2Actor(Module):
         cam_types: int,
         comm_attn_head_num: int = 4,
         neigh_out_dim: int = 64,
-        voxel_length: float = 0.2,
         min_radius: float = 0.1,
     ):
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
-        self.voxel_length = voxel_length
 
         param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
         # [-x, +x, -y, +y, -z, +z, -p, +p, -t, +t, (change to cam_type n)]
@@ -114,7 +112,13 @@ class PointNet2Actor(Module):
             Linear(hidden_dim, action_dim, device=self.device),
         )
 
-    def forward(self, self_and_neigh_params: Tensor, self_mask: Tensor, neigh: Tensor):
+    def forward(
+        self,
+        self_and_neigh_params: Tensor,
+        self_mask: Tensor,
+        neigh: Tensor,
+        voxel_length: float,
+    ):
         """
         ## Arguments:
 
@@ -163,7 +167,7 @@ class PointNet2Actor(Module):
         comm_feats += self_embedding  # skip connection
 
         ## neighbourhood pointcloud processing
-        input_data = _ply2data(neigh, self.voxel_length)  # [B, N, DATA_DIM]
+        input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
         _, data = self.backbone(input_data)
         pooling_data: Tensor = [
             torch.max(data[index], dim=1)[0] for index in range(len(data))
@@ -193,13 +197,11 @@ class PointNet2Critic(Module):
         cam_types: int,
         attn_head_num: int = 4,
         env_out_dim: int = 64,
-        voxel_length: float = 0.2,
         min_radius: float = 0.1,
     ):
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
-        self.voxel_length = voxel_length
         if hidden_dim == 64:
             self.attn_layer = 1
         elif hidden_dim == 128:
@@ -241,7 +243,7 @@ class PointNet2Critic(Module):
             Linear(hidden_dim, 1, device=self.device),
         )
 
-    def forward(self, cam_params: Tensor, env: Tensor) -> Tensor:
+    def forward(self, cam_params: Tensor, env: Tensor, voxel_length: float) -> Tensor:
         """
         ## Arguments:
 
@@ -259,7 +261,7 @@ class PointNet2Critic(Module):
         batch_size = cam_params.shape[0]
 
         ## env
-        input_data: Tensor = _ply2data(env, self.voxel_length)  # [B, N, DATA_DIM]
+        input_data: Tensor = _ply2data(env, voxel_length)  # [B, N, DATA_DIM]
         _, data = self.backbone(input_data)
         pooling_data: Tensor = [
             torch.max(data[index], dim=1)[0] for index in range(len(data))
@@ -306,13 +308,11 @@ class PointNet2Discriminator(Module):
         cam_types: int,
         comm_attn_head_num: int = 4,
         neigh_out_dim: int = 64,
-        voxel_length: float = 0.2,
         min_radius: float = 0.1,
     ):
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
-        self.voxel_length = voxel_length
         # [-x, +x, -y, +y, -z, +z, -p, +p, -t, +t, (change to cam_type n)]
         action_dim = 10 + self.cam_types
 
@@ -357,6 +357,7 @@ class PointNet2Discriminator(Module):
         self_mask: Tensor,
         neigh: Tensor,
         actions: Tensor,
+        voxel_length: float,
     ):
         """
         ## Arguments:
@@ -405,7 +406,7 @@ class PointNet2Discriminator(Module):
         comm_feats += self_embedding  # skip connection
 
         ## neighbourhood pointcloud processing
-        input_data = _ply2data(neigh, self.voxel_length)  # [B, N, DATA_DIM]
+        input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
         _, data = self.backbone(input_data)
         pooling_data: Tensor = [
             torch.max(data[index], dim=1)[0] for index in range(len(data))
@@ -438,12 +439,10 @@ class PointNet2Approx(Module):
         cam_types: int,
         comm_attn_head_num: int = 4,
         neigh_out_dim: int = 64,
-        voxel_length: float = 0.2,
     ):
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
-        self.voxel_length = voxel_length
         # [-x, +x, -y, +y, -z, +z, -p, +p, -t, +t, (change to cam_type n)]
         action_dim = 10 + self.cam_types
 
@@ -492,6 +491,7 @@ class PointNet2Approx(Module):
         self_mask: Tensor,
         neigh: Tensor,
         actions: Tensor,
+        voxel_length: float,
     ):
         """
         ## Arguments:
@@ -540,7 +540,7 @@ class PointNet2Approx(Module):
         comm_feats += self_embedding  # skip connection
 
         ## neighbourhood pointcloud processing
-        input_data = _ply2data(neigh, self.voxel_length)  # [B, N, DATA_DIM]
+        input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
         _, data = self.backbone(input_data)
         pooling_data: Tensor = [
             torch.max(data[index], dim=1)[0] for index in range(len(data))
@@ -575,12 +575,10 @@ class PointNet2Shaping(Module):
         cam_types: int,
         comm_attn_head_num: int = 4,
         neigh_out_dim: int = 64,
-        voxel_length: float = 0.2,
     ):
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
-        self.voxel_length = voxel_length
 
         param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
 
@@ -620,6 +618,7 @@ class PointNet2Shaping(Module):
         self_and_neigh_params: Tensor,
         self_mask: Tensor,
         neigh: Tensor,
+        voxel_length: float,
     ):
         """
         ## Arguments:
@@ -668,7 +667,7 @@ class PointNet2Shaping(Module):
         comm_feats += self_embedding  # skip connection
 
         ## neighbourhood pointcloud processing
-        input_data = _ply2data(neigh, self.voxel_length)  # [B, N, DATA_DIM]
+        input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
         _, data = self.backbone(input_data)
         pooling_data: Tensor = [
             torch.max(data[index], dim=1)[0] for index in range(len(data))
