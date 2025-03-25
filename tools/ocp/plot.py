@@ -130,7 +130,7 @@ def ocp_get_cov(
                 eval_covs.append(pred_eval_cov)
                 if shrink is not None:
                     new_log.write(f"eval {100 * pred_eval_cov:.4f}%\n" + line)
-            elif "Discriminator" in word_list:
+            elif "episode reward" in line:
                 train_covs.append(pred_train_cov)
                 if shrink is not None:
                     new_log.write(f"train {100 * pred_train_cov:.4f}%\n" + line)
