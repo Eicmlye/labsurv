@@ -82,7 +82,7 @@ class OCPVaryEnv(BaseEnv):
 
         with open(env_order_save_path, "a+") as f:
             for index in self.env_order_cache:
-                f.write(index)
+                f.write(str(index))
                 f.write("\n")
 
         return self.working_env.save(**kwargs)
