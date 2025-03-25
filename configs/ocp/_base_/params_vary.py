@@ -1,5 +1,5 @@
-from configs.ocp._base_.std_surveil import cam_intrinsics as CAM_TYPES_0
-from configs.ocp._base_.std_surveil import voxel_length as VOXEL_LENGTH_0
+from configs.ocp._base_.std_surveil_test import cam_intrinsics as CAM_TYPES_0
+from configs.ocp._base_.std_surveil_test import voxel_length as VOXEL_LENGTH_0
 from configs.ocp._base_.std_surveil_AC_01to09 import cam_intrinsics as CAM_TYPES_1
 from configs.ocp._base_.std_surveil_AC_01to09 import voxel_length as VOXEL_LENGTH_1
 from configs.ocp._base_.std_surveil_AC_10to32 import cam_intrinsics as CAM_TYPES_2
