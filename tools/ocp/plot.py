@@ -37,6 +37,13 @@ def parse_args():
         action="store_true",
         help="Whether to plot final coverage.",
     )
+    parser.add_argument(  # --eta, -e
+        "--eta",
+        "-e",
+        type=int,
+        default=0,
+        help="Whether to print eta on the terminal.",
+    )
 
     return parser.parse_args()
 
@@ -73,6 +80,36 @@ def get_latest_log(dir_name: str):
         raise ValueError(f"No valid log file found in {dir_name}.")
 
     return osp.join(dir_name, latest_log)
+
+
+def get_eta(log_filename: str, etas: int = 0):
+    assert etas > 0
+
+    latest_eta = deque(maxlen=etas)
+    latest_elapsed = deque(maxlen=etas)
+
+    with open(log_filename, "r") as f:
+        for line in f:
+            word_list = line.strip().split()
+
+            if "eta:" in word_list:
+                eta_index = word_list.index("eta:")
+                eta_str_len = 3 if word_list[eta_index + 2].startswith("day") else 1
+                latest_eta.append(
+                    " ".join(word_list[eta_index: eta_index + eta_str_len + 1])
+                )
+
+            if "elapsed:" in word_list:
+                elapsed_index = word_list.index("elapsed:")
+                elapsed_str_len = 3 if word_list[elapsed_index + 2].startswith("day") else 1
+                latest_elapsed.append(
+                    " ".join(
+                        word_list[elapsed_index: elapsed_index + elapsed_str_len + 1]
+                    )
+                )
+
+    for eta, elapsed in zip(latest_eta, latest_elapsed):
+        print(eta + " | " + elapsed)
 
 
 def ocp_get_cov(
@@ -738,7 +775,9 @@ def main():
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
     )
 
-    if args.cov:
+    if args.eta > 0:
+        get_eta(log_filename, args.eta)
+    elif args.cov:
         train_covs, eval_covs, eval_step = ocp_get_cov(log_filename, filename_shrink_to)
 
         plot_cov(
