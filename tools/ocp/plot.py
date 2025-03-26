@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from labsurv.utils.plot import generate_absolute_ticks
-from labsurv.utils.string import WARN, to_filename
+from labsurv.utils.string import INDENT, WARN, to_filename
 from matplotlib.axes import Axes
 
 
@@ -32,8 +32,15 @@ def parse_args():
         action="store_true",
         help="Whether to take out useful lines of the log.",
     )
-    parser.add_argument(  # --cov
+    parser.add_argument(  # --plot, -p
+        "--plot",
+        "-p",
+        action="store_true",
+        help="Whether to plot loss curve.",
+    )
+    parser.add_argument(  # --cov, -c
         "--cov",
+        "-c",
         action="store_true",
         help="Whether to plot final coverage.",
     )
@@ -85,6 +92,7 @@ def get_latest_log(dir_name: str):
 def get_eta(log_filename: str, etas: int = 0):
     assert etas > 0
 
+    time_stamp = deque(maxlen=etas)
     latest_eta = deque(maxlen=etas)
     latest_elapsed = deque(maxlen=etas)
 
@@ -93,23 +101,26 @@ def get_eta(log_filename: str, etas: int = 0):
             word_list = line.strip().split()
 
             if "eta:" in word_list:
+                time_stamp.append(" ".join(word_list[:2]))
+
                 eta_index = word_list.index("eta:")
                 eta_str_len = 3 if word_list[eta_index + 2].startswith("day") else 1
                 latest_eta.append(
-                    " ".join(word_list[eta_index: eta_index + eta_str_len + 1])
+                    " ".join(word_list[eta_index : eta_index + eta_str_len + 1])
                 )
 
-            if "elapsed:" in word_list:
                 elapsed_index = word_list.index("elapsed:")
-                elapsed_str_len = 3 if word_list[elapsed_index + 2].startswith("day") else 1
+                elapsed_str_len = (
+                    3 if word_list[elapsed_index + 2].startswith("day") else 1
+                )
                 latest_elapsed.append(
                     " ".join(
-                        word_list[elapsed_index: elapsed_index + elapsed_str_len + 1]
+                        word_list[elapsed_index : elapsed_index + elapsed_str_len + 1]
                     )
                 )
 
-    for eta, elapsed in zip(latest_eta, latest_elapsed):
-        print(eta + " | " + elapsed)
+    for time, eta, elapsed in zip(time_stamp, latest_eta, latest_elapsed):
+        print(time + INDENT + eta + " | " + elapsed)
 
 
 def ocp_get_cov(
@@ -765,11 +776,12 @@ def main():
     if args.save is None:
         args.save = args.log if not args.log.endswith(".log") else osp.dirname(args.log)
 
-    filename_shrink_to = (
-        osp.join(args.save, "cov.log" if args.cov else "shrink.log")
-        if args.shrink
-        else None
-    )
+    if args.log.endswith("shrink.log"):
+        args.plot = True
+        args.cov = False
+    elif args.log.endswith("cov.log"):
+        args.plot = False
+        args.cov = True
 
     log_filename = (
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
@@ -777,21 +789,13 @@ def main():
 
     if args.eta > 0:
         get_eta(log_filename, args.eta)
-    elif args.cov:
-        train_covs, eval_covs, eval_step = ocp_get_cov(log_filename, filename_shrink_to)
 
-        plot_cov(
-            train_covs,
-            eval_covs,
-            eval_step,
-            to_filename(args.save, ".png", "cov_fig"),
-            tick_step=args.step,
-            sma=args.sma,
-            eval_sma=args.reward_sma,
+    if args.plot:
+        plot_filename_shrink_to = (
+            osp.join(args.save, "shrink.log") if args.shrink and args.plot else None
         )
-    else:
         train_reward, eval_reward, loss, eval_step, is_ac, disc_output = ocp_get_y_axis(
-            log_filename, filename_shrink_to
+            log_filename, plot_filename_shrink_to
         )
 
         plot_subfig(
@@ -805,6 +809,23 @@ def main():
             sma=args.sma,
             reward_sma=args.reward_sma,
             disc_output=disc_output,
+        )
+    if args.cov:
+        cov_filename_shrink_to = (
+            osp.join(args.save, "cov.log") if args.shrink and args.cov else None
+        )
+        train_covs, eval_covs, eval_step = ocp_get_cov(
+            log_filename, cov_filename_shrink_to
+        )
+
+        plot_cov(
+            train_covs,
+            eval_covs,
+            eval_step,
+            to_filename(args.save, ".png", "cov_fig"),
+            tick_step=args.step,
+            sma=args.sma,
+            eval_sma=args.reward_sma,
         )
 
 
