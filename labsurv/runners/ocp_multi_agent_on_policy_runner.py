@@ -36,6 +36,7 @@ class OCPMultiAgentOnPolicyRunner:
 
             self.start_episode = self.agent.start_episode
             if "resume_from" in cfg.agent.keys() and cfg.agent.resume_from is not None:
+                self.logger.set_start_episode_index(self.start_episode - 1)
                 self.logger.set_cur_episode_index(self.start_episode - 1)
 
             if hasattr(cfg, "expert") and cfg.expert is not None:
