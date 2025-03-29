@@ -44,20 +44,30 @@ def get_episode_progress_str(episode_index: int, episodes: int) -> List[str]:
 
 
 def get_time_eta_strs(
-    start_time: datetime, cur_time: datetime, episode_index: int, episodes: int
+    start_time: datetime,
+    cur_time: datetime,
+    start_episode_index: int,
+    cur_episode_index: int,
+    episodes: int,
 ) -> List[str]:
-    assert episode_index < episodes, (
-        f"Episode index {episode_index} should be "
+    assert start_episode_index < episodes, (
+        f"Start episode index {start_episode_index} should be "
+        f"less than total episode number {episodes}."
+    )
+    assert cur_episode_index < episodes, (
+        f"Current episode index {cur_episode_index} should be "
         f"less than total episode number {episodes}."
     )
 
     delta = cur_time - start_time
-    episode = episode_index + 1
+    start_episode = start_episode_index + 1
+    cur_episode = cur_episode_index + 1
+    episode = cur_episode - start_episode + 1
     avg_interval = delta / episode
 
     return [
         f"elapsed: {get_delta_str(delta)}",
-        f"eta: {get_delta_str(avg_interval * (episodes - episode))}",
+        f"eta: {get_delta_str(avg_interval * (episodes - cur_episode))}",
     ]
 
 

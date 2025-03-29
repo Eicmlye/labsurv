@@ -27,10 +27,14 @@ class LoggerHook:
             (get_time_stamp() if save_filename is None else save_filename) + ".log",
         )
         self.return_list: deque = deque(maxlen=2 * log_interval)
+        self.start_episode_index = 0
         self.cur_episode_index = -1
         self.save_dir = save_dir
 
         os.makedirs(save_dir, exist_ok=True)
+
+    def set_start_episode_index(self, episode_index: int):
+        self.start_episode_index = episode_index
 
     def set_cur_episode_index(self, episode_index: int):
         self.cur_episode_index = episode_index
@@ -55,7 +59,11 @@ class LoggerHook:
             log_list += get_cur_time_str()
             log_list += get_episode_progress_str(self.cur_episode_index, episodes)
             log_list += get_time_eta_strs(
-                self.build_time, self.time, self.cur_episode_index, episodes
+                self.build_time,
+                self.time,
+                self.start_episode_index,
+                self.cur_episode_index,
+                episodes,
             )
             for key in kwargs.keys():
                 log_list += get_log_str(key, kwargs[key])
