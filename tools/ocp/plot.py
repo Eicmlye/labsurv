@@ -779,9 +779,15 @@ def main():
     if args.log.endswith("shrink.log"):
         args.plot = True
         args.cov = False
+        if args.shrink:
+            args.shrink = False
+            print(WARN("`--shrink` is not allowed for shrink.log files."))
     elif args.log.endswith("cov.log"):
         args.plot = False
         args.cov = True
+        if args.shrink:
+            args.shrink = False
+            print(WARN("`--shrink` is not allowed for cov.log files."))
 
     log_filename = (
         get_latest_log(args.log) if not args.log.endswith(".log") else args.log
