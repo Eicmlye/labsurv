@@ -1,6 +1,7 @@
 import os
 import os.path as osp
 import pickle
+import random
 from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
@@ -8,6 +9,7 @@ import numpy as np
 import torch
 from labsurv.builders import ENVIRONMENTS
 from labsurv.models.envs import BaseSurveillanceEnv
+from labsurv.runners import LoggerHook
 from labsurv.utils.surveillance import (
     apply_movement_on_agent,
     array_is_in,
@@ -36,6 +38,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         pan_range: List[float] = [-PI, PI],
         tilt_range: List[float] = [-PI / 2, PI / 2],
         cam_types: int = 1,
+        reset_rand_prob: float = 0.5,
         subgoals: List[List[float]] = [[0, 0]],
         terminate_goal: float = 1.0,
         reset_weight: int = 4,
@@ -88,6 +91,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         self.cam_types = cam_types
         self.allow_polar = allow_polar
 
+        self.reset_rand_prob = reset_rand_prob
         self.subgoals = subgoals
         self.terminate_goal = terminate_goal
         self.reset_weight = reset_weight
@@ -118,7 +122,9 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             if len(self.pos_candidates) != len(self.visit_count):
                 raise ValueError("Loaded file does not match `_surv_room`.")
 
-    def reset(self, seed: Optional[int] = None) -> Tuple[array, array]:
+    def reset(
+        self, seed: Optional[int] = None, rand_init: bool = True, **kwargs
+    ) -> Tuple[array, array]:
         """
         ## Description:
 
@@ -136,6 +142,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             cam_params (np.ndarray): [AGENT_NUM, PARAM_DIM], the randomly installed
             camera params.
         """
+        logger: LoggerHook = kwargs["logger"]
 
         # do env init works
         super().reset(seed=seed)
@@ -149,15 +156,20 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
 
         # randomly generate cameras and install
         upper_count = np.max(self.visit_count) + 1
-        position_indices: array = self._np_random.choice(
-            len(self.pos_candidates),
-            self.agent_num,
-            replace=False,
-            p=(
-                (upper_count - self.visit_count) ** self.reset_weight
-                / np.sum((upper_count - self.visit_count) ** self.reset_weight)
-            ),
-        )  # [AGENT_NUM, 1]
+        if rand_init or random.uniform(0, 1) < self.reset_rand_prob:
+            logger.show_log("Reset with random positions.")
+            position_indices: array = self._np_random.choice(
+                len(self.pos_candidates),
+                self.agent_num,
+                replace=False,
+                p=(
+                    (upper_count - self.visit_count) ** self.reset_weight
+                    / np.sum((upper_count - self.visit_count) ** self.reset_weight)
+                ),
+            )  # [AGENT_NUM, 1]
+        else:
+            logger.show_log("Reset with crowded positions.")
+            position_indices: array = np.array([[i] for i in range(self.agent_num)])
         positions = []
         for index in position_indices:
             positions.append(self.pos_candidates[index])

@@ -1,17 +1,17 @@
-from configs.ocp._base_.std_surveil_test import cam_intrinsics as CAM_TYPES_0
-from configs.ocp._base_.std_surveil_test import voxel_length as VOXEL_LENGTH_0
 from configs.ocp._base_.std_surveil_AC_01to09 import cam_intrinsics as CAM_TYPES_1
 from configs.ocp._base_.std_surveil_AC_01to09 import voxel_length as VOXEL_LENGTH_1
 from configs.ocp._base_.std_surveil_AC_10to32 import cam_intrinsics as CAM_TYPES_2
 from configs.ocp._base_.std_surveil_AC_10to32 import voxel_length as VOXEL_LENGTH_2
+from configs.ocp._base_.std_surveil_test import cam_intrinsics as CAM_TYPES_0
+from configs.ocp._base_.std_surveil_test import voxel_length as VOXEL_LENGTH_0
 from numpy import pi as PI
 
-ROOM_NAME = ["AC_01", "AC_02", "AC_03", "AC_04", "AC_05", "AC_06"]
+ROOM_NAME = ["AC_01", "AC_02", "AC_03", "AC_04", "AC_05"]
 room_id = [
     int(name[-2:]) if name.startswith(("AC", "RW")) else None for name in ROOM_NAME
 ]
 
-AGENT_NUM = [7, 4, 3, 5, 7, 10]  # should be greater than 1
+AGENT_NUM = [7, 4, 3, 5, 7]  # should be greater than 1
 
 assert len(ROOM_NAME) == len(AGENT_NUM)
 
@@ -29,6 +29,6 @@ VOXEL_LENGTH = [
 ]
 ALLOW_POLAR = True
 MANUAL = False
-BACKBONE_PATH = "labsurv/checkpoint/pointnet2backbone_melt.pth"
-FREEZE_BACKBONE = []
+BACKBONE_PATH = "labsurv/checkpoint/pointnet2backbone_rename.pth"
+FREEZE_BACKBONE = [0, 1, 2, 3]
 BACKBONE_RADIUS = 0.1

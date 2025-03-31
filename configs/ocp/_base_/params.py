@@ -8,10 +8,10 @@ from configs.ocp._base_.std_surveil_tiny import cam_intrinsics as CAM_TYPES_TINY
 from configs.ocp._base_.std_surveil_tiny import voxel_length as VOXEL_LENGTH_TINY
 from numpy import pi as PI
 
-ROOM_NAME = "surv_room_tiny"
+ROOM_NAME = "surv_room_test"
 room_id = ROOM_NAME[10:]
 
-AGENT_NUM = 4  # should be greater than 1
+AGENT_NUM = 10  # should be greater than 1
 CAM_TYPE_NUM = len(
     CAM_TYPES_TEST
     if room_id == "test"
@@ -28,6 +28,6 @@ VOXEL_LENGTH = (
 )
 ALLOW_POLAR = True
 MANUAL = False
-BACKBONE_PATH = "labsurv/checkpoint/pointnet2backbone_melt.pth"
-FREEZE_BACKBONE = [0]
+BACKBONE_PATH = "labsurv/checkpoint/pointnet2backbone_rename.pth"
+FREEZE_BACKBONE = [0, 1, 2, 3]
 BACKBONE_RADIUS = 0.1

@@ -39,6 +39,7 @@ class OCPMultiAgentPPO(BaseAgent):
         update_step: int = 10,
         advantage_param: float = 0.95,
         clip_epsilon: float = 0.2,
+        critic_loss_coef: float = 50,
         entropy_loss_coef: float = 0.01,
         pan_section_num: int = 360,
         tilt_section_num: int = 180,
@@ -107,6 +108,7 @@ class OCPMultiAgentPPO(BaseAgent):
             self.update_step = update_step
             self.advantage_param = advantage_param
             self.clip_epsilon = clip_epsilon
+            self.critic_loss_coef = critic_loss_coef
             self.entropy_loss_coef = entropy_loss_coef
 
             if len(freeze_backbone) > 0:
@@ -675,7 +677,7 @@ class OCPMultiAgentPPO(BaseAgent):
                 entropy_loss = entropy.mean()
                 total_loss = (
                     actor_loss
-                    + 0.5 * critic_loss
+                    + self.critic_loss_coef * critic_loss
                     - self.entropy_loss_coef * entropy_loss
                 ) / gradient_accumulation_batchnum
 

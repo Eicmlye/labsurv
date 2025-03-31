@@ -6,11 +6,11 @@ from labsurv.utils import get_time_stamp
 
 agent_type = "MAPPO_PointNet2"
 
-episodes = 1000
-steps = 20
+episodes = 500
+steps = 30
 
 task_name = "obs_test"
-task_conditions = "01r"
+task_conditions = "01r_invrew_xmelt"
 
 work_dir = (
     f"./output/ocp/{agent_type.lower()}/"
