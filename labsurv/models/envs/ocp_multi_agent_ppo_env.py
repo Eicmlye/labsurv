@@ -39,6 +39,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         tilt_range: List[float] = [-PI / 2, PI / 2],
         cam_types: int = 1,
         reset_rand_prob: float = 0.5,
+        reset_pos: str = "start",  # start, center
         subgoals: List[List[float]] = [[0, 0]],
         terminate_goal: float = 1.0,
         reset_weight: int = 4,
@@ -92,6 +93,9 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         self.allow_polar = allow_polar
 
         self.reset_rand_prob = reset_rand_prob
+        self.reset_pos = reset_pos
+        if self.reset_pos not in ["start", "center"]:
+            raise NotImplementedError()
         self.subgoals = subgoals
         self.terminate_goal = terminate_goal
         self.reset_weight = reset_weight
@@ -168,8 +172,18 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 ),
             )  # [AGENT_NUM, 1]
         else:
-            logger.show_log("Reset with crowded positions.")
-            position_indices: array = np.array([[i] for i in range(self.agent_num)])
+            logger.show_log("Reset with specified positions.")
+            if self.reset_pos == "start":
+                position_indices: array = np.array([[i] for i in range(self.agent_num)])
+            elif self.reset_pos == "center":
+                position_indices: array = np.array(
+                    [
+                        [len(self.pos_candidates) - self.agent_num // 2 + i]
+                        for i in range(self.agent_num)
+                    ]
+                )
+            else:
+                raise NotImplementedError()
         positions = []
         for index in position_indices:
             positions.append(self.pos_candidates[index])

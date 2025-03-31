@@ -28,6 +28,7 @@ env_cfg = dict(
     allow_polar=ALLOW_POLAR,
     cam_types=CAM_TYPE_NUM,
     reset_rand_prob=0.5,
+    reset_pos="center",
     subgoals=(
         [[0.1 * i, 0.1] for i in range(1, 6)]  # 0.0 -> 0.5
         + [[0.5 + 0.05 * i, 0.05] for i in range(1, 7)]  # 0.5 -> 0.8
