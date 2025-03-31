@@ -7,10 +7,10 @@ from labsurv.utils import get_time_stamp
 agent_type = "MAPPO_PointNet2"
 
 episodes = 1000
-steps = 20
+steps = 30
 
-task_name = "AC_1to5"
-task_conditions = "0_100_AC_05"
+task_name = "AC_03"
+task_conditions = "invrew_xmelt"
 
 work_dir = (
     f"./output/ocp/{agent_type.lower()}_benchmark/"
@@ -39,7 +39,7 @@ if "replay_buffer" in agent_cfg.keys():
 
 # expert = gail_expert
 
-save_checkpoint_interval = 10
+save_checkpoint_interval = 100
 
 logger_cfg = dict(
     type="LoggerHook",
