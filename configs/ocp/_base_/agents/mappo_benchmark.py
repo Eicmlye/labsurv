@@ -50,6 +50,7 @@ agent_cfg = dict(
         tilt_range=TILT_RANGE,
         allow_polar=ALLOW_POLAR,
         cam_types=CAM_TYPE_NUM,
+        critic_loss_coef=50,
         mixed_reward=True,
         manual=MANUAL,
         backbone_path=BACKBONE_PATH,
