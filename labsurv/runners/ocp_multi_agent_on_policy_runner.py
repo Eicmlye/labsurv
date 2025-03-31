@@ -59,7 +59,7 @@ class OCPMultiAgentOnPolicyRunner:
         for episode in range(self.start_episode, self.episodes):
             self.logger.show_log(f"\n==== Episode {episode + 1} ====\n")
             # SurveillanceRoom, [AGENT_NUM, PARAM_DIM]
-            room, cur_params = self.env.reset()
+            room, cur_params = self.env.reset(logger=self.logger)
 
             episode_return: Dict[str, float] = dict(
                 critic_loss=0,
@@ -228,7 +228,7 @@ class OCPMultiAgentOnPolicyRunner:
         )
 
         # SurveillanceRoom, [AGENT_NUM, PARAM_DIM]
-        room, cur_params = self.env.reset()
+        room, cur_params = self.env.reset(logger=self.logger)
 
         episode_return: Dict[str, float] = dict(
             reward=0,

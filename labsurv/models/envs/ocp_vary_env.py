@@ -61,14 +61,14 @@ class OCPVaryEnv(BaseEnv):
     def step(self, **kwargs):
         return self.working_env.step(**kwargs)
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self, seed: Optional[int] = None, **kwargs):
         # do env init works
         super().reset(seed=seed)
 
         self.working_env_index = self._np_random.choice(len(self))
         self.env_order_cache.append(self.working_env_index)
 
-        return self.working_env.reset()
+        return self.working_env.reset(seed, **kwargs)
 
     def save(self, save_path: str, **kwargs):
         kwargs["save_path"] = save_path
