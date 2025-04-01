@@ -161,12 +161,18 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         self.action_count = 0
         self.lazy_count = 0
 
-        # randomly generate cameras and install
-        upper_count = np.max(self.visit_count) + 1
         if rand_init is True or (
             rand_init is None and random.uniform(0, 1) < self.reset_rand_prob
         ):
-            logger.show_log("Reset with random positions.")
+            logger.show_log("Reset with random params.")
+            rand_operation = True
+        else:
+            logger.show_log("Reset with specified params.")
+            rand_operation = False
+
+        # randomly generate cameras and install
+        upper_count = np.max(self.visit_count) + 1
+        if rand_operation:
             position_indices: array = self._np_random.choice(
                 len(self.pos_candidates),
                 self.agent_num,
@@ -177,7 +183,6 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 ),
             )  # [AGENT_NUM, 1]
         else:
-            logger.show_log("Reset with specified positions.")
             if self.reset_pos == "start":
                 position_indices: array = np.array([[i] for i in range(self.agent_num)])
             elif self.reset_pos == "center":
@@ -223,17 +228,32 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 ]
             ]
         ).transpose()
+        if rand_operation:
+            pan_indices: array = self._np_random.choice(pan_candidates, self.agent_num)
+        else:
+            if self.reset_pos == "start":
+                pan_indices: array = np.array([[0] for i in range(self.agent_num)])
+                tilt_indices: array = np.array([[0] for i in range(self.agent_num)])
+            elif self.reset_pos == "center":
+                pan_indices: array = np.array(
+                    [[len(pan_candidates) // 2] for i in range(self.agent_num)]
+                )
+                tilt_indices: array = np.array(
+                    [[len(tilt_candidates) // 2] for i in range(self.agent_num)]
+                )
+            else:
+                raise NotImplementedError()
+
         directions: array = np.concatenate(  # [AGENT_NUM, 2]
-            (
-                self._np_random.choice(pan_candidates, self.agent_num),
-                self._np_random.choice(tilt_candidates, self.agent_num),
-            ),
+            (pan_indices, tilt_indices),
             axis=1,
         )
 
         cam_type_indices: array = (
             self._np_random.choice(  # [AGENT_NUM]
-                np.array([[i for i in range(self.cam_types)]]).transpose(),
+                np.array(
+                    [[i if rand_operation else 0 for i in range(self.cam_types)]]
+                ).transpose(),
                 self.agent_num,
             )
             .astype(np.int64)
