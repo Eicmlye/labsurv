@@ -127,7 +127,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 raise ValueError("Loaded file does not match `_surv_room`.")
 
     def reset(
-        self, seed: Optional[int] = None, rand_init: bool = True, **kwargs
+        self, seed: Optional[int] = None, rand_init: Optional[bool] = True, **kwargs
     ) -> Tuple[array, array]:
         """
         ## Description:
@@ -138,6 +138,9 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         ## Arguments:
 
             seed (Optional[int])
+
+            rand_init (Optional[bool]): `True` for always random, `False` for always
+            specified, `None` for random under `self.reset_rand_prob`.
 
         ## Returns:
 
@@ -160,7 +163,9 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
 
         # randomly generate cameras and install
         upper_count = np.max(self.visit_count) + 1
-        if rand_init or random.uniform(0, 1) < self.reset_rand_prob:
+        if rand_init is True or (
+            rand_init is None and random.uniform(0, 1) < self.reset_rand_prob
+        ):
             logger.show_log("Reset with random positions.")
             position_indices: array = self._np_random.choice(
                 len(self.pos_candidates),
