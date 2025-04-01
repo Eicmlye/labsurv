@@ -188,7 +188,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             elif self.reset_pos == "center":
                 position_indices: array = np.array(
                     [
-                        [len(self.pos_candidates) - self.agent_num // 2 + i]
+                        [(len(self.pos_candidates) - self.agent_num) // 2 + i]
                         for i in range(self.agent_num)
                     ]
                 )
@@ -198,10 +198,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         for index in position_indices:
             positions.append(self.pos_candidates[index])
             self.visit_count[index] += 1
-        positions = np.array(positions, dtype=np.int64)  # [AGENT_NUM, 3]
-
-        # DEBUG(eric)
-        # positions: array = np.array([[4, 5, 17]], dtype=np.int64)
+        positions = np.array(positions, dtype=np.int64).reshape(-1, 3)  # [AGENT_NUM, 3]
 
         pan_step = (self.pan_range[1] - self.pan_range[0]) / self.pan_section_num
         tilt_step = (self.tilt_range[1] - self.tilt_range[0]) / self.tilt_section_num
@@ -229,7 +226,8 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             ]
         ).transpose()
         if rand_operation:
-            pan_indices: array = self._np_random.choice(pan_candidates, self.agent_num)
+            pan: array = self._np_random.choice(pan_candidates, self.agent_num)
+            tilt: array = self._np_random.choice(tilt_candidates, self.agent_num)
         else:
             if self.reset_pos == "start":
                 pan_indices: array = np.array([[0] for i in range(self.agent_num)])
@@ -244,10 +242,15 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             else:
                 raise NotImplementedError()
 
-        directions: array = np.concatenate(  # [AGENT_NUM, 2]
-            (pan_indices, tilt_indices),
-            axis=1,
-        )
+            pan_list = []
+            tilt_list = []
+            for pan_index, tilt_index in zip(pan_indices, tilt_indices):
+                pan_list.append(pan_candidates[pan_index])
+                tilt_list.append(tilt_candidates[tilt_index])
+
+            pan: array = np.array(pan_list).reshape(-1, 1)
+            tilt: array = np.array(tilt_list).reshape(-1, 1)
+        directions: array = np.concatenate((pan, tilt), axis=1)  # [AGENT_NUM, 2]
 
         cam_type_indices: array = (
             self._np_random.choice(  # [AGENT_NUM]
