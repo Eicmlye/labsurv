@@ -39,7 +39,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         tilt_range: List[float] = [-PI / 2, PI / 2],
         cam_types: int = 1,
         reset_rand_prob: float = 0.5,
-        reset_pos: str = "start",  # start, center
+        reset_pos: str = "center",  # start, center
         subgoals: List[List[float]] = [[0, 0]],
         terminate_goal: float = 1.0,
         reset_weight: int = 4,
