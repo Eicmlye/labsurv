@@ -1,4 +1,4 @@
-from configs.ocp._base_.params_benchmark import (
+from configs.ocp._base_.params_benchmark_copy import (
     AGENT_NUM,
     ALLOW_POLAR,
     BENCHMARK_NAME,
@@ -27,7 +27,7 @@ env_cfg = dict(
     tilt_range=TILT_RANGE,
     allow_polar=ALLOW_POLAR,
     cam_types=CAM_TYPE_NUM,
-    reset_rand_prob=0.5,
+    reset_rand_prob=0.3,
     reset_pos="center",
     subgoals=(
         [[0.1 * i, 0.1] for i in range(1, 6)]  # 0.0 -> 0.5
