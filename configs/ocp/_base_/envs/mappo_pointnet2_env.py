@@ -36,17 +36,29 @@ env_cfg = dict(
         + [[0.9 + 0.01 * i, 0.01] for i in range(1, 6)]  # 0.9 -> 0.95
         + [[0.95 + 0.005 * i, 0.005] for i in range(1, 7)]  # 0.95 -> 0.98
         + [[0.98 + 0.001 * i, 0.001] for i in range(1, 20)]  # 0.98 -> 1.0
-        + [  # inv rew 0.3 -> 0.5, total 0.1
-            [0.3 + 0.02 * i, 0.001] for i in range(1, 11)
+        + [  # inv rew 0.2 -> 0.3, total 0.05
+            [0.2 + 0.01 * i, 0.001 * 0.5] for i in range(1, 11)
         ]
-        + [  # inv rew 0.5 -> 0.7, total 0.2
-            [0.5 + 0.02 * i, 0.002] for i in range(1, 11)
+        + [  # inv rew 0.3 -> 0.4, total 0.1
+            [0.3 + 0.01 * i, 0.002 * 0.5] for i in range(1, 11)
         ]
-        + [  # inv rew 0.7 -> 0.9, total 0.3
-            [0.7 + 0.02 * i, 0.003] for i in range(1, 11)
+        + [  # inv rew 0.4 -> 0.5, total 0.15
+            [0.4 + 0.01 * i, 0.003 * 0.5] for i in range(1, 11)
         ]
-        + [  # inv rew 0.9 -> 1.0, total 0.4
-            [0.9 + 0.01 * i, 0.004] for i in range(1, 10)
+        + [  # inv rew 0.5 -> 0.6, total 0.2
+            [0.5 + 0.01 * i, 0.004 * 0.5] for i in range(1, 11)
+        ]
+        + [  # inv rew 0.6 -> 0.7, total 0.05
+            [0.6 + 0.01 * i, 0.001 * 0.5] for i in range(1, 11)
+        ]
+        + [  # inv rew 0.7 -> 0.8, total 0.1
+            [0.7 + 0.01 * i, 0.002 * 0.5] for i in range(1, 11)
+        ]
+        + [  # inv rew 0.8 -> 0.9, total 0.15
+            [0.8 + 0.01 * i, 0.003 * 0.5] for i in range(1, 11)
+        ]
+        + [  # inv rew 0.9 -> 1.0, total 0.2
+            [0.9 + 0.01 * i, 0.004 * 0.5] for i in range(1, 10)
         ]
     ),
     terminate_goal=1.0,
