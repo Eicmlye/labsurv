@@ -1,4 +1,4 @@
-from configs.ocp._base_.params_benchmark import (  # noqa: F401
+from configs.ocp._base_.params_benchmark_copy import (  # noqa: F401
     ALLOW_POLAR,
     BACKBONE_PATH,
     BACKBONE_RADIUS,
@@ -35,16 +35,16 @@ agent_cfg = dict(
             env_out_dim=64,
             min_radius=BACKBONE_RADIUS,
         ),
-        gradient_accumulation_batchsize=45,
+        gradient_accumulation_batchsize=50,
         device=DEVICE,
         gamma=0.95,
-        actor_lr=1e-5,
-        critic_lr=1e-4,
+        actor_lr=1e-6,
+        critic_lr=1e-5,
         update_step=5,
         advantage_param=0.95,
-        clip_epsilon=0.1,
-        critic_loss_coef=250,
-        entropy_loss_coef=1e-3,
+        clip_epsilon=0.5,
+        critic_loss_coef=5,
+        entropy_loss_coef=1e-4,
         pan_section_num=PAN_SEC_NUM,
         tilt_section_num=TILT_SEC_NUM,
         pan_range=PAN_RANGE,
@@ -53,13 +53,13 @@ agent_cfg = dict(
         cam_types=CAM_TYPE_NUM,
         mixed_reward=True,
         manual=MANUAL,
-        backbone_path=BACKBONE_PATH,
+        # backbone_path=BACKBONE_PATH,
         freeze_backbone=FREEZE_BACKBONE,
-        # load_from=(
-        #     "output/ocp/AGENT_NAME_benchmark/"
-        #     "TASK_NAME/"
-        #     "WORKING_DIR/"
-        #     "models/episode_EPISODE.pth"
-        # ),
+        load_from=(
+            "output/ocp/mappo_pointnet2_benchmark/"
+            "AC_04/"
+            "ma5_30steps_AC_04_invrew_32melt_load3k/"
+            "models/episode_2000.pth"
+        ),
     ),
 )
