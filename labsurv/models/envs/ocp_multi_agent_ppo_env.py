@@ -173,15 +173,28 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         # randomly generate cameras and install
         upper_count = np.max(self.visit_count) + 1
         if rand_operation:
-            position_indices: array = self._np_random.choice(
-                len(self.pos_candidates),
-                self.agent_num,
-                replace=False,
-                p=(
+            try:
+                visit_probs = (
+                    upper_count - self.visit_count
+                ) ** self.reset_weight / np.sum(
                     (upper_count - self.visit_count) ** self.reset_weight
-                    / np.sum((upper_count - self.visit_count) ** self.reset_weight)
-                ),
-            )  # [AGENT_NUM, 1]
+                )
+                position_indices: array = self._np_random.choice(
+                    len(self.pos_candidates),
+                    self.agent_num,
+                    replace=False,
+                    p=visit_probs,
+                )  # [AGENT_NUM, 1]
+            except ValueError:  # probability not non-negative
+                neg_list = [
+                    (visit_probs[ind], ind)
+                    for ind in range(len(visit_probs))
+                    if visit_probs[ind] < 0
+                ]
+                logger.show_log(
+                    f"[WARN]  negative probability for {neg_list}"
+                    "\nReset with center params."
+                )
         else:
             if self.reset_pos == "start":
                 position_indices: array = np.array([[i] for i in range(self.agent_num)])
