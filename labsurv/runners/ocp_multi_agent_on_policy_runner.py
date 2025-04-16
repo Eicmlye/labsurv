@@ -145,6 +145,7 @@ class OCPMultiAgentOnPolicyRunner:
                     logger=self.logger,
                     actor=deepcopy(self.agent.actor),
                     gamma=self.agent.gamma,
+                    voxel_length=self.env.info_room.voxel_length,
                 )
 
             if self.agent.manual:
