@@ -95,6 +95,12 @@ class PointNet2Actor(Module):
         self.comm_attn = MultiheadAttention(
             embed_dim=hidden_dim, num_heads=comm_attn_head_num, device=self.device
         )
+        self.feed_forward = Sequential(
+            Linear(hidden_dim, 2 * hidden_dim, device=self.device),
+            ReLU(),
+            Linear(2 * hidden_dim, hidden_dim, device=self.device),
+            ReLU(),
+        )
 
         # neighbourhood
         self.backbone = PointNetBackbone(min_radius)
@@ -165,6 +171,8 @@ class PointNet2Actor(Module):
         # [B, HIDDEN_DIM]
         comm_feats: Tensor = torch.squeeze(attn_neigh_agent_feats, dim=0)
         comm_feats += self_embedding  # skip connection
+        ff_feats = self.feed_forward(comm_feats)
+        ff_feats += comm_feats  # skip connection
 
         ## neighbourhood pointcloud processing
         input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
@@ -235,6 +243,12 @@ class PointNet2Critic(Module):
         self.attn = MultiheadAttention(
             embed_dim=hidden_dim, num_heads=attn_head_num, device=self.device
         )
+        self.feed_forward = Sequential(
+            Linear(hidden_dim, 2 * hidden_dim, device=self.device),
+            ReLU(),
+            Linear(2 * hidden_dim, hidden_dim, device=self.device),
+            ReLU(),
+        )
 
         # out
         self.out = Sequential(
@@ -289,6 +303,8 @@ class PointNet2Critic(Module):
             value=env_seqs,
         )
         attn_feats = attn_feats.view(batch_size, -1) + agents_feats  # skip connection
+        ff_feats = self.feed_forward(attn_feats)
+        ff_feats += attn_feats  # skip connection
 
         # out
         merged_feats: Tensor = torch.concatenate(
@@ -328,11 +344,20 @@ class PointNet2Discriminator(Module):
         self.comm_attn = MultiheadAttention(
             embed_dim=hidden_dim, num_heads=comm_attn_head_num, device=self.device
         )
+        self.feed_forward = Sequential(
+            Linear(hidden_dim, 2 * hidden_dim, device=self.device),
+            ReLU(),
+            Linear(2 * hidden_dim, hidden_dim, device=self.device),
+            ReLU(),
+        )
 
         # neighbourhood
         self.backbone = PointNetBackbone(min_radius)
         self.neigh_merge = Sequential(
-            Linear(64 + 256 + 512, neigh_out_dim, device=self.device), ReLU()
+            Linear(64 + 256 + 512, hidden_dim, device=self.device),
+            ReLU(),
+            Linear(hidden_dim, neigh_out_dim, device=self.device),
+            ReLU(),
         )
 
         # action
@@ -404,6 +429,8 @@ class PointNet2Discriminator(Module):
         # [B, HIDDEN_DIM]
         comm_feats: Tensor = torch.squeeze(attn_neigh_agent_feats, dim=0)
         comm_feats += self_embedding  # skip connection
+        ff_feats = self.feed_forward(comm_feats)
+        ff_feats += comm_feats  # skip connection
 
         ## neighbourhood pointcloud processing
         input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
