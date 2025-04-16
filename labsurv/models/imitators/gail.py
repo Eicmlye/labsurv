@@ -35,6 +35,7 @@ class GAIL(BaseImitator):
         expert_data_path: Optional[str] = None,
         do_reward_change: bool = True,
         truth_threshold: float = 0.2,
+        disc_reward_base: float = 0.0,
         seed: Optional[int] = None,
     ):
         """
@@ -59,6 +60,7 @@ class GAIL(BaseImitator):
         self.lr = lr
         self.do_reward_change = do_reward_change
         self.truth_threshold = truth_threshold
+        self.disc_reward_base = disc_reward_base
 
         self.discriminator: Module = STRATEGIES.build(discriminator_cfg).to(self.device)
         self.gradient_accumulation_batchsize = (
@@ -165,6 +167,7 @@ class GAIL(BaseImitator):
         **kwargs,
     ):
         logger: LoggerHook = kwargs["logger"]
+        voxel_length = kwargs["voxel_length"]
 
         (
             cur_self_and_neigh_params,  # [AGENT_NUM, B, AGENT_NUM(NEIGH), PARAM_DIM]
@@ -244,12 +247,14 @@ class GAIL(BaseImitator):
                 ga_cur_self_mask,
                 ga_cur_neigh,
                 ga_cur_all_actions,
+                voxel_length=voxel_length,
             )
             expert_disc_prob: Tensor = self.discriminator(
                 ga_expert_self_and_neigh_params,
                 ga_expert_self_mask,
                 ga_expert_neigh,
                 ga_expert_all_actions,
+                voxel_length=voxel_length,
             )
 
             discriminator_loss: Tensor = BCELoss()(
@@ -289,12 +294,31 @@ class GAIL(BaseImitator):
         )
 
         if self.do_reward_change:
-            transitions["reward"] = torch.cat(  # [B, AGENT_NUM + 1]
-                (
-                    torch.tensor(rewards_list).view(self.agent_num, -1).permute(1, 0),
-                    torch.zeros((batch_size, 1)),  # fake system reward
-                ),
-                dim=1,
+            cov_reward = torch.tensor(
+                transitions["reward"], dtype=torch.float, device=self.device
+            )
+            transitions["reward"] = (
+                torch.cat(  # [B, AGENT_NUM + 1]
+                    (
+                        torch.tensor(
+                            rewards_list, dtype=torch.float, device=self.device
+                        )
+                        .view(self.agent_num, -1)
+                        .permute(1, 0)
+                        * self.disc_reward_base,
+                        torch.zeros(
+                            (batch_size, 1), dtype=torch.float, device=self.device
+                        ),
+                    ),
+                    dim=1,
+                )
+                + torch.cat(  # [B, AGENT_NUM + 1]
+                    (
+                        cov_reward[:, :-1] * (1 - self.disc_reward_base),
+                        cov_reward[:, [-1]],
+                    ),
+                    dim=1,
+                )
             ).tolist()
 
         return transitions, discriminator_loss.item()

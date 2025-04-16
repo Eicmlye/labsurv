@@ -27,7 +27,7 @@ env_cfg = dict(
     tilt_range=TILT_RANGE,
     allow_polar=ALLOW_POLAR,
     cam_types=CAM_TYPE_NUM,
-    reset_rand_prob=0.5,
+    reset_rand_prob=0,
     reset_pos="center",
     subgoals=(
         [[0.1 * i, 0.1] for i in range(1, 6)]  # 0.0 -> 0.5
@@ -36,17 +36,17 @@ env_cfg = dict(
         + [[0.9 + 0.01 * i, 0.01] for i in range(1, 6)]  # 0.9 -> 0.95
         + [[0.95 + 0.005 * i, 0.005] for i in range(1, 7)]  # 0.95 -> 0.98
         + [[0.98 + 0.001 * i, 0.001] for i in range(1, 20)]  # 0.98 -> 1.0
-        + [  # inv rew 0.6 -> 0.65, total 0.05
-            [0.6 + 0.005 * i, 0.001 * 0.5] for i in range(1, 11)
+        + [  # inv rew 0.2 -> 0.4, total 0.05
+            [0.2 + 0.02 * i, 0.001 * 0.5] for i in range(1, 11)
         ]
-        + [  # inv rew 0.65 -> 0.7, total 0.1
-            [0.65 + 0.005 * i, 0.002 * 0.5] for i in range(1, 11)
+        + [  # inv rew 0.4 -> 0.6, total 0.1
+            [0.4 + 0.02 * i, 0.002 * 0.5] for i in range(1, 11)
         ]
-        + [  # inv rew 0.7 -> 0.75, total 0.15
-            [0.7 + 0.005 * i, 0.003 * 0.5] for i in range(1, 11)
+        + [  # inv rew 0.6 -> 0.7, total 0.15
+            [0.6 + 0.01 * i, 0.003 * 0.5] for i in range(1, 11)
         ]
-        + [  # inv rew 0.75 -> 0.8, total 0.2
-            [0.75 + 0.005 * i, 0.004 * 0.5] for i in range(1, 11)
+        + [  # inv rew 0.7 -> 0.8, total 0.2
+            [0.7 + 0.01 * i, 0.004 * 0.5] for i in range(1, 11)
         ]
         + [  # inv rew 0.8 -> 0.85, total 0.05
             [0.8 + 0.005 * i, 0.001 * 0.5] for i in range(1, 11)
