@@ -169,6 +169,7 @@ class OCPMultiAgentOnPolicyRunner:
                     self.logger,
                     agent_num=self.env.agent_num,
                     voxel_length=self.env.info_room.voxel_length,
+                    room_shape=self.env.info_room.shape,
                 )
                 self.logger.show_log(
                     f"episode reward {episode_return["reward"]:.8f} "
@@ -247,6 +248,7 @@ class OCPMultiAgentOnPolicyRunner:
                 logger=self.logger,
                 agent_num=self.env.agent_num,
                 voxel_length=self.env.info_room.voxel_length,
+                room_shape=self.env.info_room.shape,
             )
 
             cur_coverage, cur_transition, new_params = self.env.step(
