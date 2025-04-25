@@ -1,3 +1,4 @@
+import math
 import os
 import os.path as osp
 from copy import deepcopy
@@ -109,6 +110,7 @@ class OCPMultiAgentPPO(BaseAgent):
             self.advantage_param = advantage_param
             self.clip_epsilon = clip_epsilon
             self.critic_loss_coef = critic_loss_coef
+            self.max_entropy_loss_coef = entropy_loss_coef
             self.entropy_loss_coef = entropy_loss_coef
 
             if len(freeze_backbone) > 0:
@@ -724,6 +726,22 @@ class OCPMultiAgentPPO(BaseAgent):
             )
 
         return critic_loss.item(), actor_loss.item(), entropy_loss.item()
+
+    def update_scheduler(self, cur_episode, total_episode, mode="cos"):
+        super().update_scheduler(cur_episode, total_episode, mode)
+
+        cur_episode = min(cur_episode, total_episode - 1)
+
+        if mode == "cos":
+            time_index = PI / 4 + PI * 5 / 4 * cur_episode / (total_episode - 1)
+            min_entropy_loss_coef = 1e-1 * self.max_entropy_loss_coef
+            amplification = (self.max_entropy_loss_coef - min_entropy_loss_coef) / 2
+
+            self.entropy_loss_coef = (
+                amplification * (math.sin(time_index) + 1) + min_entropy_loss_coef
+            )
+        else:
+            raise NotImplementedError()
 
     def save(self, episode_index: int, save_path: str):
         checkpoint = dict(
