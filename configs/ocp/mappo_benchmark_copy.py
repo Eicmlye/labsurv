@@ -10,7 +10,7 @@ episodes = 2000
 steps = 30
 
 task_name = "AC_04"
-task_conditions = "invrew_32melt_load5k"
+task_conditions = "TASK_CONDITIONS"
 
 work_dir = (
     f"./output/ocp/{agent_type.lower()}_benchmark/"

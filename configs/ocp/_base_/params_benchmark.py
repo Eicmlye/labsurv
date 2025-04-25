@@ -17,5 +17,5 @@ VOXEL_LENGTH = VOXEL_LENGTH_1 if benchmark_id < 10 else VOXEL_LENGTH_2
 ALLOW_POLAR = True
 MANUAL = False
 BACKBONE_PATH = "labsurv/checkpoint/pointnet2backbone_rename.pth"
-FREEZE_BACKBONE = [0, 1, 2, 3]
+FREEZE_BACKBONE = []
 BACKBONE_RADIUS = 0.1

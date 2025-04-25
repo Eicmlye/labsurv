@@ -53,13 +53,13 @@ agent_cfg = dict(
         cam_types=CAM_TYPE_NUM,
         mixed_reward=True,
         manual=MANUAL,
-        # backbone_path=BACKBONE_PATH,
+        backbone_path=BACKBONE_PATH,
         freeze_backbone=FREEZE_BACKBONE,
-        load_from=(
-            "output/ocp/mappo_pointnet2_benchmark/"
-            "AC_04/"
-            "ma5_30steps_AC_04_invrew_32melt_load3k/"
-            "models/episode_2000.pth"
-        ),
+        # load_from=(
+        #     "output/ocp/AGENT_NAME_benchmark/"
+        #     "TASK_NAME/"
+        #     "WORKING_DIR/"
+        #     "models/episode_EPISODE.pth"
+        # ),
     ),
 )

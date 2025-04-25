@@ -10,7 +10,7 @@ episodes = 1000
 steps = 30
 
 task_name = "AC_03"
-task_conditions = "invrew_xmelt"
+task_conditions = "TASK_CONDITIONS"
 
 work_dir = (
     f"./output/ocp/{agent_type.lower()}_benchmark/"
