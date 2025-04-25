@@ -419,6 +419,8 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 new_vismasks,
                 self.info_room.visible_points.cpu().numpy().copy(),
                 self.info_room.must_monitor[:, :, :, 0].sum().item(),
+                observations,
+                next_observations,
             ),
             terminated=(
                 self.action_count == total_steps or cur_coverage >= self.terminate_goal
@@ -454,7 +456,35 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         new_vismasks: List[array],
         new_vis_count: array,
         total_target_num: int,
+        observations: List[Tuple[array, array, array]],
+        next_observations: List[Tuple[array, array, array]],
     ) -> List[float]:
+        cov_reward = self._compute_cov_reward(
+            cur_coverage,
+            pred_coverage,
+            pred_vismasks,
+            pred_vis_count,
+            new_vismasks,
+            new_vis_count,
+            total_target_num,
+        )
+
+        dist_reward = self._compute_dist_reward(observations, next_observations)
+
+        return (cov_reward + dist_reward * (1 - cur_coverage) / 2).tolist()
+
+        # return cov_reward.tolist()
+
+    def _compute_cov_reward(
+        self,
+        cur_coverage: float,
+        pred_coverage: float,
+        pred_vismasks: List[array],
+        pred_vis_count: array,
+        new_vismasks: List[array],
+        new_vis_count: array,
+        total_target_num: int,
+    ) -> array:
         assert len(pred_vismasks) == len(new_vismasks)
 
         individual_rewards = []
@@ -494,6 +524,106 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         else:
             mixed_rewards = np.zeros((self.agent_num,), dtype=np.float32)
 
-        rewards = mixed_rewards.tolist() + [total_reward]
+        rewards = np.array(mixed_rewards.tolist() + [total_reward], dtype=np.float32)
 
         return rewards
+
+    def _compute_dist_reward(
+        self,
+        observations: List[Tuple[array, array, array]],
+        next_observations: List[Tuple[array, array, array]],
+    ) -> array:
+        """
+        ## Arguments:
+            observations (List[Tuple[array, array, array]]): [AGENT_NUM, Tuple], every
+            tuple consists of the following arrays:
+
+                self_and_neigh_params (np.ndarray): [AGENT_NUM(NEIGH), PARAM_DIM],
+                torch.float. Absolute params of agents in `neigh` including current
+                agent itself. Remaining rows will be padded with 0's.
+
+                self_mask (np.ndarray): [AGENT_NUM(NEIGH)], torch.bool. 1 for current
+                agent, 0 otherwise. Remaining rows will be padded with `False`'s.
+
+                neigh (np.ndarray): [3, 2L+1, 2L+1, 2L+1], torch.float, where `L` is
+                the farther dof of the camera. `occupancy`, `install_permitted`,
+                `vis_redundancy`. `vis_redundancy` = vis_count / agent_num, -1 if not
+                in `must_monitor`.
+        """
+        dist_reward = []
+
+        for observation, next_observation in zip(observations, next_observations):
+            # [AGENT_NUM(NEIGH), PARAM_DIM]
+            self_and_neigh_params: array = observation[0]
+            self_mask: array = observation[1]  # [AGENT_NUM(NEIGH)]
+            neigh: array = observation[2]  # [3, 2L+1, 2L+1, 2L+1]
+
+            if len(self_mask) == 1:
+                min_dist = 1  # noqa: F841
+                dist2geo = 1  # noqa: F841
+            else:
+                neigh_side_length: float = float(neigh.shape[1])
+
+                diff = (
+                    np.expand_dims(self_and_neigh_params, axis=1)
+                    - np.expand_dims(self_and_neigh_params, axis=0)
+                ) / neigh_side_length
+                dist: array = np.sqrt((diff**2).sum(axis=-1))
+
+                self_agent_index = self_mask.tolist().index(1)
+                dist_list: List[float] = dist[self_agent_index].tolist()
+                dist_list.pop(self_agent_index)
+                min_dist = min(dist_list) / np.sqrt(2)  # noqa: F841
+
+                geo_center = self_and_neigh_params.mean(axis=0)
+                dist2geo = np.sqrt(  # noqa: F841
+                    (
+                        (
+                            (self_and_neigh_params[self_agent_index] - geo_center)
+                            / (neigh_side_length / 2)
+                        )
+                        ** 2
+                    ).sum()
+                )
+
+            # [AGENT_NUM(NEIGH), PARAM_DIM]
+            next_self_and_neigh_params: array = next_observation[0]
+            next_self_mask: array = next_observation[1]  # [AGENT_NUM(NEIGH)]
+            next_neigh: array = next_observation[2]  # [3, 2L+1, 2L+1, 2L+1]
+
+            if len(next_self_mask) == 1:
+                next_min_dist = 1  # noqa: F841
+                next_dist2geo = 1  # noqa: F841
+            else:
+                next_neigh_side_length: float = float(next_neigh.shape[1])
+
+                next_diff = (
+                    np.expand_dims(next_self_and_neigh_params, axis=1)
+                    - np.expand_dims(next_self_and_neigh_params, axis=0)
+                ) / next_neigh_side_length
+                next_dist: array = np.sqrt((next_diff**2).sum(axis=-1))
+
+                next_self_agent_index = next_self_mask.tolist().index(1)
+                next_dist_list: List[float] = next_dist[next_self_agent_index].tolist()
+                next_dist_list.pop(next_self_agent_index)
+                next_min_dist = min(next_dist_list) / np.sqrt(2)  # noqa: F841
+
+                next_geo_center = next_self_and_neigh_params.mean(axis=0)
+                next_dist2geo = np.sqrt(  # noqa: F841
+                    (
+                        (
+                            (
+                                next_self_and_neigh_params[next_self_agent_index]
+                                - next_geo_center
+                            )
+                            / (next_neigh_side_length / 2)
+                        )
+                        ** 2
+                    ).sum()
+                )
+
+            dist_reward.append(
+                (1 - dist2geo / next_dist2geo) if next_dist2geo != 0 else 0
+            )
+
+        return np.array(dist_reward + [0], dtype=np.float32)
