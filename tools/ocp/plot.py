@@ -716,6 +716,18 @@ def _plot_subfig(
     sma: Optional[int] = None,
     sma_tick_extend_factor: int = 1,
 ):
+    abnormal_indices = []
+    cache_x = []
+    cache_y = []
+    for index, item in enumerate(input_y):
+        if item > 1e3:
+            abnormal_indices.append(index)
+        else:
+            cache_x.append(x[index])
+            cache_y.append(input_y[index])
+    x = cache_x
+    input_y = cache_y
+
     if sma is not None:
         assert isinstance(sma, int) and sma > 0
         assert isinstance(
