@@ -76,10 +76,12 @@ class PointNet2Actor(Module):
         comm_attn_head_num: int = 4,
         neigh_out_dim: int = 64,
         min_radius: float = 0.1,
+        normalize_input: bool = False,
     ):
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
+        self.normalize_input = normalize_input
 
         param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
         # [-x, +x, -y, +y, -z, +z, -p, +p, -t, +t, (change to cam_type n)]
@@ -87,18 +89,26 @@ class PointNet2Actor(Module):
 
         # self param
         self.param_encoder = Sequential(
-            Linear(param_dim, hidden_dim, device=self.device), ReLU()
+            Linear(param_dim, hidden_dim // 2, device=self.device),
+            ReLU(),
+            Linear(hidden_dim // 2, hidden_dim, device=self.device),
+            ReLU(),
         )
 
         # neighbour params
-        self.comm_encoder = Linear(param_dim, hidden_dim, device=self.device)
+        self.comm_encoder = Sequential(
+            Linear(param_dim, hidden_dim // 2, device=self.device),
+            ReLU(),
+            Linear(hidden_dim // 2, hidden_dim, device=self.device),
+            ReLU(),
+        )
         self.comm_attn = MultiheadAttention(
             embed_dim=hidden_dim, num_heads=comm_attn_head_num, device=self.device
         )
         self.feed_forward = Sequential(
-            Linear(hidden_dim, 2 * hidden_dim, device=self.device),
+            Linear(hidden_dim, hidden_dim // 2, device=self.device),
             ReLU(),
-            Linear(2 * hidden_dim, hidden_dim, device=self.device),
+            Linear(hidden_dim // 2, hidden_dim, device=self.device),
             ReLU(),
         )
 
@@ -115,7 +125,9 @@ class PointNet2Actor(Module):
         self.out = Sequential(
             Linear(2 * hidden_dim + neigh_out_dim, hidden_dim, device=self.device),
             ReLU(),
-            Linear(hidden_dim, action_dim, device=self.device),
+            Linear(hidden_dim, hidden_dim // 2, device=self.device),
+            ReLU(),
+            Linear(hidden_dim // 2, action_dim, device=self.device),
         )
 
     def forward(
@@ -124,6 +136,7 @@ class PointNet2Actor(Module):
         self_mask: Tensor,
         neigh: Tensor,
         voxel_length: float,
+        room_shape: List[int],
     ):
         """
         ## Arguments:
@@ -148,14 +161,19 @@ class PointNet2Actor(Module):
         ## params processing
         batch_size = self_mask.shape[0]
         param_dim = self_and_neigh_params.shape[-1]
+        agent_params = (
+            _normalize_param(self_and_neigh_params, room_shape)
+            if self.normalize_input
+            else self_and_neigh_params
+        )
 
         # self
-        self_params = self_and_neigh_params[self_mask, :]
+        self_params = agent_params[self_mask, :]
         # [B, HIDDEN_DIM]
         self_embedding: Tensor = self.param_encoder(self_params)
 
         # neighbours
-        neigh_params = self_and_neigh_params[torch.logical_not(self_mask), :].view(
+        neigh_params = agent_params[torch.logical_not(self_mask), :].view(
             batch_size, -1, param_dim
         )
         # [B, AGENT_NUM(NEIGH), HIDDEN_NUM]
@@ -206,10 +224,13 @@ class PointNet2Critic(Module):
         attn_head_num: int = 4,
         env_out_dim: int = 64,
         min_radius: float = 0.1,
+        normalize_input: bool = False,
     ):
         super().__init__()
         self.device = torch.device(device)
         self.cam_types = cam_types
+        self.normalize_input = normalize_input
+
         if hidden_dim == 64:
             self.attn_layer = 1
         elif hidden_dim == 128:
@@ -227,7 +248,10 @@ class PointNet2Critic(Module):
 
         # self param
         self.param_encoder = Sequential(
-            Linear(param_dim, hidden_dim, device=self.device), ReLU()
+            Linear(param_dim, hidden_dim // 2, device=self.device),
+            ReLU(),
+            Linear(hidden_dim // 2, hidden_dim, device=self.device),
+            ReLU(),
         )
 
         # env
@@ -244,9 +268,9 @@ class PointNet2Critic(Module):
             embed_dim=hidden_dim, num_heads=attn_head_num, device=self.device
         )
         self.feed_forward = Sequential(
-            Linear(hidden_dim, 2 * hidden_dim, device=self.device),
+            Linear(hidden_dim, hidden_dim // 2, device=self.device),
             ReLU(),
-            Linear(2 * hidden_dim, hidden_dim, device=self.device),
+            Linear(hidden_dim // 2, hidden_dim, device=self.device),
             ReLU(),
         )
 
@@ -254,15 +278,23 @@ class PointNet2Critic(Module):
         self.out = Sequential(
             Linear(2 * hidden_dim + env_out_dim, hidden_dim, device=self.device),
             ReLU(),
-            Linear(hidden_dim, 1, device=self.device),
+            Linear(hidden_dim, hidden_dim // 2, device=self.device),
+            ReLU(),
+            Linear(hidden_dim // 2, 1, device=self.device),
         )
 
-    def forward(self, cam_params: Tensor, env: Tensor, voxel_length: float) -> Tensor:
+    def forward(
+        self,
+        cam_params: Tensor,
+        env: Tensor,
+        voxel_length: float,
+        room_shape: List[int],
+    ) -> Tensor:
         """
         ## Arguments:
 
-            cam_params (Tensor): [B, AGENT_NUM, PARAM_DIM], torch.float. Relative
-            coords and relative angles, one-hot cam_type vecs.
+            cam_params (Tensor): [B, AGENT_NUM, PARAM_DIM], torch.float. Absolute
+            coords and absolute angles, one-hot cam_type vecs.
 
             env (Tensor): [B, 3, W, D, H], torch.float, `occupancy`,
             `install_permitted`, `vis_redundancy`.
@@ -273,6 +305,11 @@ class PointNet2Critic(Module):
             value_predicted (Tensor): [B, 1], torch.float.
         """
         batch_size = cam_params.shape[0]
+        agent_params = (
+            _normalize_param(cam_params, room_shape)
+            if self.normalize_input
+            else cam_params
+        )
 
         ## env
         input_data: Tensor = _ply2data(env, voxel_length)  # [B, N, DATA_DIM]
@@ -289,7 +326,7 @@ class PointNet2Critic(Module):
 
         ## agents
         # [B, AGENT_NUM, HIDDEN_DIM]
-        agents_embedding: Tensor = self.param_encoder(cam_params)
+        agents_embedding: Tensor = self.param_encoder(agent_params)
         # [B, HIDDEN_DIM]
         agents_feats: Tensor = agents_embedding.mean(dim=1)
 
@@ -457,264 +494,6 @@ class PointNet2Discriminator(Module):
         return out
 
 
-@STRATEGIES.register_module()
-class PointNet2Approx(Module):
-    def __init__(
-        self,
-        device: str,
-        hidden_dim: int,
-        cam_types: int,
-        comm_attn_head_num: int = 4,
-        neigh_out_dim: int = 64,
-    ):
-        super().__init__()
-        self.device = torch.device(device)
-        self.cam_types = cam_types
-        # [-x, +x, -y, +y, -z, +z, -p, +p, -t, +t, (change to cam_type n)]
-        action_dim = 10 + self.cam_types
-
-        param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
-
-        # self param
-        self.param_encoder = Sequential(
-            Linear(param_dim, hidden_dim, device=self.device), ReLU()
-        )
-
-        # neighbour params
-        self.comm_encoder = Linear(param_dim, hidden_dim, device=self.device)
-        self.comm_attn = MultiheadAttention(
-            embed_dim=hidden_dim, num_heads=comm_attn_head_num, device=self.device
-        )
-
-        # neighbourhood
-        self.backbone = PointNetBackbone()
-        self.neigh_merge = Sequential(
-            Linear(64 + 256 + 512, hidden_dim, device=self.device),
-            ReLU(),
-            Linear(hidden_dim, neigh_out_dim, device=self.device),
-            ReLU(),
-        )
-
-        # action
-        self.action_encoder = Sequential(
-            Linear(action_dim, hidden_dim, device=self.device), ReLU()
-        )
-
-        # out
-        self.out = Sequential(
-            Linear(
-                3 * hidden_dim + neigh_out_dim,
-                # 2 * hidden_dim + neigh_out_dim,
-                hidden_dim,
-                device=self.device,
-            ),
-            ReLU(),
-            Linear(hidden_dim, 1, device=self.device),
-        )
-
-    def forward(
-        self,
-        self_and_neigh_params: Tensor,
-        self_mask: Tensor,
-        neigh: Tensor,
-        actions: Tensor,
-        voxel_length: float,
-    ):
-        """
-        ## Arguments:
-
-            self_and_neigh_params (Tensor): [B, AGENT_NUM(NEIGH), PARAM_DIM], torch.float.
-            Params of agents in `neigh` including current agent itself.
-
-            self_mask (Tensor): [B, AGENT_NUM(NEIGH)], torch.bool. 1 for current agent, 0
-            for neighbours.
-
-            neigh (Tensor): [B, 3, 2L+1, 2L+1, 2L+1], torch.float, where `L` is the
-            farther dof of the camera. `occupancy`, `install_permitted`,
-            `vis_redundancy`. `vis_redundancy` = vis_count / agent_num, -1 if not
-            in `must_monitor`.
-
-        ## Returns:
-
-            prob (Tensor): [B, 1], torch.float.
-        """
-
-        ## params processing
-        batch_size = self_mask.shape[0]
-        param_dim = self_and_neigh_params.shape[-1]
-
-        # self
-        self_params = self_and_neigh_params[self_mask, :]
-        # [B, HIDDEN_DIM]
-        self_embedding: Tensor = self.param_encoder(self_params)
-
-        # neighbours
-        neigh_params = self_and_neigh_params[torch.logical_not(self_mask), :].view(
-            batch_size, -1, param_dim
-        )
-        # [B, AGENT_NUM(NEIGH), HIDDEN_NUM]
-        neigh_agent_embeddings: Tensor = self.comm_encoder(neigh_params)
-        # [AGENT_NUM(NEIGH), B, HIDDEN_NUM]
-        neigh_agent_seqs: Tensor = neigh_agent_embeddings.permute(1, 0, 2)
-        # [1, B, HIDDEN_DIM], ...
-        attn_neigh_agent_feats, _ = self.comm_attn(
-            query=self_embedding.unsqueeze(0),
-            key=neigh_agent_seqs,
-            value=neigh_agent_seqs,
-        )
-        # [B, HIDDEN_DIM]
-        comm_feats: Tensor = torch.squeeze(attn_neigh_agent_feats, dim=0)
-        comm_feats += self_embedding  # skip connection
-
-        ## neighbourhood pointcloud processing
-        input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
-        _, data = self.backbone(input_data)
-        pooling_data: Tensor = [
-            torch.max(data[index], dim=1)[0] for index in range(len(data))
-        ]
-        multi_resolution_data: Tensor = torch.concatenate(  # [B, 64+256+512]
-            (pooling_data[1], pooling_data[3], pooling_data[4]), dim=1
-        )
-        neigh_feats: Tensor = self.neigh_merge(
-            multi_resolution_data
-        )  # [B, NEIGH_OUT_DIM]
-
-        # action
-        action_feats: Tensor = self.action_encoder(actions)  # [B, HIDDEN_DIM]
-
-        # out
-        merged_feats: Tensor = torch.concatenate(  # [B, 3*HIDDEN_DIM + NEIGH_OUT_DIM]
-            (self_embedding, comm_feats, neigh_feats, action_feats),
-            dim=1,
-            # (self_embedding, comm_feats, neigh_feats), dim=1
-        )
-        out: Tensor = sigmoid(self.out(merged_feats))
-
-        return out
-
-
-@STRATEGIES.register_module()
-class PointNet2Shaping(Module):
-    def __init__(
-        self,
-        device: str,
-        hidden_dim: int,
-        cam_types: int,
-        comm_attn_head_num: int = 4,
-        neigh_out_dim: int = 64,
-    ):
-        super().__init__()
-        self.device = torch.device(device)
-        self.cam_types = cam_types
-
-        param_dim = 5 + self.cam_types  # [x, y, z, pan, tilt, (one-hot cam_type vec)]
-
-        # self param
-        self.param_encoder = Sequential(
-            Linear(param_dim, hidden_dim, device=self.device), ReLU()
-        )
-
-        # neighbour params
-        self.comm_encoder = Linear(param_dim, hidden_dim, device=self.device)
-        self.comm_attn = MultiheadAttention(
-            embed_dim=hidden_dim, num_heads=comm_attn_head_num, device=self.device
-        )
-
-        # neighbourhood
-        self.backbone = PointNetBackbone()
-        self.neigh_merge = Sequential(
-            Linear(64 + 256 + 512, hidden_dim, device=self.device),
-            ReLU(),
-            Linear(hidden_dim, neigh_out_dim, device=self.device),
-            ReLU(),
-        )
-
-        # out
-        self.out = Sequential(
-            Linear(
-                2 * hidden_dim + neigh_out_dim,
-                hidden_dim,
-                device=self.device,
-            ),
-            ReLU(),
-            Linear(hidden_dim, 1, device=self.device),
-        )
-
-    def forward(
-        self,
-        self_and_neigh_params: Tensor,
-        self_mask: Tensor,
-        neigh: Tensor,
-        voxel_length: float,
-    ):
-        """
-        ## Arguments:
-
-            self_and_neigh_params (Tensor): [B, AGENT_NUM(NEIGH), PARAM_DIM], torch.float.
-            Params of agents in `neigh` including current agent itself.
-
-            self_mask (Tensor): [B, AGENT_NUM(NEIGH)], torch.bool. 1 for current agent, 0
-            for neighbours.
-
-            neigh (Tensor): [B, 3, 2L+1, 2L+1, 2L+1], torch.float, where `L` is the
-            farther dof of the camera. `occupancy`, `install_permitted`,
-            `vis_redundancy`. `vis_redundancy` = vis_count / agent_num, -1 if not
-            in `must_monitor`.
-
-        ## Returns:
-
-            shaping_term (Tensor): [B, 1], torch.float.
-        """
-
-        ## params processing
-        batch_size = self_mask.shape[0]
-        param_dim = self_and_neigh_params.shape[-1]
-
-        # self
-        self_params = self_and_neigh_params[self_mask, :]
-        # [B, HIDDEN_DIM]
-        self_embedding: Tensor = self.param_encoder(self_params)
-
-        # neighbours
-        neigh_params = self_and_neigh_params[torch.logical_not(self_mask), :].view(
-            batch_size, -1, param_dim
-        )
-        # [B, AGENT_NUM(NEIGH), HIDDEN_NUM]
-        neigh_agent_embeddings: Tensor = self.comm_encoder(neigh_params)
-        # [AGENT_NUM(NEIGH), B, HIDDEN_NUM]
-        neigh_agent_seqs: Tensor = neigh_agent_embeddings.permute(1, 0, 2)
-        # [1, B, HIDDEN_DIM], ...
-        attn_neigh_agent_feats, _ = self.comm_attn(
-            query=self_embedding.unsqueeze(0),
-            key=neigh_agent_seqs,
-            value=neigh_agent_seqs,
-        )
-        # [B, HIDDEN_DIM]
-        comm_feats: Tensor = torch.squeeze(attn_neigh_agent_feats, dim=0)
-        comm_feats += self_embedding  # skip connection
-
-        ## neighbourhood pointcloud processing
-        input_data = _ply2data(neigh, voxel_length)  # [B, N, DATA_DIM]
-        _, data = self.backbone(input_data)
-        pooling_data: Tensor = [
-            torch.max(data[index], dim=1)[0] for index in range(len(data))
-        ]
-        multi_resolution_data: Tensor = torch.concatenate(  # [B, 64+256+512]
-            (pooling_data[1], pooling_data[3], pooling_data[4]), dim=1
-        )
-        neigh_feats: Tensor = self.neigh_merge(
-            multi_resolution_data
-        )  # [B, NEIGH_OUT_DIM]
-
-        # out
-        merged_feats: Tensor = torch.concatenate(  # [B, 2*HIDDEN_DIM + NEIGH_OUT_DIM]
-            (self_embedding, comm_feats, neigh_feats), dim=1
-        )
-        out: Tensor = sigmoid(self.out(merged_feats))
-
-        return out
-
-
 def _ply2data(ply_pointcloud: Tensor, voxel_length: float) -> Tensor:
     """
     ## Arguments:
@@ -784,3 +563,20 @@ def _ply2data(ply_pointcloud: Tensor, voxel_length: float) -> Tensor:
     )
 
     return data
+
+
+def _normalize_param(params: Tensor, room_shape: float) -> Tensor:
+    W, D, H = room_shape
+
+    normalized_params = torch.tensor(
+        params.cpu().numpy(), dtype=params.dtype, device=params.device
+    )
+
+    normalized_params[:, :, [0]] /= W - 1
+    normalized_params[:, :, [0]] -= 0.5
+    normalized_params[:, :, [1]] /= D - 1
+    normalized_params[:, :, [1]] -= 0.5
+    normalized_params[:, :, [2]] /= H - 1
+    normalized_params[:, :, [2]] -= 0.5
+
+    return normalized_params

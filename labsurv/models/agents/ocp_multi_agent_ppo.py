@@ -342,6 +342,7 @@ class OCPMultiAgentPPO(BaseAgent):
 
             for agent_index, cam_param in enumerate(cam_params):
                 actor_inputs = info_room2actor_input(room, agent_num, cam_param)
+                room_shape = room.shape
                 observations.append(actor_inputs)
 
                 self_and_neigh_params: Tensor = torch.tensor(
@@ -362,7 +363,11 @@ class OCPMultiAgentPPO(BaseAgent):
 
                 # [ACTION_DIM]
                 action_logits: Tensor = self.actor(
-                    self_and_neigh_params, self_mask, neigh, voxel_length=voxel_length
+                    self_and_neigh_params,
+                    self_mask,
+                    neigh,
+                    voxel_length=voxel_length,
+                    room_shape=room_shape,
                 ).view(-1)
                 action_mask = 1 - generate_action_mask(
                     room,
@@ -422,6 +427,7 @@ class OCPMultiAgentPPO(BaseAgent):
         logger: LoggerHook = kwargs["logger"]
         agent_num = kwargs["agent_num"]
         voxel_length = kwargs["voxel_length"]
+        room_shape = kwargs["room_shape"]
 
         with torch.no_grad():  # if grad, memory leaks
             observations: List[Tuple[array, array, array]] = []
@@ -452,7 +458,11 @@ class OCPMultiAgentPPO(BaseAgent):
 
                 # [ACTION_DIM]
                 action_logits: Tensor = self.actor(
-                    self_and_neigh_params, self_mask, neigh, voxel_length=voxel_length
+                    self_and_neigh_params,
+                    self_mask,
+                    neigh,
+                    voxel_length=voxel_length,
+                    room_shape=room_shape,
                 ).view(-1)
                 action_mask = 1 - generate_action_mask(
                     room,
@@ -497,6 +507,7 @@ class OCPMultiAgentPPO(BaseAgent):
     ) -> Tuple[float]:
         agent_num = kwargs["agent_num"]
         voxel_length = kwargs["voxel_length"]
+        room_shape = kwargs["room_shape"]
 
         actor_inputs, critic_inputs = reformat_input(
             agent_num, self.device, transitions
@@ -530,7 +541,10 @@ class OCPMultiAgentPPO(BaseAgent):
         ) = critic_inputs
 
         value_predict: Tensor = self.critic(
-            next_cam_params, next_envs, voxel_length=voxel_length
+            next_cam_params,
+            next_envs,
+            voxel_length=voxel_length,
+            room_shape=room_shape,
         ).view(
             -1
         )  # [B]
@@ -539,7 +553,10 @@ class OCPMultiAgentPPO(BaseAgent):
         )  # [B]
         if not self.mixed_reward:
             critic_td_error: Tensor = critic_td_target - self.critic(  # [B]
-                cur_cam_params, cur_envs, voxel_length=voxel_length
+                cur_cam_params,
+                cur_envs,
+                voxel_length=voxel_length,
+                room_shape=room_shape,
             ).view(-1)
             advantages: Tensor = _compute_advantage(  # [AGENT_NUM * B]
                 self.gamma, self.advantage_param, critic_td_error, self.device
@@ -553,7 +570,10 @@ class OCPMultiAgentPPO(BaseAgent):
                     1 - all_terminated
                 )
                 actor_td_error: Tensor = actor_td_target - self.critic(
-                    cur_cam_params, cur_envs, voxel_length=voxel_length
+                    cur_cam_params,
+                    cur_envs,
+                    voxel_length=voxel_length,
+                    room_shape=room_shape,
                 ).view(-1)
                 actor_advantages: Tensor = _compute_advantage(  # [B]
                     self.gamma, self.advantage_param, actor_td_error, self.device
@@ -610,6 +630,7 @@ class OCPMultiAgentPPO(BaseAgent):
                     ga_cur_self_mask,
                     ga_cur_neigh,
                     voxel_length=voxel_length,
+                    room_shape=room_shape,
                 )
                 action_logits[
                     cur_all_action_masks.view(batch_size * agent_num, -1)[
@@ -639,6 +660,7 @@ class OCPMultiAgentPPO(BaseAgent):
                                 ga_cur_self_mask,
                                 ga_cur_neigh,
                                 voxel_length=voxel_length,
+                                room_shape=room_shape,
                             ),
                             dim=-1,
                         )
@@ -670,7 +692,12 @@ class OCPMultiAgentPPO(BaseAgent):
                 )
                 critic_loss = torch.mean(
                     F.mse_loss(
-                        self.critic(cur_cam_params, cur_envs, voxel_length).view(-1),
+                        self.critic(
+                            cur_cam_params,
+                            cur_envs,
+                            voxel_length,
+                            room_shape=room_shape,
+                        ).view(-1),
                         critic_td_target.detach(),
                     )
                 )
