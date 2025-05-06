@@ -1,5 +1,6 @@
 import argparse
 import os.path as osp
+from typing import List
 
 import numpy as np
 import torch
@@ -303,7 +304,147 @@ def _build_empty_room(cfg_path: str) -> SurveillanceRoom:
     return room
 
 
-def main(size: str, is_demo: bool):
+def _build_huge_room(cfg_path: str, id: List[int]) -> SurveillanceRoom:
+    full_shape = [100, 100, 30]
+    room = SurveillanceRoom(
+        device=DEVICE,
+        cfg_path=cfg_path,
+        shape=full_shape,
+    )
+
+    print("Building occupancy blocks...")
+    resol_requirement = dict(
+        h_res_req_min=50,
+        h_res_req_max=1000,
+        v_res_req_min=50,
+        v_res_req_max=1000,
+    )
+    start_shifts = [
+        [10, 10, 0],
+        [10, 40, 0],
+        [10, 70, 0],
+        [40, 10, 0],
+        [40, 40, 0],
+        [40, 70, 0],
+        [70, 10, 0],
+        [70, 40, 0],
+        [70, 70, 0],
+    ]
+    for num in range(1, 10):
+        if num in id:
+            room.add_block(
+                [20, 20, 30],
+                displacement=np.array(start_shifts[num - 1]),
+            )
+        else:
+            room.add_block(
+                [20, 20, 10],
+                point_type="install_permitted",
+                displacement=np.array(start_shifts[num - 1][:-1] + [20]),
+            )
+            room.add_block(
+                [20, 20, 20],
+                point_type="must_monitor",
+                displacement=np.array(start_shifts[num - 1]),
+                **resol_requirement,
+            )
+
+    print("Building permission blocks...")
+    room.add_block(
+        [10, 100, 10],
+        point_type="install_permitted",
+        displacement=np.array([0, 0, 20]),
+    )
+    room.add_block(
+        [10, 100, 10],
+        point_type="install_permitted",
+        displacement=np.array([30, 0, 20]),
+    )
+    room.add_block(
+        [10, 100, 10],
+        point_type="install_permitted",
+        displacement=np.array([60, 0, 20]),
+    )
+    room.add_block(
+        [10, 100, 10],
+        point_type="install_permitted",
+        displacement=np.array([90, 0, 20]),
+    )
+    room.add_block(
+        [100, 10, 10],
+        point_type="install_permitted",
+        displacement=np.array([0, 0, 20]),
+    )
+    room.add_block(
+        [100, 10, 10],
+        point_type="install_permitted",
+        displacement=np.array([0, 30, 20]),
+    )
+    room.add_block(
+        [100, 10, 10],
+        point_type="install_permitted",
+        displacement=np.array([0, 60, 20]),
+    )
+    room.add_block(
+        [100, 10, 10],
+        point_type="install_permitted",
+        displacement=np.array([0, 90, 20]),
+    )
+
+    print("Building monitored blocks...")
+    room.add_block(
+        [10, 100, 20],
+        point_type="must_monitor",
+        displacement=np.array([0, 0, 0]),
+        **resol_requirement,
+    )
+    room.add_block(
+        [10, 100, 20],
+        point_type="must_monitor",
+        displacement=np.array([30, 0, 0]),
+        **resol_requirement,
+    )
+    room.add_block(
+        [10, 100, 20],
+        point_type="must_monitor",
+        displacement=np.array([60, 0, 0]),
+        **resol_requirement,
+    )
+    room.add_block(
+        [10, 100, 20],
+        point_type="must_monitor",
+        displacement=np.array([90, 0, 0]),
+        **resol_requirement,
+    )
+    room.add_block(
+        [100, 10, 20],
+        point_type="must_monitor",
+        displacement=np.array([0, 0, 0]),
+        **resol_requirement,
+    )
+    room.add_block(
+        [100, 10, 20],
+        point_type="must_monitor",
+        displacement=np.array([0, 30, 0]),
+        **resol_requirement,
+    )
+    room.add_block(
+        [100, 10, 20],
+        point_type="must_monitor",
+        displacement=np.array([0, 60, 0]),
+        **resol_requirement,
+    )
+    room.add_block(
+        [100, 10, 20],
+        point_type="must_monitor",
+        displacement=np.array([0, 90, 0]),
+        **resol_requirement,
+    )
+
+    return room
+
+
+def main(size: str, is_demo: bool, id: List[int]):
     load_from = None
     # load_from = "output/demo/surv_room/SurveillanceRoom.pkl"
 
@@ -327,52 +468,52 @@ def main(size: str, is_demo: bool):
         if is_demo:
             print("Adding cameras...")
             room.add_cam(
-                [2, 2, 13],
+                [2, 2, 12],
                 [PI / 2, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [12, 2, 13],
+                [12, 2, 12],
                 [PI / 2, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [2, 27, 13],
+                [2, 27, 12],
                 [-PI / 2, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [12, 27, 13],
+                [12, 27, 12],
                 [-PI / 2, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [5, 15, 13],
+                [5, 15, 12],
                 [0, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [9, 15, 13],
+                [9, 15, 12],
                 [-PI, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [5, 2, 13],
+                [5, 2, 12],
                 [0, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [9, 2, 13],
+                [9, 2, 12],
                 [-PI, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [5, 27, 13],
+                [5, 27, 12],
                 [0, -PI * 5 / 18],
                 "std_cam",
             )
             room.add_cam(
-                [9, 27, 13],
+                [9, 27, 12],
                 [-PI, -PI * 5 / 18],
                 "std_cam",
             )
@@ -382,8 +523,23 @@ def main(size: str, is_demo: bool):
         if is_demo:
             print("Adding cameras...")
             room.add_cam(
-                [10, 5, 25],
+                [5, 12, 25],
                 [PI / 2, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [0, 45, 25],
+                [0, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [44, 37, 25],
+                [-PI / 2, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [49, 4, 25],
+                [-PI, -PI / 6],
                 "std_cam",
             )
     elif size == "standard":
@@ -392,8 +548,43 @@ def main(size: str, is_demo: bool):
         if is_demo:
             print("Adding cameras...")
             room.add_cam(
+                [40, 10, 25],
+                [0, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [60, 10, 25],
+                [-PI, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [40, 50, 25],
+                [0, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [60, 50, 25],
+                [-PI, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [40, 90, 25],
+                [0, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [60, 90, 25],
+                [-PI, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
                 [50, 40, 25],
-                [PI / 4, -PI / 6],
+                [PI / 2, -PI / 6],
+                "std_cam",
+            )
+            room.add_cam(
+                [50, 60, 25],
+                [-PI / 2, -PI / 6],
                 "std_cam",
             )
     elif size == "empty":
@@ -404,6 +595,16 @@ def main(size: str, is_demo: bool):
             room.add_cam(
                 [0, 0, 6],
                 [PI / 4, -PI / 4],
+                "std_cam",
+            )
+    elif size == "huge":
+        room = _build_huge_room(cfg_path, id)
+
+        if is_demo:
+            print("Adding cameras...")
+            room.add_cam(
+                [50, 90, 25],
+                [-PI / 2, -PI / 6],
                 "std_cam",
             )
 
@@ -420,9 +621,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="SurveillanceRoom builder.")
 
     parser.add_argument("--demo", action="store_true", help="Build demo room.")
+    parser.add_argument("--id", type=str, default="", help="obs ids.")
     parser.add_argument(  # --size
         "--size",
-        choices=["test", "tiny", "standard", "empty"],
+        choices=["test", "tiny", "standard", "empty", "huge"],
         default="tiny",
         help="Size of the room.",
     )
@@ -435,4 +637,6 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    main(args.size, args.demo)
+    id = [int(s) for s in args.id]
+
+    main(args.size, args.demo, id)
