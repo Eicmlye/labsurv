@@ -18,33 +18,31 @@ agent_cfg = dict(
     agent=dict(
         type="OCPMultiAgentPPO",
         actor_cfg=dict(
-            type="PointNet2Actor",
+            type="SimpleConvActor",
             device=DEVICE,
             hidden_dim=512,
             cam_types=CAM_TYPE_NUM,
-            comm_attn_head_num=16,
-            neigh_out_dim=512,
-            min_radius=BACKBONE_RADIUS,
+            attn_head_num=8,
+            # min_radius=BACKBONE_RADIUS,
         ),
         critic_cfg=dict(
-            type="PointNet2Critic",
+            type="SimpleConvCritic",
             device=DEVICE,
             hidden_dim=512,
             cam_types=CAM_TYPE_NUM,
-            attn_head_num=16,
-            env_out_dim=512,
-            min_radius=BACKBONE_RADIUS,
+            attn_head_num=8,
+            # min_radius=BACKBONE_RADIUS,
         ),
-        gradient_accumulation_batchsize=45,
+        gradient_accumulation_batchsize=75,
         device=DEVICE,
-        gamma=0.95,
-        actor_lr=1e-5,
-        critic_lr=1e-4,
+        gamma=0.98,
+        actor_lr=1e-4,
+        critic_lr=1e-3,
         update_step=5,
         advantage_param=0.95,
-        clip_epsilon=0.1,
-        critic_loss_coef=10,
-        entropy_loss_coef=1e-2,
+        clip_epsilon=0.5,
+        critic_loss_coef=1,
+        entropy_loss_coef=5e-3,
         pan_section_num=PAN_SEC_NUM,
         tilt_section_num=TILT_SEC_NUM,
         pan_range=PAN_RANGE,
@@ -53,13 +51,13 @@ agent_cfg = dict(
         cam_types=CAM_TYPE_NUM,
         mixed_reward=True,
         manual=MANUAL,
-        backbone_path=BACKBONE_PATH,
+        # backbone_path=BACKBONE_PATH,
         freeze_backbone=FREEZE_BACKBONE,
         # load_from=(
-        #     "output/ocp/AGENT_NAME_benchmark/"
-        #     "TASK_NAME/"
-        #     "WORKING_DIR/"
-        #     "models/episode_EPISODE.pth"
+        #     "output/ocp/mappo_pointnet2_benchmark/"
+        #     "AC_03/"
+        #     "ma3_30steps_AC_03_pointnet1248_simpconv/"
+        #     "models/episode_1000.pth"
         # ),
     ),
 )
