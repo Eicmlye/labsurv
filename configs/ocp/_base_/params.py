@@ -29,5 +29,5 @@ VOXEL_LENGTH = (
 ALLOW_POLAR = True
 MANUAL = False
 BACKBONE_PATH = "labsurv/checkpoint/pointnet2backbone_rename.pth"
-FREEZE_BACKBONE = [0, 1, 2, 3]
-BACKBONE_RADIUS = 0.1
+FREEZE_BACKBONE = []
+BACKBONE_RADIUS = 1

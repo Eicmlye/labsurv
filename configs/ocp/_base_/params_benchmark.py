@@ -18,4 +18,4 @@ ALLOW_POLAR = True
 MANUAL = False
 BACKBONE_PATH = "labsurv/checkpoint/pointnet2backbone_rename.pth"
 FREEZE_BACKBONE = []
-BACKBONE_RADIUS = 0.1
+BACKBONE_RADIUS = 1
