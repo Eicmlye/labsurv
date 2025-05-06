@@ -419,8 +419,6 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                 new_vismasks,
                 self.info_room.visible_points.cpu().numpy().copy(),
                 self.info_room.must_monitor[:, :, :, 0].sum().item(),
-                observations,
-                next_observations,
             ),
             terminated=(
                 self.action_count == total_steps or cur_coverage >= self.terminate_goal
@@ -456,8 +454,6 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         new_vismasks: List[array],
         new_vis_count: array,
         total_target_num: int,
-        observations: List[Tuple[array, array, array]],
-        next_observations: List[Tuple[array, array, array]],
     ) -> List[float]:
         cov_reward = self._compute_cov_reward(
             cur_coverage,
@@ -469,11 +465,7 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             total_target_num,
         )
 
-        dist_reward = self._compute_dist_reward(observations, next_observations)
-
-        return (cov_reward + dist_reward * (1 - cur_coverage) / 2).tolist()
-
-        # return cov_reward.tolist()
+        return cov_reward.tolist()
 
     def _compute_cov_reward(
         self,
@@ -495,11 +487,26 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
             total_reward += self.terminate_goal
 
         # subgoals
-        for goal, bonus in self.subgoals:
-            if pred_coverage < goal and cur_coverage >= goal:
-                total_reward += bonus
-            elif pred_coverage >= goal and cur_coverage < goal:
-                total_reward -= bonus
+        # for goal, bonus in self.subgoals:
+        #     if pred_coverage < goal and cur_coverage >= goal:
+        #         total_reward += bonus
+        #     elif pred_coverage >= goal and cur_coverage < goal:
+        #         total_reward -= bonus
+
+        # normalized step reward
+        if 0.0 not in self.subgoals:
+            self.subgoals.append(0.0)
+        self.subgoals = sorted(self.subgoals)
+        interval_count = len(self.subgoals) - 1
+        for index in range(interval_count):
+            interval_lower_bound = self.subgoals[index]
+            interval_upper_bound = self.subgoals[index + 1]
+            cov_1 = min(interval_upper_bound, max(interval_lower_bound, cur_coverage))
+            cov_2 = min(interval_upper_bound, max(interval_lower_bound, pred_coverage))
+            total_reward += (cov_1 - cov_2) / (
+                interval_upper_bound - interval_lower_bound
+            )
+        total_reward /= interval_count
 
         # agent-wise delta coverage reward credit
         if self.individual_reward_alpha > 0:
@@ -515,7 +522,9 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
                     else 0.0
                 ) / total_target_num
 
-                individual_rewards.append(agent_new_cov - agent_pred_cov)
+                individual_rewards.append(
+                    (agent_new_cov - agent_pred_cov) * total_reward
+                )
 
             mixed_rewards = (
                 self.individual_reward_alpha * np.array(individual_rewards)
@@ -527,103 +536,3 @@ class OCPMultiAgentPPOEnv(BaseSurveillanceEnv):
         rewards = np.array(mixed_rewards.tolist() + [total_reward], dtype=np.float32)
 
         return rewards
-
-    def _compute_dist_reward(
-        self,
-        observations: List[Tuple[array, array, array]],
-        next_observations: List[Tuple[array, array, array]],
-    ) -> array:
-        """
-        ## Arguments:
-            observations (List[Tuple[array, array, array]]): [AGENT_NUM, Tuple], every
-            tuple consists of the following arrays:
-
-                self_and_neigh_params (np.ndarray): [AGENT_NUM(NEIGH), PARAM_DIM],
-                torch.float. Absolute params of agents in `neigh` including current
-                agent itself. Remaining rows will be padded with 0's.
-
-                self_mask (np.ndarray): [AGENT_NUM(NEIGH)], torch.bool. 1 for current
-                agent, 0 otherwise. Remaining rows will be padded with `False`'s.
-
-                neigh (np.ndarray): [3, 2L+1, 2L+1, 2L+1], torch.float, where `L` is
-                the farther dof of the camera. `occupancy`, `install_permitted`,
-                `vis_redundancy`. `vis_redundancy` = vis_count / agent_num, -1 if not
-                in `must_monitor`.
-        """
-        dist_reward = []
-
-        for observation, next_observation in zip(observations, next_observations):
-            # [AGENT_NUM(NEIGH), PARAM_DIM]
-            self_and_neigh_params: array = observation[0]
-            self_mask: array = observation[1]  # [AGENT_NUM(NEIGH)]
-            neigh: array = observation[2]  # [3, 2L+1, 2L+1, 2L+1]
-
-            if len(self_mask) == 1:
-                min_dist = 1  # noqa: F841
-                dist2geo = 1  # noqa: F841
-            else:
-                neigh_side_length: float = float(neigh.shape[1])
-
-                diff = (
-                    np.expand_dims(self_and_neigh_params, axis=1)
-                    - np.expand_dims(self_and_neigh_params, axis=0)
-                ) / neigh_side_length
-                dist: array = np.sqrt((diff**2).sum(axis=-1))
-
-                self_agent_index = self_mask.tolist().index(1)
-                dist_list: List[float] = dist[self_agent_index].tolist()
-                dist_list.pop(self_agent_index)
-                min_dist = min(dist_list) / np.sqrt(2)  # noqa: F841
-
-                geo_center = self_and_neigh_params.mean(axis=0)
-                dist2geo = np.sqrt(  # noqa: F841
-                    (
-                        (
-                            (self_and_neigh_params[self_agent_index] - geo_center)
-                            / (neigh_side_length / 2)
-                        )
-                        ** 2
-                    ).sum()
-                )
-
-            # [AGENT_NUM(NEIGH), PARAM_DIM]
-            next_self_and_neigh_params: array = next_observation[0]
-            next_self_mask: array = next_observation[1]  # [AGENT_NUM(NEIGH)]
-            next_neigh: array = next_observation[2]  # [3, 2L+1, 2L+1, 2L+1]
-
-            if len(next_self_mask) == 1:
-                next_min_dist = 1  # noqa: F841
-                next_dist2geo = 1  # noqa: F841
-            else:
-                next_neigh_side_length: float = float(next_neigh.shape[1])
-
-                next_diff = (
-                    np.expand_dims(next_self_and_neigh_params, axis=1)
-                    - np.expand_dims(next_self_and_neigh_params, axis=0)
-                ) / next_neigh_side_length
-                next_dist: array = np.sqrt((next_diff**2).sum(axis=-1))
-
-                next_self_agent_index = next_self_mask.tolist().index(1)
-                next_dist_list: List[float] = next_dist[next_self_agent_index].tolist()
-                next_dist_list.pop(next_self_agent_index)
-                next_min_dist = min(next_dist_list) / np.sqrt(2)  # noqa: F841
-
-                next_geo_center = next_self_and_neigh_params.mean(axis=0)
-                next_dist2geo = np.sqrt(  # noqa: F841
-                    (
-                        (
-                            (
-                                next_self_and_neigh_params[next_self_agent_index]
-                                - next_geo_center
-                            )
-                            / (next_neigh_side_length / 2)
-                        )
-                        ** 2
-                    ).sum()
-                )
-
-            dist_reward.append(
-                (1 - dist2geo / next_dist2geo) if next_dist2geo != 0 else 0
-            )
-
-        return np.array(dist_reward + [0], dtype=np.float32)
