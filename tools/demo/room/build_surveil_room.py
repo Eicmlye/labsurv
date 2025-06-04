@@ -467,56 +467,68 @@ def main(size: str, is_demo: bool, id: List[int]):
 
         if is_demo:
             print("Adding cameras...")
+            """
+                room.add_cam(
+                    [2, 2, 12],
+                    [PI / 2, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [12, 2, 12],
+                    [PI / 2, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [2, 27, 12],
+                    [-PI / 2, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [12, 27, 12],
+                    [-PI / 2, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [5, 15, 12],
+                    [0, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [9, 15, 12],
+                    [-PI, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [5, 2, 12],
+                    [0, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [9, 2, 12],
+                    [-PI, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [5, 27, 12],
+                    [0, -PI * 5 / 18],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [9, 27, 12],
+                    [-PI, -PI * 5 / 18],
+                    "std_cam",
+                )
+            #"""
             room.add_cam(
-                [2, 2, 12],
-                [PI / 2, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [12, 2, 12],
-                [PI / 2, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [2, 27, 12],
-                [-PI / 2, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [12, 27, 12],
-                [-PI / 2, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [5, 15, 12],
-                [0, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [9, 15, 12],
+                [14, 15, 12],
                 [-PI, -PI * 5 / 18],
-                "std_cam",
+                "view_cam",
             )
-            room.add_cam(
-                [5, 2, 12],
-                [0, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [9, 2, 12],
-                [-PI, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [5, 27, 12],
-                [0, -PI * 5 / 18],
-                "std_cam",
-            )
-            room.add_cam(
-                [9, 27, 12],
-                [-PI, -PI * 5 / 18],
-                "std_cam",
-            )
+            # room.add_cam(
+            #     [0, 15, 12],
+            #     [0, -PI * 5 / 18],
+            #     "wide_cam",
+            # )
     elif size == "tiny":
         room = _build_tiny_room(cfg_path)
 
@@ -547,45 +559,73 @@ def main(size: str, is_demo: bool, id: List[int]):
 
         if is_demo:
             print("Adding cameras...")
+            """
+                room.add_cam(
+                    [40, 10, 25],
+                    [0, -PI / 6],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [60, 10, 25],
+                    [-PI, -PI / 6],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [40, 50, 25],
+                    [0, -PI / 6],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [60, 50, 25],
+                    [-PI, -PI / 6],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [40, 90, 25],
+                    [0, -PI / 6],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [60, 90, 25],
+                    [-PI, -PI / 6],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [50, 40, 25],
+                    [PI / 2, -PI / 6],
+                    "std_cam",
+                )
+                room.add_cam(
+                    [50, 60, 25],
+                    [-PI / 2, -PI / 6],
+                    "std_cam",
+                )
+            #"""
+            
             room.add_cam(
-                [40, 10, 25],
-                [0, -PI / 6],
-                "std_cam",
+                [50, 0, 25],
+                [PI / 2, -PI * 5 / 18],
+                "wide_cam",
             )
             room.add_cam(
-                [60, 10, 25],
-                [-PI, -PI / 6],
-                "std_cam",
+                [2, 35, 25],
+                [PI / 6, -PI * 5 / 18],
+                "wide_cam",
             )
             room.add_cam(
-                [40, 50, 25],
-                [0, -PI / 6],
-                "std_cam",
+                [37, 97, 25],
+                [-PI / 6, -PI * 5 / 18],
+                "wide_cam",
             )
             room.add_cam(
-                [60, 50, 25],
-                [-PI, -PI / 6],
-                "std_cam",
+                [98, 64, 25],
+                [-PI * 5 / 6, -PI * 5 / 18],
+                "wide_cam",
             )
             room.add_cam(
-                [40, 90, 25],
-                [0, -PI / 6],
-                "std_cam",
-            )
-            room.add_cam(
-                [60, 90, 25],
-                [-PI, -PI / 6],
-                "std_cam",
-            )
-            room.add_cam(
-                [50, 40, 25],
-                [PI / 2, -PI / 6],
-                "std_cam",
-            )
-            room.add_cam(
-                [50, 60, 25],
-                [-PI / 2, -PI / 6],
-                "std_cam",
+                [45, 42, 25],
+                [PI / 3, -PI * 5 / 18],
+                "wide_cam",
             )
     elif size == "empty":
         room = _build_empty_room(cfg_path)
