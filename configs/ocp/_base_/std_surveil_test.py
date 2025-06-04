@@ -61,6 +61,14 @@ cam_intrinsics = dict(
         aov=[PI / 3, PI / 3],
         dof=[3, 0.5],
     ),
+    view_cam=dict(
+        aov=[PI / 2, PI / 4],
+        dof=[3, 0.5],
+    ),
+    wide_cam=dict(
+        aov=[PI * 2 / 3, PI / 4],
+        dof=[1.5, 0.5],
+    ),
 )
 
 
